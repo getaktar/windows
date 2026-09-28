@@ -69,9 +69,14 @@ development with C++" workload from the Visual Studio Build Tools.
 
 ```powershell
 pnpm install
-pnpm tauri dev      # run the app
-pnpm tauri build    # build the installer into src-tauri/target/release/bundle/nsis
+pnpm tauri dev           # run the app
+pwsh scripts/build.ps1   # build the installer into src-tauri/target/release/bundle/nsis
 ```
+
+Build anything you'll share with `scripts/build.ps1` rather than a plain
+`pnpm tauri build`: Rust embeds source paths in the binary, and the script
+maps your home folder out of them, then checks that `aktar.exe` doesn't
+contain your user name.
 
 ### Microsoft Store package
 

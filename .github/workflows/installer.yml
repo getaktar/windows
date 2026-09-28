@@ -27,12 +27,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # scripts/build.ps1 keeps the runner's paths out of aktar.exe and
+      # checks that it did.
       - name: Build the installer
+        shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # The key has no password (GitHub secrets can't be empty).
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: pnpm tauri build
+        run: ./scripts/build.ps1
 
       - uses: actions/upload-artifact@v4
         with:

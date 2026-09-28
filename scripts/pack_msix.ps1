@@ -18,7 +18,8 @@ Visual Studio Build Tools' C++ workload and is on GitHub's Windows runners.
 
 .EXAMPLE
 pwsh scripts/pack_msix.ps1 -Build
-Builds the release exe (no NSIS installer) and packages it.
+Builds the release exe (no NSIS installer, with scripts/build.ps1, which
+keeps the build machine's paths out of it) and packages it.
 
 .EXAMPLE
 pwsh scripts/pack_msix.ps1 -SignForTesting
@@ -26,7 +27,7 @@ Packages an exe built earlier and signs it for a local install.
 #>
 [CmdletBinding()]
 param(
-    # Runs `pnpm tauri build --no-bundle` first.
+    # Runs `scripts/build.ps1 --no-bundle` first.
     [switch]$Build,
     # Signs with a self-signed certificate so the package installs locally.
     [switch]$SignForTesting,
@@ -58,13 +59,12 @@ function Invoke-Tool([string]$tool, [string[]]$arguments) {
 }
 
 if ($Build) {
-    Push-Location $root
-    try {
-        pnpm tauri build --no-bundle
-        if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
-    } finally { Pop-Location }
+    & (Join-Path $PSScriptRoot 'build.ps1') --no-bundle
 }
-if (-not (Test-Path $ExePath)) { throw "No build at $ExePath. Run with -Build, or 'pnpm tauri build' first." }
+if (-not (Test-Path $ExePath)) { throw "No build at $ExePath. Run with -Build, or scripts/build.ps1 first." }
+# Whatever built it, nothing goes into a package with the build machine's
+# user name in it.
+& (Join-Path $PSScriptRoot 'check_binary.ps1') -Path $ExePath
 
 # The Store wants four-part versions ending in .0: 0.1.0 -> 0.1.0.0.
 $config = Get-Content (Join-Path $root 'src-tauri\tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json

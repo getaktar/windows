@@ -21,8 +21,25 @@ Thumbs.db
 *PrivateKey*
 *.p12
 *.pfx
+*.pvk
+*.spc
+*.snk
 *.cer
 *.cert
+*.crt
+*.jks
 .env
 .env.*
 *.netrc
+# Tauri's updater signing key (tauri signer generate): the public half is
+# in tauri.conf.json, the private half only in the release secret.
+.tauri/
+
+# Partner Center / Store CLI state and packages built outside
+# src-tauri/target (scripts/pack_msix.ps1 writes there by default).
+.msstore/
+*.msix
+*.msixbundle
+*.msixupload
+*.appx
+*.appxbundle

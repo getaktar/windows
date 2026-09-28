@@ -4,10 +4,16 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## Setup
 
-```bash
+```powershell
+winget install Gitleaks.Gitleaks
+pip install pre-commit
 pnpm install
-pre-commit install   # optional: gitleaks scan of staged changes
+pre-commit install
 ```
+
+`pre-commit install` activates the gitleaks hook, which scans staged changes
+for hardcoded secrets before each commit. CI runs the same scan over the
+whole history.
 
 `pnpm tauri dev` runs the app. Most UI work can happen in a browser on any
 OS with `pnpm dev:mock` (a fake backend with sample data, see
@@ -61,6 +67,10 @@ AKTAR_TEST_S3_ENDPOINT=http://127.0.0.1:9100 cargo test storage -- --ignored
 - Keep PRs focused on one change.
 - Never commit real credentials, certificates, or signing keys, even in
   tests or fixtures - use obviously-fake placeholder values.
+- Never commit personal data: your paths or user name, real bucket names or
+  endpoints, or screenshots of your own uploads. Take screenshots against
+  the mock backend (`VITE_MOCK_SCENE=store pnpm dev:mock` gives tidy sample
+  data).
 - Make sure `pnpm build` and the Rust tests pass before opening a PR.
 - Add a line under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for any
   user-facing change.
@@ -75,6 +85,16 @@ contents of the key file, whose public half is `plugins.updater.pubkey` in
 
 To try a build on a Windows PC without releasing it, run the "Installer"
 workflow from the Actions tab and download its artifact.
+
+Anything that leaves your PC (an installer, a Store package) must be built
+with `scripts/build.ps1` or `scripts/pack_msix.ps1 -Build`, never a plain
+`pnpm tauri build`: Rust embeds source paths in the binary, which would
+carry your user name. Both scripts map the paths away and run
+`scripts/check_binary.ps1`, which fails the build if your home folder or
+user name is still in `aktar.exe`. The release workflows do the same.
+
+The Microsoft Store package is attached to each draft release by the
+release workflow; upload that one in Partner Center.
 
 Losing the private key means installed copies can never be updated again,
 so keep a backup somewhere safe.

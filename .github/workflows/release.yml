@@ -42,6 +42,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Keeps the runner's paths (and user name) out of aktar.exe; see
+      # scripts/remap_paths.ps1.
+      - name: Remap build paths
+        shell: pwsh
+        run: |
+          $flags = ./scripts/remap_paths.ps1
+          "CARGO_ENCODED_RUSTFLAGS=$flags" >> $env:GITHUB_ENV
+
       # Builds the NSIS installer, signs it for the updater with the
       # minisign key (its public half is plugins.updater.pubkey), and
       # uploads the installer, its .sig, and latest.json to a draft release.
@@ -57,6 +65,12 @@ jobs:
           releaseBody: See CHANGELOG.md for what's new in this version.
           releaseDraft: true
           includeUpdaterJson: true
+
+      # Before anything else is uploaded. If it fails, the draft release is
+      # left as is: delete it, fix the build, and tag again.
+      - name: Check the binary for build machine paths
+        shell: pwsh
+        run: ./scripts/check_binary.ps1 -Path src-tauri/target/release/aktar.exe
 
       # A stable name, so https://github.com/getaktar/windows/releases/latest/download/Aktar-Setup.exe
       # always points at the newest installer.
