@@ -39,3 +39,18 @@ jobs:
           name: Aktar-installer
           path: src-tauri/target/release/bundle/nsis/*-setup.exe
           retention-days: 14
+
+      # Signed with a throwaway certificate so it can be installed for
+      # testing; the artifact includes the .cer to trust first (see
+      # scripts/pack_msix.ps1).
+      - name: Package the MSIX
+        shell: pwsh
+        run: ./scripts/pack_msix.ps1 -SignForTesting
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aktar-msix
+          path: |
+            src-tauri/target/msix/*.msix
+            src-tauri/target/msix/*.cer
+          retention-days: 14

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Microsoft Store package. scripts/pack_msix.ps1 fills in the {{...}}
+  values: the identity from packaging/msix/identity.json (as reserved in
+  Partner Center), and the version from src-tauri/tauri.conf.json.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+
+  <Identity
+    Name="{{IDENTITY_NAME}}"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Aktar</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <!-- Windows 10 1809 and later, the same as the NSIS installer. -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="tr-TR" />
+    <Resource Language="de-DE" />
+    <Resource Language="fr-FR" />
+    <Resource Language="es-ES" />
+    <Resource Language="pt-BR" />
+    <Resource Language="ja-JP" />
+    <Resource Language="zh-Hans" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="aktar.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Aktar"
+        Description="Your files. Your storage. One shortcut away."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- aktar:// links (the Raycast extension, upload-clipboard...).
+             The link arrives as the command-line argument, as with the
+             NSIS install's registry entry. -->
+        <uap3:Extension Category="windows.protocol">
+          <uap3:Protocol Name="aktar" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Aktar</uap:DisplayName>
+          </uap3:Protocol>
+        </uap3:Extension>
+
+        <!-- "Launch at sign-in": a packaged app can't use the registry's Run
+             key (its writes land in a private copy Windows never reads), so
+             Settings turns this task on and off instead. Off until then. -->
+        <desktop:Extension Category="windows.startupTask" Executable="aktar.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="AktarStartup" Enabled="false" DisplayName="Aktar" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- A regular desktop app (tray icon, global shortcut, local API on
+         127.0.0.1), not a sandboxed one. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

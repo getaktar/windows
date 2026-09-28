@@ -20,7 +20,7 @@ jobs:
       - name: Check the tag matches the app version
         shell: bash
         run: |
-          VERSION=$(python -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          VERSION=$(python -c "import json; print(json.load(open('src-tauri/tauri.conf.json', encoding='utf-8'))['version'])")
           if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME doesn't match version $VERSION in tauri.conf.json" >&2
             exit 1
@@ -68,3 +68,19 @@ jobs:
           INSTALLER=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -1)
           cp "$INSTALLER" Aktar-Setup.exe
           gh release upload "$GITHUB_REF_NAME" Aktar-Setup.exe --clobber
+
+      # The Microsoft Store package, from the same aktar.exe. It's unsigned:
+      # upload it in Partner Center, and the Store signs it. Skipped until
+      # packaging/msix/identity.json has the identity reserved there.
+      - name: Package for the Microsoft Store
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $identity = Get-Content packaging/msix/identity.json -Raw | ConvertFrom-Json
+          if ($identity.name -eq 'Aktar.Local') {
+            Write-Output "::notice::No Store identity in packaging/msix/identity.json yet; skipping the MSIX."
+            exit 0
+          }
+          ./scripts/pack_msix.ps1
+          gh release upload "$env:GITHUB_REF_NAME" (Get-ChildItem src-tauri/target/msix/*.msix).FullName --clobber

@@ -18,7 +18,11 @@ The first Windows version, with the features of Aktar for Mac 0.4.1.
 - Bring-your-own S3-compatible storage (Amazon S3, Cloudflare R2, Backblaze B2,
   DigitalOcean Spaces, MinIO, or any other S3-compatible endpoint), with
   credentials kept in Windows Credential Manager
+- "Use path-style addressing" for S3-compatible servers without a
+  subdomain per bucket
 - Multiple destinations, switchable per upload
+- Upload progress, and cancelling or removing uploads from the panel and
+  the Library
 - Upload history with search, thumbnails, and previews (images, PDFs, text,
   Markdown)
 - Copy link as URL, Markdown, HTML, or a custom template
@@ -29,8 +33,11 @@ The first Windows version, with the features of Aktar for Mac 0.4.1.
 - Raycast integration: the same opt-in local API as the Mac app (127.0.0.1
   only, token-protected), and `aktar://` links (`upload-clipboard`,
   `library`, `settings`, `connect`)
-- Automatic updates from GitHub releases, verified before installing
+- Automatic updates from GitHub releases, verified before installing, and
+  installed while Aktar isn't in use
 - Launch at sign-in
+- A Microsoft Store (MSIX) package alongside the installer, updated by the
+  Store
 - English, Turkish, German, French, Spanish, Brazilian Portuguese, Japanese,
   and Simplified Chinese. The language can be changed in Settings without
   restarting

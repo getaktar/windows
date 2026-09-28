@@ -73,6 +73,22 @@ pnpm tauri dev      # run the app
 pnpm tauri build    # build the installer into src-tauri/target/release/bundle/nsis
 ```
 
+### Microsoft Store package
+
+The Store gets an MSIX of the same `aktar.exe`. Inside the package, Aktar
+leaves updates to the Store, uses the package's startup task for "Launch at
+login", and shows notifications under the package's identity.
+
+```powershell
+pwsh scripts/pack_msix.ps1 -Build            # unsigned, for Partner Center
+pwsh scripts/pack_msix.ps1 -SignForTesting   # test-signed, to install locally
+```
+
+The package lands in `src-tauri/target/msix`. The manifest is
+`packaging/msix/AppxManifest.xml`; the identity it's built with (from
+Partner Center > Product identity) is in `packaging/msix/identity.json`,
+and the logos come from `scripts/make_msix_assets.py`.
+
 The UI can also be worked on in a regular browser on any OS, against a
 fake backend with sample data:
 
