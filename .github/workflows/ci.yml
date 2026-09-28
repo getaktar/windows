@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Runs for pull requests from forks too, so the token only reads the repo.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
