@@ -1,0 +1,73 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aktar",
+  "version": "0.1.0",
+  "identifier": "com.getaktar.windows",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' asset: http://asset.localhost https: http: data: blob:",
+        "frame-src": "'self' blob:",
+        "object-src": "blob:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "font-src": "'self' data:"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"],
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPCACHE/thumbnails/*"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "publisher": "Mert Topuz",
+    "copyright": "© 2026 Mert Topuz",
+    "category": "Utility",
+    "shortDescription": "Your files. Your storage. One shortcut away.",
+    "longDescription": "Upload files to your own S3-compatible storage from the Windows notification area and get a public link on your clipboard.",
+    "homepage": "https://getaktar.com",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "Turkish", "German", "French", "Spanish", "PortugueseBR", "Japanese", "SimpChinese"],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["aktar"]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczQUIwQ0Q3Q0IwMjY2MTkKUldRWlpnTEwxd3lyYzlLRmNEUTFQVFpxblo4T1hmWGZaR3ZpdnVLNExEUnFBdzZPUkx0ZGk1NVUK",
+      "endpoints": ["https://github.com/getaktar/windows/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

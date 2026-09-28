@@ -1,0 +1,119 @@
+//! App preferences, kept as JSON next to the other app data. Nothing secret
+//! goes here: storage credentials and the local API token live in Windows
+//! Credential Manager (see `credentials`).
+
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+
+use crate::output::OutputMode;
+
+pub const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Alt+KeyU";
+pub const DEFAULT_LOCAL_API_PORT: u16 = 47913;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    pub output_mode: OutputMode,
+    pub custom_template: String,
+    pub show_notification: bool,
+    pub close_panel_after_upload: bool,
+    /// A language code from `i18n::SUPPORTED`, or none to follow Windows.
+    pub language: Option<String>,
+    /// Global "paste & upload" shortcut as an accelerator string, or none
+    /// when the user cleared it.
+    pub shortcut: Option<String>,
+    pub local_api_enabled: bool,
+    pub local_api_port: u16,
+    pub auto_check_updates: bool,
+    pub auto_install_updates: bool,
+    /// Unix milliseconds of the last automatic update check.
+    pub last_update_check: Option<i64>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            output_mode: OutputMode::Url,
+            custom_template: "![{filename}]({url})".into(),
+            show_notification: true,
+            close_panel_after_upload: true,
+            language: None,
+            shortcut: Some(DEFAULT_SHORTCUT.into()),
+            local_api_enabled: false,
+            local_api_port: DEFAULT_LOCAL_API_PORT,
+            auto_check_updates: true,
+            auto_install_updates: false,
+            last_update_check: None,
+        }
+    }
+}
+
+/// The fields the Settings window may change directly. Everything with side
+/// effects beyond saving (shortcut, language, local API) has its own command.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPatch {
+    pub output_mode: Option<OutputMode>,
+    pub custom_template: Option<String>,
+    pub show_notification: Option<bool>,
+    pub close_panel_after_upload: Option<bool>,
+    pub auto_check_updates: Option<bool>,
+    pub auto_install_updates: Option<bool>,
+}
+
+pub struct SettingsStore {
+    path: PathBuf,
+    settings: Mutex<Settings>,
+}
+
+impl SettingsStore {
+    pub fn load(directory: &Path) -> Self {
+        let path = directory.join("settings.json");
+        let mut settings: Settings = std::fs::read(&path)
+            .ok()
+            .and_then(|data| serde_json::from_slice(&data).ok())
+            .unwrap_or_default();
+        if settings.local_api_port < 1024 {
+            settings.local_api_port = DEFAULT_LOCAL_API_PORT;
+        }
+        Self { path, settings: Mutex::new(settings) }
+    }
+
+    pub fn get(&self) -> Settings {
+        self.settings.lock().unwrap().clone()
+    }
+
+    pub fn update(&self, change: impl FnOnce(&mut Settings)) -> Settings {
+        let mut settings = self.settings.lock().unwrap();
+        change(&mut settings);
+        // Written under the lock, so two quick updates can't land on disk
+        // in the wrong order.
+        crate::util::write_json_atomically(&self.path, &*settings);
+        settings.clone()
+    }
+
+    pub fn apply_patch(&self, patch: SettingsPatch) -> Settings {
+        self.update(|settings| {
+            if let Some(value) = patch.output_mode {
+                settings.output_mode = value;
+            }
+            if let Some(value) = patch.custom_template {
+                settings.custom_template = value;
+            }
+            if let Some(value) = patch.show_notification {
+                settings.show_notification = value;
+            }
+            if let Some(value) = patch.close_panel_after_upload {
+                settings.close_panel_after_upload = value;
+            }
+            if let Some(value) = patch.auto_check_updates {
+                settings.auto_check_updates = value;
+            }
+            if let Some(value) = patch.auto_install_updates {
+                settings.auto_install_updates = value;
+            }
+        })
+    }
+}

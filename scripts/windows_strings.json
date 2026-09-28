@@ -1,0 +1,336 @@
+{
+  "// About this file": "Strings that only exist in the Windows app, with their translations. scripts/extract_locales.py merges them into src/locales on top of the Mac app's String Catalog. Keep the tone of the catalog: 'sen' in Turkish, 'du' in German, 'vous' in French, 'tú' in Spanish, 'você' in Portuguese.",
+  "A new version of Aktar is available!": {
+    "tr": "Aktar'ın yeni bir sürümü var!",
+    "de": "Eine neue Version von Aktar ist verfügbar!",
+    "fr": "Une nouvelle version d’Aktar est disponible !",
+    "es": "¡Hay una nueva versión de Aktar!",
+    "pt-BR": "Uma nova versão do Aktar está disponível!",
+    "ja": "Aktarの新しいバージョンがあります！",
+    "zh-Hans": "Aktar 有新版本可用！"
+  },
+  "Aktar forgets this destination and its keys. Files already in the bucket aren’t touched.": {
+    "tr": "Aktar bu hedefi ve anahtarlarını unutur. Bucket'taki dosyalara dokunulmaz.",
+    "de": "Aktar vergisst dieses Ziel und seine Schlüssel. Dateien im Bucket bleiben unverändert.",
+    "fr": "Aktar oublie cette destination et ses clés. Les fichiers déjà dans le bucket ne sont pas modifiés.",
+    "es": "Aktar olvida este destino y sus claves. Los archivos que ya están en el bucket no se tocan.",
+    "pt-BR": "O Aktar esquece este destino e suas chaves. Os arquivos que já estão no bucket não são alterados.",
+    "ja": "Aktarはこのアップロード先とそのキーを削除します。バケット内のファイルはそのまま残ります。",
+    "zh-Hans": "Aktar 将忘记此上传目标及其密钥。存储桶中已有的文件不受影响。"
+  },
+  "Aktar lives in the notification area, next to the clock. If you don’t see its icon, click the arrow there and drag Aktar onto the taskbar.": {
+    "tr": "Aktar, görev çubuğunda saatin yanındaki bildirim alanında yaşar. Simgesini göremiyorsan oradaki oka tıkla ve Aktar'ı görev çubuğuna sürükle.",
+    "de": "Aktar wohnt im Infobereich neben der Uhr. Wenn du das Symbol nicht siehst, klicke dort auf den Pfeil und zieh Aktar auf die Taskleiste.",
+    "fr": "Aktar se trouve dans la zone de notification, à côté de l’horloge. Si vous ne voyez pas son icône, cliquez sur la flèche à cet endroit et faites glisser Aktar dans la barre des tâches.",
+    "es": "Aktar vive en el área de notificación, junto al reloj. Si no ves su icono, haz clic en la flecha que hay allí y arrastra Aktar a la barra de tareas.",
+    "pt-BR": "O Aktar fica na área de notificação, ao lado do relógio. Se não encontrar o ícone, clique na seta ali e arraste o Aktar para a barra de tarefas.",
+    "ja": "Aktarはタスクバーの時計の横にある通知領域に常駐します。アイコンが見つからない場合は、そこにある矢印をクリックして、Aktarをタスクバーにドラッグしてください。",
+    "zh-Hans": "Aktar 位于任务栏时钟旁的通知区域。如果看不到它的图标，请点击那里的箭头，然后将 Aktar 拖到任务栏上。"
+  },
+  "Aktar {0} is available. You have {1}. Would you like to install it now?": {
+    "tr": "Aktar {0} çıktı. Sende {1} var. Şimdi yüklemek ister misin?",
+    "de": "Aktar {0} ist verfügbar. Du hast {1}. Möchtest du es jetzt installieren?",
+    "fr": "Aktar {0} est disponible. Vous avez la version {1}. Voulez-vous l’installer maintenant ?",
+    "es": "Aktar {0} está disponible. Tienes la {1}. ¿Quieres instalarla ahora?",
+    "pt-BR": "O Aktar {0} está disponível. Você tem a versão {1}. Deseja instalar agora?",
+    "ja": "Aktar {0}が利用可能です。現在のバージョンは{1}です。今すぐインストールしますか？",
+    "zh-Hans": "Aktar {0} 已推出，你当前的版本是 {1}。要现在安装吗？"
+  },
+  "Aktar {0} is currently the newest version available.": {
+    "tr": "Aktar {0} şu anki en yeni sürüm.",
+    "de": "Aktar {0} ist die neueste verfügbare Version.",
+    "fr": "Aktar {0} est actuellement la version la plus récente.",
+    "es": "Aktar {0} es la versión más reciente disponible.",
+    "pt-BR": "O Aktar {0} é a versão mais recente disponível.",
+    "ja": "Aktar {0}は現在入手できる最新バージョンです。",
+    "zh-Hans": "Aktar {0} 已是当前可用的最新版本。"
+  },
+  "Aktar {0} is ready to install": {
+    "tr": "Aktar {0} yüklenmeye hazır",
+    "de": "Aktar {0} kann installiert werden",
+    "fr": "Aktar {0} est prêt à être installé",
+    "es": "Aktar {0} está listo para instalarse",
+    "pt-BR": "O Aktar {0} está pronto para ser instalado",
+    "ja": "Aktar {0}をインストールする準備ができました",
+    "zh-Hans": "Aktar {0} 已可安装"
+  },
+  "Checking for updates…": {
+    "tr": "Güncellemeler denetleniyor…",
+    "de": "Nach Updates suchen …",
+    "fr": "Recherche de mises à jour…",
+    "es": "Buscando actualizaciones…",
+    "pt-BR": "Verificando atualizações…",
+    "ja": "アップデートを確認中…",
+    "zh-Hans": "正在检查更新…"
+  },
+  "Clear": {
+    "tr": "Temizle",
+    "de": "Löschen",
+    "fr": "Effacer",
+    "es": "Borrar",
+    "pt-BR": "Limpar",
+    "ja": "消去",
+    "zh-Hans": "清除"
+  },
+  "Close panel after upload": {
+    "tr": "Yüklemeden sonra paneli kapat",
+    "de": "Panel nach dem Upload schließen",
+    "fr": "Fermer le panneau après l’envoi",
+    "es": "Cerrar el panel tras la subida",
+    "pt-BR": "Fechar o painel após o envio",
+    "ja": "アップロード後にパネルを閉じる",
+    "zh-Hans": "上传后关闭面板"
+  },
+  "Credential Manager error ({0}).": {
+    "tr": "Kimlik Bilgileri Yöneticisi hatası ({0}).",
+    "de": "Fehler der Anmeldeinformationsverwaltung ({0}).",
+    "fr": "Erreur du Gestionnaire d’identification ({0}).",
+    "es": "Error del Administrador de credenciales ({0}).",
+    "pt-BR": "Erro do Gerenciador de Credenciais ({0}).",
+    "ja": "資格情報マネージャーのエラー({0})。",
+    "zh-Hans": "凭据管理器错误（{0}）。"
+  },
+  "Downloading Aktar {0}…": {
+    "tr": "Aktar {0} indiriliyor…",
+    "de": "Aktar {0} wird geladen …",
+    "fr": "Téléchargement d’Aktar {0}…",
+    "es": "Descargando Aktar {0}…",
+    "pt-BR": "Baixando o Aktar {0}…",
+    "ja": "Aktar {0}をダウンロード中…",
+    "zh-Hans": "正在下载 Aktar {0}…"
+  },
+  "Enter an Access Key ID and Secret Access Key.": {
+    "tr": "Bir Access Key ID ve Secret Access Key gir.",
+    "de": "Gib eine Access Key ID und einen Secret Access Key ein.",
+    "fr": "Saisissez un Access Key ID et une Secret Access Key.",
+    "es": "Introduce un Access Key ID y una Secret Access Key.",
+    "pt-BR": "Insira um Access Key ID e uma Secret Access Key.",
+    "ja": "アクセスキーIDとシークレットアクセスキーを入力してください。",
+    "zh-Hans": "请输入 Access Key ID 和 Secret Access Key。"
+  },
+  "Folders": {
+    "tr": "Klasörler",
+    "de": "Ordner",
+    "fr": "Dossiers",
+    "es": "Carpetas",
+    "pt-BR": "Pastas",
+    "ja": "フォルダ",
+    "zh-Hans": "文件夹"
+  },
+  "Follows your Windows display language unless you pick one here.": {
+    "tr": "Burada bir dil seçmezsen Windows'un görüntüleme dilini kullanır.",
+    "de": "Verwendet die Anzeigesprache von Windows, sofern du hier keine andere wählst.",
+    "fr": "Utilise la langue d’affichage de Windows, sauf si vous en choisissez une ici.",
+    "es": "Usa el idioma de Windows, a menos que elijas otro aquí.",
+    "pt-BR": "Usa o idioma de exibição do Windows, a menos que você escolha outro aqui.",
+    "ja": "ここで選択しない場合は、Windowsの表示言語が使われます。",
+    "zh-Hans": "除非在此处选择，否则将使用 Windows 的显示语言。"
+  },
+  "Include Ctrl, Alt, or the Windows key in the shortcut.": {
+    "tr": "Kısayola Ctrl, Alt veya Windows tuşunu ekle.",
+    "de": "Nimm Strg, Alt oder die Windows-Taste in das Tastenkürzel auf.",
+    "fr": "Incluez Ctrl, Alt ou la touche Windows dans le raccourci.",
+    "es": "Incluye Ctrl, Alt o la tecla Windows en el atajo.",
+    "pt-BR": "Inclua Ctrl, Alt ou a tecla Windows no atalho.",
+    "ja": "ショートカットにはCtrl、Alt、またはWindowsキーを含めてください。",
+    "zh-Hans": "快捷键需要包含 Ctrl、Alt 或 Windows 键。"
+  },
+  "Install and Relaunch": {
+    "tr": "Yükle ve Yeniden Başlat",
+    "de": "Installieren und neu starten",
+    "fr": "Installer et relancer",
+    "es": "Instalar y reiniciar",
+    "pt-BR": "Instalar e reabrir",
+    "ja": "インストールして再起動",
+    "zh-Hans": "安装并重新启动"
+  },
+  "It will be installed the next time you quit Aktar.": {
+    "tr": "Aktar'dan bir sonraki çıkışında yüklenecek.",
+    "de": "Es wird installiert, wenn du Aktar das nächste Mal beendest.",
+    "fr": "Elle sera installée la prochaine fois que vous quitterez Aktar.",
+    "es": "Se instalará la próxima vez que cierres Aktar.",
+    "pt-BR": "Ela será instalada na próxima vez que você fechar o Aktar.",
+    "ja": "次にAktarを終了したときにインストールされます。",
+    "zh-Hans": "将在你下次退出 Aktar 时安装。"
+  },
+  "Later": {
+    "tr": "Sonra",
+    "de": "Später",
+    "fr": "Plus tard",
+    "es": "Más tarde",
+    "pt-BR": "Mais tarde",
+    "ja": "あとで",
+    "zh-Hans": "稍后"
+  },
+  "More": {
+    "tr": "Daha Fazla",
+    "de": "Mehr",
+    "fr": "Plus",
+    "es": "Más",
+    "pt-BR": "Mais",
+    "ja": "その他",
+    "zh-Hans": "更多"
+  },
+  "No credentials found in Credential Manager for this destination.": {
+    "tr": "Bu hedef için Kimlik Bilgileri Yöneticisi'nde kimlik bilgisi bulunamadı.",
+    "de": "Für dieses Ziel wurden keine Zugangsdaten in der Anmeldeinformationsverwaltung gefunden.",
+    "fr": "Aucun identifiant trouvé dans le Gestionnaire d’identification pour cette destination.",
+    "es": "No se han encontrado credenciales en el Administrador de credenciales para este destino.",
+    "pt-BR": "Nenhuma credencial encontrada no Gerenciador de Credenciais para este destino.",
+    "ja": "このアップロード先の認証情報が資格情報マネージャーに見つかりません。",
+    "zh-Hans": "凭据管理器中找不到此上传目标的凭证。"
+  },
+  "No destination to upload to. Add one in Settings.": {
+    "tr": "Yüklenecek bir hedef yok. Ayarlar'dan bir tane ekle.",
+    "de": "Kein Ziel zum Hochladen. Füge in den Einstellungen eines hinzu.",
+    "fr": "Aucune destination d’envoi. Ajoutez-en une dans les Réglages.",
+    "es": "No hay ningún destino al que subir. Añade uno en Ajustes.",
+    "pt-BR": "Não há destino para enviar. Adicione um em Ajustes.",
+    "ja": "アップロード先がありません。設定で追加してください。",
+    "zh-Hans": "没有可上传的目标。请在设置中添加一个。"
+  },
+  "Press a shortcut…": {
+    "tr": "Bir kısayola bas…",
+    "de": "Tastenkürzel drücken …",
+    "fr": "Appuyez sur un raccourci…",
+    "es": "Pulsa un atajo…",
+    "pt-BR": "Pressione um atalho…",
+    "ja": "ショートカットを押してください…",
+    "zh-Hans": "请按下快捷键…"
+  },
+  "Quit Aktar": {
+    "tr": "Aktar'dan Çık",
+    "de": "Aktar beenden",
+    "fr": "Quitter Aktar",
+    "es": "Salir de Aktar",
+    "pt-BR": "Sair do Aktar",
+    "ja": "Aktarを終了",
+    "zh-Hans": "退出 Aktar"
+  },
+  "Record Shortcut": {
+    "tr": "Kısayol Kaydet",
+    "de": "Tastenkürzel aufnehmen",
+    "fr": "Enregistrer un raccourci",
+    "es": "Grabar atajo",
+    "pt-BR": "Gravar atalho",
+    "ja": "ショートカットを記録",
+    "zh-Hans": "录制快捷键"
+  },
+  "Remind Me Later": {
+    "tr": "Daha Sonra Hatırlat",
+    "de": "Später erinnern",
+    "fr": "Me le rappeler plus tard",
+    "es": "Recordármelo más tarde",
+    "pt-BR": "Lembrar mais tarde",
+    "ja": "あとで通知",
+    "zh-Hans": "稍后提醒我"
+  },
+  "Remove “{0}”?": {
+    "tr": "“{0}” kaldırılsın mı?",
+    "de": "„{0}“ entfernen?",
+    "fr": "Supprimer « {0} » ?",
+    "es": "¿Quitar “{0}”?",
+    "pt-BR": "Remover “{0}”?",
+    "ja": "“{0}”を削除しますか？",
+    "zh-Hans": "要移除“{0}”吗？"
+  },
+  "Software Update": {
+    "tr": "Yazılım Güncelleme",
+    "de": "Softwareupdate",
+    "fr": "Mise à jour",
+    "es": "Actualización de software",
+    "pt-BR": "Atualização de Software",
+    "ja": "ソフトウェアアップデート",
+    "zh-Hans": "软件更新"
+  },
+  "That key combination can’t be used as a shortcut.": {
+    "tr": "Bu tuş birleşimi kısayol olarak kullanılamaz.",
+    "de": "Diese Tastenkombination kann nicht als Tastenkürzel verwendet werden.",
+    "fr": "Cette combinaison de touches ne peut pas servir de raccourci.",
+    "es": "Esa combinación de teclas no se puede usar como atajo.",
+    "pt-BR": "Essa combinação de teclas não pode ser usada como atalho.",
+    "ja": "このキーの組み合わせはショートカットに使用できません。",
+    "zh-Hans": "此按键组合不能用作快捷键。"
+  },
+  "The clipboard has no file or image to upload.": {
+    "tr": "Panoda yüklenecek bir dosya ya da görsel yok.",
+    "de": "In der Zwischenablage ist keine Datei und kein Bild zum Hochladen.",
+    "fr": "Le presse-papiers ne contient aucun fichier ni image à envoyer.",
+    "es": "El portapapeles no tiene ningún archivo ni imagen para subir.",
+    "pt-BR": "A área de transferência não tem arquivo nem imagem para enviar.",
+    "ja": "クリップボードにアップロードできるファイルや画像がありません。",
+    "zh-Hans": "剪贴板中没有可上传的文件或图片。"
+  },
+  "The folder name is required.": {
+    "tr": "Klasör adı gerekli.",
+    "de": "Ein Ordnername ist erforderlich.",
+    "fr": "Le nom du dossier est obligatoire.",
+    "es": "El nombre de la carpeta es obligatorio.",
+    "pt-BR": "O nome da pasta é obrigatório.",
+    "ja": "フォルダ名を入力してください。",
+    "zh-Hans": "需要填写文件夹名称。"
+  },
+  "This shortcut is already used by another app. Try a different one.": {
+    "tr": "Bu kısayolu başka bir uygulama kullanıyor. Farklı bir tane dene.",
+    "de": "Dieses Tastenkürzel wird schon von einer anderen App verwendet. Probier ein anderes.",
+    "fr": "Ce raccourci est déjà utilisé par une autre app. Essayez-en un autre.",
+    "es": "Otra app ya usa este atajo. Prueba con otro.",
+    "pt-BR": "Outro app já usa este atalho. Tente um diferente.",
+    "ja": "このショートカットはほかのアプリで使用されています。別のショートカットを試してください。",
+    "zh-Hans": "此快捷键已被其他应用使用，请换一个。"
+  },
+  "Update check failed": {
+    "tr": "Güncelleme denetlenemedi",
+    "de": "Suche nach Updates fehlgeschlagen",
+    "fr": "La recherche de mises à jour a échoué",
+    "es": "No se pudieron buscar actualizaciones",
+    "pt-BR": "Não foi possível verificar atualizações",
+    "ja": "アップデートを確認できませんでした",
+    "zh-Hans": "检查更新失败"
+  },
+  "Upload Clipboard": {
+    "tr": "Panoyu Yükle",
+    "de": "Zwischenablage hochladen",
+    "fr": "Envoyer le presse-papiers",
+    "es": "Subir el portapapeles",
+    "pt-BR": "Enviar área de transferência",
+    "ja": "クリップボードをアップロード",
+    "zh-Hans": "上传剪贴板内容"
+  },
+  "Use Aktar from other apps on this PC.": {
+    "tr": "Aktar'ı bu bilgisayardaki diğer uygulamalardan kullan.",
+    "de": "Nutze Aktar aus anderen Apps auf diesem PC.",
+    "fr": "Utilisez Aktar depuis d’autres apps sur ce PC.",
+    "es": "Usa Aktar desde otras apps de este PC.",
+    "pt-BR": "Use o Aktar a partir de outros apps neste PC.",
+    "ja": "このPC上のほかのアプリからAktarを使います。",
+    "zh-Hans": "在这台电脑上通过其他应用使用 Aktar。"
+  },
+  "Version {0}": {
+    "tr": "Sürüm {0}",
+    "de": "Version {0}",
+    "fr": "Version {0}",
+    "es": "Versión {0}",
+    "pt-BR": "Versão {0}",
+    "ja": "バージョン {0}",
+    "zh-Hans": "版本 {0}"
+  },
+  "Welcome to Aktar": {
+    "tr": "Aktar'a Hoş Geldin",
+    "de": "Willkommen bei Aktar",
+    "fr": "Bienvenue dans Aktar",
+    "es": "Te damos la bienvenida a Aktar",
+    "pt-BR": "Boas-vindas ao Aktar",
+    "ja": "Aktarへようこそ",
+    "zh-Hans": "欢迎使用 Aktar"
+  },
+  "You’re up to date!": {
+    "tr": "Güncelsin!",
+    "de": "Du bist auf dem neuesten Stand!",
+    "fr": "Vous êtes à jour !",
+    "es": "¡Estás al día!",
+    "pt-BR": "Você está atualizado!",
+    "ja": "最新の状態です！",
+    "zh-Hans": "已是最新版本！"
+  }
+}

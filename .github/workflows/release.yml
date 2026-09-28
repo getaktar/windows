@@ -1,0 +1,70 @@
+name: Release
+
+# Push a v<version> tag (matching "version" in src-tauri/tauri.conf.json) to
+# build the installer and create a draft GitHub release. Review the draft,
+# then publish it: installed copies only see an update once the release is
+# published, since they read latest.json from /releases/latest/.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches the app version
+        shell: bash
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match version $VERSION in tauri.conf.json" >&2
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Builds the NSIS installer, signs it for the updater with the
+      # minisign key (its public half is plugins.updater.pubkey), and
+      # uploads the installer, its .sig, and latest.json to a draft release.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The key has no password (GitHub secrets can't be empty).
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Aktar ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md for what's new in this version.
+          releaseDraft: true
+          includeUpdaterJson: true
+
+      # A stable name, so https://github.com/getaktar/windows/releases/latest/download/Aktar-Setup.exe
+      # always points at the newest installer.
+      - name: Upload Aktar-Setup.exe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          INSTALLER=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -1)
+          cp "$INSTALLER" Aktar-Setup.exe
+          gh release upload "$GITHUB_REF_NAME" Aktar-Setup.exe --clobber

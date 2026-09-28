@@ -1,0 +1,11 @@
+# Normalize line endings across contributors on macOS, Windows and Linux.
+* text=auto eol=lf
+
+# Never diff/merge binary assets as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.icns binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

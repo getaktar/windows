@@ -1,0 +1,41 @@
+name: Installer
+
+# Builds a test installer without releasing anything: run it from the
+# Actions tab, then download the "Aktar-installer" artifact on a Windows PC.
+on:
+  workflow_dispatch:
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The key has no password (GitHub secrets can't be empty).
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aktar-installer
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          retention-days: 14

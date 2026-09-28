@@ -1,0 +1,66 @@
+[package]
+name = "aktar"
+version = "0.1.0"
+description = "Upload files to your own S3-compatible storage from the Windows tray"
+authors = ["Mert Topuz"]
+license = "MIT"
+repository = "https://github.com/getaktar/windows"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "aktar_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+thiserror = "2"
+log = "0.4"
+
+# S3: the SDK's default HTTPS client uses aws-lc-rs, which needs CMake and
+# NASM to build on Windows. rustls with ring builds with just a C compiler.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "http-1x"] }
+aws-smithy-http-client = { version = "1", features = ["rustls-ring"] }
+aws-credential-types = "1"
+aws-smithy-types = "1"
+aws-smithy-runtime-api = { version = "1", features = ["client"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+arboard = "3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+mime_guess = "2"
+sys-locale = "0.3"
+rand = "0.8"
+percent-encoding = "2"
+url = "2"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

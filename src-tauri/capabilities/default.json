@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What Aktar's own windows may call. Everything that touches storage, credentials, or the clipboard goes through Aktar's commands instead of general-purpose plugin APIs.",
+  "windows": ["panel", "library", "settings", "onboarding", "update"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-set-focus",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "dialog:allow-message"
+  ]
+}

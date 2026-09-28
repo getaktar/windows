@@ -1,0 +1,458 @@
+//! Everything the windows can ask of the app. Storage, credentials, and the
+//! clipboard are only reachable through these, never through general
+//! purpose plugin APIs.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use serde::Serialize;
+use tauri::{AppHandle, State};
+use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_opener::OpenerExt;
+
+use crate::core::{events, SharedCore};
+use crate::credentials::{self, StorageCredentials};
+use crate::destinations::DestinationConfig;
+use crate::history::UploadRecord;
+use crate::local_api::{self, LocalApiState};
+use crate::settings::{Settings, SettingsPatch};
+use crate::storage::{BucketListing, ConnectionResult, S3Provider};
+use crate::updater::{self, UpdateStatus};
+use crate::uploads::{self, JobSnapshot, UploadInput};
+use crate::windows::AppWindow;
+use crate::{bucket, i18n, panel, t};
+
+type Core<'a> = State<'a, SharedCore>;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    version: String,
+    language: String,
+    language_override: Option<String>,
+    languages: Vec<(String, String)>,
+}
+
+#[tauri::command]
+pub fn app_info(core: Core) -> AppInfo {
+    AppInfo {
+        version: core.app.package_info().version.to_string(),
+        language: i18n::current(),
+        language_override: core.settings.get().language,
+        languages: i18n::SUPPORTED.iter().map(|(code, name)| (code.to_string(), name.to_string())).collect(),
+    }
+}
+
+// MARK: - Destinations
+
+#[tauri::command]
+pub fn list_destinations(core: Core) -> Vec<DestinationConfig> {
+    core.destinations.all()
+}
+
+fn filled(credentials: Option<StorageCredentials>) -> Option<StorageCredentials> {
+    credentials.filter(|c| !c.access_key_id.trim().is_empty() && !c.secret_access_key.is_empty()).map(|c| {
+        StorageCredentials {
+            access_key_id: c.access_key_id.trim().to_string(),
+            secret_access_key: c.secret_access_key.trim().to_string(),
+            session_token: c.session_token.filter(|token| !token.trim().is_empty()),
+        }
+    })
+}
+
+/// Adds a destination (when `config.id` is empty) or updates one. Leaving
+/// the credential fields empty while editing keeps the stored ones.
+#[tauri::command]
+pub fn save_destination(
+    core: Core,
+    mut config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+) -> Result<DestinationConfig, String> {
+    let is_new = config.id.is_empty();
+    let credentials = filled(credentials);
+    if is_new {
+        config.id = crate::util::new_id();
+        let Some(credentials) = credentials else {
+            return Err(t!("Enter an Access Key ID and Secret Access Key."));
+        };
+        credentials::save(&credentials, &config.id).map_err(|error| error.to_string())?;
+        core.destinations.add(config.clone());
+    } else {
+        if let Some(credentials) = credentials {
+            credentials::save(&credentials, &config.id).map_err(|error| error.to_string())?;
+        }
+        core.destinations.update(config.clone());
+    }
+    core.notify(events::DESTINATIONS_CHANGED);
+    Ok(config)
+}
+
+#[tauri::command]
+pub fn remove_destination(core: Core, id: String) {
+    core.destinations.remove(&id);
+    core.notify(events::DESTINATIONS_CHANGED);
+}
+
+#[tauri::command]
+pub fn set_default_destination(core: Core, id: String) {
+    core.destinations.set_default(&id);
+    core.notify(events::DESTINATIONS_CHANGED);
+}
+
+#[tauri::command]
+pub async fn test_connection(
+    config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+) -> Result<ConnectionResult, String> {
+    let credentials = match filled(credentials) {
+        Some(credentials) => credentials,
+        None if !config.id.is_empty() => credentials::load(&config.id).map_err(|error| error.to_string())?,
+        None => return Err(t!("Enter an Access Key ID and Secret Access Key.")),
+    };
+    S3Provider::new(config, credentials).test_connection().await.map_err(|error| error.to_string())
+}
+
+// MARK: - Uploads
+
+fn inputs_from(paths: Vec<String>) -> Vec<UploadInput> {
+    paths
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+        .map(UploadInput::from_path)
+        .collect()
+}
+
+#[tauri::command]
+pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<String>) -> usize {
+    let destination = destination_id.and_then(|id| core.destinations.find(Some(&id)));
+    let inputs = inputs_from(paths);
+    let count = inputs.len();
+    if count > 0 {
+        uploads::enqueue(&core, inputs, destination);
+    }
+    count
+}
+
+#[tauri::command]
+pub fn upload_clipboard(core: Core) -> bool {
+    uploads::upload_clipboard(&core)
+}
+
+#[tauri::command]
+pub fn list_jobs(core: Core) -> Vec<JobSnapshot> {
+    core.uploads.snapshot()
+}
+
+#[tauri::command]
+pub fn retry_job(core: Core, id: String) {
+    uploads::retry(&core, &id);
+}
+
+#[tauri::command]
+pub fn cancel_job(core: Core, id: String) {
+    uploads::cancel(&core, &id);
+}
+
+#[tauri::command]
+pub fn dismiss_job(core: Core, id: String) {
+    uploads::dismiss(&core, &id);
+}
+
+// MARK: - History
+
+#[tauri::command]
+pub fn list_history(core: Core) -> Vec<UploadRecord> {
+    core.history.all()
+}
+
+#[tauri::command]
+pub fn thumbnails_dir(core: Core) -> String {
+    core.thumbnails_dir.to_string_lossy().into_owned()
+}
+
+/// Deletes each record's remote file, then its history entry. Returns the
+/// error for every record that couldn't be deleted.
+#[tauri::command]
+pub async fn delete_remote(core: Core<'_>, ids: Vec<String>) -> Result<HashMap<String, String>, String> {
+    let mut failures = HashMap::new();
+    for id in ids {
+        if let Err(message) = uploads::delete_remote(&core, &id).await {
+            failures.insert(id, message);
+        }
+    }
+    Ok(failures)
+}
+
+#[tauri::command]
+pub fn remove_from_history(core: Core, ids: Vec<String>) {
+    for id in ids {
+        core.history.delete(&id);
+    }
+    core.notify(events::HISTORY_CHANGED);
+}
+
+// MARK: - Bucket browser
+
+fn storage_for(core: &SharedCore, destination_id: &str) -> Result<(DestinationConfig, S3Provider), String> {
+    let destination = core
+        .destinations
+        .find(Some(destination_id))
+        .ok_or_else(|| t!("No destination to upload to. Add one in Settings."))?;
+    let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
+    Ok((destination.clone(), S3Provider::new(destination, credentials)))
+}
+
+#[tauri::command]
+pub async fn list_objects(
+    core: Core<'_>,
+    destination_id: String,
+    prefix: String,
+    continuation_token: Option<String>,
+    recursive: bool,
+) -> Result<BucketListing, String> {
+    let (_, storage) = storage_for(&core, &destination_id)?;
+    let result = if recursive {
+        storage.list_recursively(&prefix, continuation_token).await
+    } else {
+        storage.list(&prefix, continuation_token).await
+    };
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn bucket_delete(core: Core<'_>, destination_id: String, key: String) -> Result<(), String> {
+    let (destination, storage) = storage_for(&core, &destination_id)?;
+    storage.delete(&key).await.map_err(|error| error.to_string())?;
+    core.history.object_deleted(&key, &destination.id);
+    core.notify(events::HISTORY_CHANGED);
+    Ok(())
+}
+
+/// Renames or moves an object; `new_key` is a full key, so changing the
+/// folder part moves it. Returns the cleaned-up key it ended up at.
+#[tauri::command]
+pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, to: String) -> Result<String, String> {
+    let new_key = to.trim().trim_matches('/').to_string();
+    if new_key.is_empty() || new_key == from {
+        return Ok(from);
+    }
+    let (destination, storage) = storage_for(&core, &destination_id)?;
+    match bucket::move_object(&storage, &from, &new_key).await {
+        Ok(()) => {
+            core.history.object_moved(&from, &new_key, &destination);
+            core.notify(events::HISTORY_CHANGED);
+            Ok(new_key)
+        }
+        Err(bucket::MoveError::Exists) => Err(t!("An object named “{0}” already exists.", new_key)),
+        Err(bucket::MoveError::Storage(error)) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn bucket_create_folder(core: Core<'_>, destination_id: String, prefix: String, name: String) -> Result<String, String> {
+    let name = name.trim().trim_matches('/');
+    if name.is_empty() {
+        return Err(t!("The folder name is required."));
+    }
+    let folder = format!("{}{name}/", bucket::normalized_folder(&prefix));
+    let (_, storage) = storage_for(&core, &destination_id)?;
+    storage.create_folder(&folder).await.map_err(|error| error.to_string())?;
+    Ok(folder)
+}
+
+#[tauri::command]
+pub async fn bucket_presign(core: Core<'_>, destination_id: String, key: String, seconds: u64) -> Result<String, String> {
+    let (_, storage) = storage_for(&core, &destination_id)?;
+    storage.temporary_url(&key, seconds.clamp(60, 604_800)).await.map_err(|error| error.to_string())
+}
+
+/// Uploads into `prefix` under each file's own name, adding " 2", " 3"...
+/// when a name is taken so nothing is overwritten.
+#[tauri::command]
+pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<String>, prefix: String) -> Result<(), String> {
+    let (destination, storage) = storage_for(&core, &destination_id)?;
+    let mut claimed: Vec<String> = Vec::new();
+    let mut inputs = Vec::new();
+    for mut input in inputs_from(paths) {
+        let key = bucket::available_key(&storage, &input.original_filename, &prefix, &claimed)
+            .await
+            .map_err(|error| error.to_string())?;
+        claimed.push(key.clone());
+        input.object_key = Some(key);
+        inputs.push(input);
+    }
+    uploads::enqueue(&core, inputs, Some(destination));
+    Ok(())
+}
+
+/// Downloads a file for an inline preview (PDF, text, Markdown). Going
+/// through Rust avoids the CORS rules a fetch from the webview would hit.
+#[tauri::command]
+pub async fn fetch_remote(url: String) -> Result<tauri::ipc::Response, String> {
+    const MAX_BYTES: u64 = 25 * 1024 * 1024;
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Unsupported URL".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client.get(&url).send().await.map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(response.status().to_string());
+    }
+    if response.content_length().is_some_and(|length| length > MAX_BYTES) {
+        return Err(t!("Preview unavailable"));
+    }
+    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+}
+
+// MARK: - Settings
+
+#[tauri::command]
+pub fn get_settings(core: Core) -> Settings {
+    core.settings.get()
+}
+
+#[tauri::command]
+pub fn update_settings(core: Core, patch: SettingsPatch) -> Settings {
+    let settings = core.settings.apply_patch(patch);
+    core.notify(events::SETTINGS_CHANGED);
+    settings
+}
+
+#[tauri::command]
+pub fn set_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
+    let previous = core.settings.get().shortcut;
+    if let Err(message) = crate::hotkey::register(&app, accelerator.as_deref()) {
+        // Put the old one back so a failed change doesn't leave none.
+        let _ = crate::hotkey::register(&app, previous.as_deref());
+        return Err(message);
+    }
+    core.settings.update(|settings| settings.shortcut = accelerator);
+    core.notify(events::SETTINGS_CHANGED);
+    Ok(())
+}
+
+/// Unlike the Mac app, the language switches right away, no restart needed.
+#[tauri::command]
+pub fn set_language(app: AppHandle, core: Core, code: Option<String>) -> String {
+    core.settings.update(|settings| settings.language = code.clone());
+    let applied = i18n::apply(code.as_deref());
+    crate::tray::refresh_menu(&app);
+    crate::windows::retitle_all(&app);
+    core.emit(events::LANGUAGE_CHANGED, applied.clone());
+    core.notify(events::SETTINGS_CHANGED);
+    applied
+}
+
+#[tauri::command]
+pub fn get_launch_at_login(app: AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let manager = app.autolaunch();
+    let result = if enabled { manager.enable() } else { manager.disable() };
+    result.map_err(|error| error.to_string())?;
+    Ok(manager.is_enabled().unwrap_or(enabled))
+}
+
+// MARK: - Local API
+
+#[tauri::command]
+pub fn local_api_state(core: Core) -> LocalApiState {
+    local_api::state(&core)
+}
+
+#[tauri::command]
+pub fn set_local_api_enabled(core: Core, enabled: bool) {
+    local_api::set_enabled(&core, enabled);
+}
+
+#[tauri::command]
+pub fn set_local_api_port(core: Core, port: u16) -> Result<(), String> {
+    local_api::set_port(&core, port)
+}
+
+#[tauri::command]
+pub fn regenerate_api_token(core: Core) {
+    local_api::regenerate_token(&core);
+}
+
+// MARK: - Shell
+
+#[tauri::command]
+pub fn copy_text(text: String) {
+    crate::clipboard::copy(&text);
+}
+
+#[tauri::command]
+pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Unsupported URL".into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn open_window(app: AppHandle, name: String) {
+    if let Some(which) = AppWindow::parse(&name) {
+        crate::windows::open(&app, which);
+    }
+}
+
+#[tauri::command]
+pub fn close_window(app: AppHandle, name: String) {
+    if let Some(which) = AppWindow::parse(&name) {
+        crate::windows::close(&app, which);
+    }
+}
+
+#[tauri::command]
+pub fn show_panel(app: AppHandle) {
+    panel::show(&app);
+}
+
+#[tauri::command]
+pub fn hide_panel(app: AppHandle) {
+    panel::hide(&app);
+}
+
+#[tauri::command]
+pub fn set_panel_showing_dialog(app: AppHandle, showing: bool) {
+    panel::set_showing_dialog(&app, showing);
+}
+
+#[tauri::command]
+pub fn set_panel_height(app: AppHandle, height: f64) {
+    panel::set_height(&app, height);
+}
+
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    crate::quit(&app);
+}
+
+// MARK: - Updates
+
+#[tauri::command]
+pub fn update_status(core: Core) -> UpdateStatus {
+    updater::status(&core)
+}
+
+#[tauri::command]
+pub fn check_for_updates(app: AppHandle) {
+    updater::check_now(&app);
+}
+
+#[tauri::command]
+pub async fn install_update(core: Core<'_>) -> Result<(), String> {
+    let core: SharedCore = core.inner().clone();
+    updater::install(&core).await;
+    Ok(())
+}
