@@ -10,6 +10,7 @@ import {
   Input,
   Select,
   Spinner,
+  Switch,
   Text,
 } from "@fluentui/react-components";
 import { useEffect, useState } from "react";
@@ -47,6 +48,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [bucket, setBucket] = useState("");
   const [publicBaseURL, setPublicBaseURL] = useState("");
   const [objectPathTemplate, setObjectPathTemplate] = useState("{year}/{month}/{uuid}.{ext}");
+  const [forcePathStyle, setForcePathStyle] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -65,6 +67,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setBucket(existing?.bucket ?? "");
     setPublicBaseURL(existing?.publicBaseURL ?? "");
     setObjectPathTemplate(existing?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
+    setForcePathStyle(existing?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
     setTestResult(null);
     setSaveError(null);
   }, [open, existing]);
@@ -88,7 +91,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     bucket: bucket.trim(),
     publicBaseURL: publicBaseURL.trim(),
     objectPathTemplate: objectPathTemplate.trim() || "{year}/{month}/{uuid}.{ext}",
-    forcePathStyle: defaultForcePathStyle(preset),
+    forcePathStyle,
     isDefault: existing?.isDefault ?? false,
   });
 
@@ -149,6 +152,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                       const next = data.value as ProviderPreset;
                       setPreset(next);
                       setRegion(defaultRegion(next));
+                      setForcePathStyle(defaultForcePathStyle(next));
                       setTestResult(null);
                     }}
                   >
@@ -189,6 +193,20 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 <Field label={t("Region")}>
                   <Input value={region} onChange={(_, data) => setRegion(data.value)} />
                 </Field>
+                {preset !== "cloudflareR2" && (
+                  <Field
+                    hint={t("Turn on for servers without a subdomain for each bucket, such as MinIO or a server reached by IP address.")}
+                  >
+                    <Switch
+                      label={t("Use path-style addressing")}
+                      checked={forcePathStyle}
+                      onChange={(_, data) => {
+                        setForcePathStyle(data.checked);
+                        setTestResult(null);
+                      }}
+                    />
+                  </Field>
+                )}
               </div>
 
               <Text weight="semibold" className="form-heading">

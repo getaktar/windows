@@ -50,8 +50,9 @@ import {
   parentOfFolder,
   parentOfKey,
 } from "../../lib/format";
-import { useFlag, useSelection } from "../../lib/hooks";
+import { hasTextSelection, useFlag, useSelection } from "../../lib/hooks";
 import { useI18n, type Translate } from "../../lib/i18n";
+import type { BucketUpload } from "../Library";
 import { MAX_SEARCH_RESULTS, useBucketBrowser, type BucketBrowser } from "./useBucketBrowser";
 
 /** How long a "Copy Temporary Link" link stays valid. Seven days is the
@@ -105,7 +106,7 @@ export function BucketView({
 }: {
   destination: DestinationConfig;
   active: boolean;
-  registerUpload: (id: string, upload: ((paths: string[]) => void) | null) => void;
+  registerUpload: (id: string, upload: BucketUpload | null) => void;
 }) {
   const { t, locale } = useI18n();
   const model = useBucketBrowser(destination);
@@ -152,7 +153,7 @@ export function BucketView({
         setPendingDeletion([...selection.selected]);
       } else if (event.key === "Backspace" && model.parentPrefix !== null) {
         model.open(model.parentPrefix);
-      } else if (event.ctrlKey && event.key.toLowerCase() === "c" && selectedObjects.length === 1) {
+      } else if (event.ctrlKey && event.key.toLowerCase() === "c" && selectedObjects.length === 1 && !hasTextSelection()) {
         api.copyText(model.publicURL(selectedObjects[0].key));
       } else if (event.key === "F2" && selectedObjects.length === 1) {
         setMoving(selectedObjects[0]);

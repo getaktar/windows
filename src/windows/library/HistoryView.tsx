@@ -25,6 +25,7 @@ import {
   CheckmarkRegular,
   ChevronDownRegular,
   CopyRegular,
+  DismissRegular,
   MoreHorizontalRegular,
   TrayItemAddRegular,
 } from "@fluentui/react-icons";
@@ -34,9 +35,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, ContextMenu, MenuEntries, type ContextMenuState, type MenuEntry } from "../../components/Dialogs";
 import { FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
-import { api, type Job, type UploadRecord } from "../../lib/api";
+import { api, errorMessage, type Job, type UploadRecord } from "../../lib/api";
 import { dayBucket, formatBytes, formatDateTime, formatOutput, formatTime, shortDay } from "../../lib/format";
-import { useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
+import { hasTextSelection, useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
 import { useI18n } from "../../lib/i18n";
 import { DetailRow, LinkSection } from "./BucketView";
 
@@ -103,7 +104,11 @@ export function HistoryView({ active }: { active: boolean }) {
   }, [filtered, locale, t]);
 
   const copyAll = (targets: UploadRecord[], mode: "url" | "markdown" | "html" | "custom") =>
-    api.copyText(targets.map((record) => formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate)).join("\n"));
+    api.copyText(
+      targets
+        .map((record) => formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType))
+        .join("\n"),
+    );
 
   const removeFromHistory = (targets: UploadRecord[]) => api.removeFromHistory(targets.map((record) => record.id));
 
@@ -116,7 +121,10 @@ export function HistoryView({ active }: { active: boolean }) {
       targets.forEach((record) => delete next[record.id]);
       return next;
     });
-    const failures = await api.deleteRemote(targets.map((record) => record.id)).catch(() => ({}) as Record<string, string>);
+    // A failed call (not a failed deletion) fails every record in it.
+    const failures = await api
+      .deleteRemote(targets.map((record) => record.id))
+      .catch((error) => Object.fromEntries(targets.map((record) => [record.id, errorMessage(error)])) as Record<string, string>);
     setDeleting((current) => new Set([...current].filter((id) => !targets.some((record) => record.id === id))));
     setDeletionErrors((current) => ({ ...current, ...failures }));
     // Keep the selection where it was: the next upload in the list.
@@ -168,7 +176,7 @@ export function HistoryView({ active }: { active: boolean }) {
       } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         const id = selection.move(event.key === "ArrowDown" ? 1 : -1);
         if (id) document.getElementById(`record-${id}`)?.scrollIntoView({ block: "nearest" });
-      } else if (event.ctrlKey && event.key.toLowerCase() === "c" && selectedRecords.length === 1) {
+      } else if (event.ctrlKey && event.key.toLowerCase() === "c" && selectedRecords.length === 1 && !hasTextSelection()) {
         api.copyText(selectedRecords[0].publicUrl);
       } else if (event.ctrlKey && event.key.toLowerCase() === "a") {
         selection.set(ids);
@@ -389,6 +397,7 @@ function RecordRow(props: {
 
 function ActiveUploadRow({ job }: { job: Job }) {
   const { t } = useI18n();
+  const failed = job.state.kind === "failed";
   return (
     <div className="row record-row">
       <div className="thumb thumb-icon" style={{ width: 44, height: 44, borderRadius: 8 }}>
@@ -411,6 +420,14 @@ function ActiveUploadRow({ job }: { job: Job }) {
           </span>
         ) : null}
       </span>
+      <Button
+        size="small"
+        appearance="subtle"
+        icon={<DismissRegular />}
+        aria-label={failed ? t("Remove") : t("Cancel")}
+        title={failed ? t("Remove") : t("Cancel")}
+        onClick={() => (failed ? api.dismissJob(job.id) : api.cancelJob(job.id))}
+      />
     </div>
   );
 }
@@ -430,7 +447,7 @@ function UploadDetail(props: {
   const [copied, flashCopied] = useFlag();
   const thumbnail = useThumbnailURL(record);
   const copy = (mode: "markdown" | "html" | "custom") =>
-    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, props.customTemplate));
+    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, props.customTemplate, record.mimeType));
   const copyURL = () => {
     api.copyText(record.publicUrl);
     flashCopied();

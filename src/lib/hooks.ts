@@ -67,6 +67,12 @@ export const useLocalApi = () => useLive<LocalApiState | null>(api.localApiState
 
 export const useUpdateStatus = () => useLive<UpdateStatus>(api.updateStatus, [events.updateChanged], { kind: "idle" });
 
+/** True while the user has text selected (a file name or link in a detail
+ * pane), when Ctrl+C must copy that text rather than the selected item. */
+export function hasTextSelection() {
+  return (window.getSelection()?.toString() ?? "").length > 0;
+}
+
 /** Shows "Copied" (or similar) for a moment after an action. */
 export function useFlag(duration = 1500): [boolean, () => void] {
   const [on, setOn] = useState(false);

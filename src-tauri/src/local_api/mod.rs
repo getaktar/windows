@@ -132,13 +132,51 @@ fn restart(core: &SharedCore) {
         // The previous listener is dropped when its task is aborted; give
         // the socket a moment to be released before binding the same port.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+        match listen(port) {
             Ok(listener) => {
                 set_status(&server_core, Status::Running);
                 server::serve(listener, port, token, server_core).await;
             }
-            Err(error) => set_status(&server_core, Status::Failed { message: error.to_string() }),
+            Err(error) => set_status(&server_core, Status::Failed { message: bind_error_message(&error) }),
         }
     });
     *core.local_api.server.lock().unwrap() = Some(handle);
+}
+
+/// Binds 127.0.0.1:`port` for this process alone. Windows otherwise lets
+/// another program bind the same address on top (SO_REUSEADDR), which could
+/// then receive the requests, bearer token included.
+fn listen(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    let socket = tokio::net::TcpSocket::new_v4()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawSocket;
+        use windows_sys::Win32::Networking::WinSock::{setsockopt, SOL_SOCKET, SO_EXCLUSIVEADDRUSE};
+        let enabled: i32 = 1;
+        let result = unsafe {
+            setsockopt(
+                socket.as_raw_socket() as usize,
+                SOL_SOCKET,
+                SO_EXCLUSIVEADDRUSE,
+                (&enabled as *const i32).cast(),
+                std::mem::size_of::<i32>() as i32,
+            )
+        };
+        if result != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    socket.bind(std::net::SocketAddr::from(([127, 0, 0, 1], port)))?;
+    socket.listen(128)
+}
+
+fn bind_error_message(error: &std::io::Error) -> String {
+    match error.raw_os_error() {
+        // WSAEACCES: Hyper-V, WSL, or Docker reserved a range of ports that
+        // includes this one ("netsh int ipv4 show excludedportrange").
+        Some(10013) => crate::t!("Windows has reserved this port for another feature. Pick a different port."),
+        // WSAEADDRINUSE
+        Some(10048) => crate::t!("Another app is already using this port. Pick a different port."),
+        _ => error.to_string(),
+    }
 }

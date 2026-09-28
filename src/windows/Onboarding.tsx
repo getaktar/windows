@@ -33,9 +33,9 @@ export default function Onboarding() {
         onCancel={() => setShowForm(false)}
         onSaved={() => {
           setShowForm(false);
-          // Show where Aktar lives from now on.
-          api.showPanel();
-          api.closeWindow("onboarding");
+          // Show where Aktar lives from now on. Rust closes this window
+          // first, so focus moving on doesn't close the panel right away.
+          api.finishOnboarding();
         }}
       />
     </div>

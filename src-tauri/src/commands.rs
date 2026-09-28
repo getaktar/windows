@@ -30,6 +30,9 @@ type Core<'a> = State<'a, SharedCore>;
 pub struct AppInfo {
     version: String,
     language: String,
+    region_locale: Option<String>,
+    /// Installed from the Microsoft Store, which handles updates.
+    packaged: bool,
     language_override: Option<String>,
     languages: Vec<(String, String)>,
 }
@@ -39,6 +42,8 @@ pub fn app_info(core: Core) -> AppInfo {
     AppInfo {
         version: core.app.package_info().version.to_string(),
         language: i18n::current(),
+        region_locale: crate::system::region_locale(),
+        packaged: crate::package::is_packaged(),
         language_override: core.settings.get().language,
         languages: i18n::SUPPORTED.iter().map(|(code, name)| (code.to_string(), name.to_string())).collect(),
     }
@@ -124,6 +129,8 @@ fn inputs_from(paths: Vec<String>) -> Vec<UploadInput> {
         .collect()
 }
 
+/// Returns how many of `paths` are files (folders are skipped). With no
+/// destination set up, nothing is queued and the user is told why.
 #[tauri::command]
 pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<String>) -> usize {
     let destination = destination_id.and_then(|id| core.destinations.find(Some(&id)));
@@ -136,8 +143,8 @@ pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<Strin
 }
 
 #[tauri::command]
-pub fn upload_clipboard(core: Core) -> bool {
-    uploads::upload_clipboard(&core)
+pub async fn upload_clipboard(core: Core<'_>) -> Result<bool, String> {
+    Ok(uploads::upload_clipboard(&core).await)
 }
 
 #[tauri::command]
@@ -269,9 +276,10 @@ pub async fn bucket_presign(core: Core<'_>, destination_id: String, key: String,
 }
 
 /// Uploads into `prefix` under each file's own name, adding " 2", " 3"...
-/// when a name is taken so nothing is overwritten.
+/// when a name is taken so nothing is overwritten. Returns how many files
+/// were queued (folders are skipped).
 #[tauri::command]
-pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<String>, prefix: String) -> Result<(), String> {
+pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<String>, prefix: String) -> Result<usize, String> {
     let (destination, storage) = storage_for(&core, &destination_id)?;
     let mut claimed: Vec<String> = Vec::new();
     let mut inputs = Vec::new();
@@ -283,8 +291,9 @@ pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<St
         input.object_key = Some(key);
         inputs.push(input);
     }
+    let count = inputs.len();
     uploads::enqueue(&core, inputs, Some(destination));
-    Ok(())
+    Ok(count)
 }
 
 /// Downloads a file for an inline preview (PDF, text, Markdown). Going
@@ -325,6 +334,11 @@ pub fn update_settings(core: Core, patch: SettingsPatch) -> Settings {
 }
 
 #[tauri::command]
+pub fn set_shortcut_paused(app: AppHandle, paused: bool) {
+    crate::hotkey::set_paused(&app, paused);
+}
+
+#[tauri::command]
 pub fn set_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
     let previous = core.settings.get().shortcut;
     if let Err(message) = crate::hotkey::register(&app, accelerator.as_deref()) {
@@ -349,13 +363,24 @@ pub fn set_language(app: AppHandle, core: Core, code: Option<String>) -> String 
     applied
 }
 
+/// The Store package's startup task, or the NSIS install's login item.
 #[tauri::command]
-pub fn get_launch_at_login(app: AppHandle) -> bool {
-    app.autolaunch().is_enabled().unwrap_or(false)
+pub async fn get_launch_at_login(app: AppHandle) -> Result<bool, String> {
+    if crate::package::is_packaged() {
+        return tauri::async_runtime::spawn_blocking(crate::package::startup_enabled)
+            .await
+            .map_err(|error| error.to_string());
+    }
+    Ok(app.autolaunch().is_enabled().unwrap_or(false))
 }
 
 #[tauri::command]
-pub fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+pub async fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    if crate::package::is_packaged() {
+        return tauri::async_runtime::spawn_blocking(move || crate::package::set_startup_enabled(enabled))
+            .await
+            .map_err(|error| error.to_string())?;
+    }
     let manager = app.autolaunch();
     let result = if enabled { manager.enable() } else { manager.disable() };
     result.map_err(|error| error.to_string())?;
@@ -416,6 +441,11 @@ pub fn close_window(app: AppHandle, name: String) {
 #[tauri::command]
 pub fn show_panel(app: AppHandle) {
     panel::show(&app);
+}
+
+#[tauri::command]
+pub fn finish_onboarding(app: AppHandle) {
+    crate::windows::finish_onboarding(&app);
 }
 
 #[tauri::command]

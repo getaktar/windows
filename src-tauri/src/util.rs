@@ -5,10 +5,24 @@ use serde::Serialize;
 /// Writes to a sibling temp file and renames it over the target, so a crash
 /// mid-write never leaves a truncated settings or destinations file.
 pub fn write_json_atomically(path: &Path, value: &impl Serialize) {
-    let Ok(data) = serde_json::to_vec_pretty(value) else { return };
+    let data = match serde_json::to_vec_pretty(value) {
+        Ok(data) => data,
+        Err(error) => return log::error!("Could not encode {}: {error}", path.display()),
+    };
     let temp = path.with_extension("json.tmp");
-    if std::fs::write(&temp, data).is_ok() {
-        let _ = std::fs::rename(&temp, path);
+    if let Err(error) = std::fs::write(&temp, data) {
+        return log::error!("Could not write {}: {error}", temp.display());
+    }
+    // Antivirus scanners and sync clients (OneDrive) briefly open a file
+    // they see change, and renaming over a file that's open fails with
+    // "access denied" on Windows, so give them a moment.
+    const ATTEMPTS: u64 = 8;
+    for attempt in 1..=ATTEMPTS {
+        match std::fs::rename(&temp, path) {
+            Ok(()) => return,
+            Err(error) if attempt == ATTEMPTS => log::error!("Could not save {}: {error}", path.display()),
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(25 * attempt)),
+        }
     }
 }
 

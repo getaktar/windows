@@ -6,10 +6,11 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::core::{events, SharedCore};
+use crate::uploads::JobState;
 use crate::windows::AppWindow;
 
 const CHECK_INTERVAL_MS: i64 = 24 * 60 * 60 * 1000;
@@ -22,7 +23,8 @@ pub enum UpdateStatus {
     UpToDate,
     Available { version: String, notes: Option<String> },
     Downloading { version: String, progress: Option<f64> },
-    /// Downloaded in the background; installs when Aktar quits.
+    /// Downloaded in the background; installs once Aktar is idle, or when
+    /// it quits.
     ReadyToInstall { version: String },
     Failed { message: String },
 }
@@ -50,6 +52,10 @@ fn set_status(core: &SharedCore, status: UpdateStatus) {
 
 /// "Check for Updates…": shows the update window and checks right away.
 pub fn check_now(app: &AppHandle) {
+    // The Store updates its own packages.
+    if crate::package::is_packaged() {
+        return;
+    }
     let core = crate::core::core(app);
     crate::windows::open(app, AppWindow::Update);
     if matches!(status(&core), UpdateStatus::Downloading { .. } | UpdateStatus::ReadyToInstall { .. }) {
@@ -126,7 +132,60 @@ async fn download_in_background(core: &SharedCore) {
         let version = core.updater.pending.lock().unwrap().as_ref().map(|u| u.version.clone()).unwrap_or_default();
         *core.updater.downloaded.lock().unwrap() = Some(bytes);
         set_status(core, UpdateStatus::ReadyToInstall { version });
+        install_when_idle(core).await;
     }
+}
+
+/// A tray app is rarely quit on purpose (it's closed at sign-out, which
+/// gives no installer a chance to run), so an update downloaded in the
+/// background is installed as soon as nothing is going on: no upload in
+/// progress and no window open. Aktar restarts quietly afterwards.
+async fn install_when_idle(core: &SharedCore) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        // Installed from the update window, or failed, meanwhile.
+        if !matches!(status(core), UpdateStatus::ReadyToInstall { .. }) {
+            return;
+        }
+        if !is_idle(core) {
+            continue;
+        }
+        let Some(bytes) = core.updater.downloaded.lock().unwrap().take() else { return };
+        let Some(update) = core.updater.pending.lock().unwrap().clone() else { return };
+        core.settings.update(|settings| settings.quiet_next_launch = true);
+        if let Err(error) = run_installer(core, &update, bytes) {
+            core.settings.update(|settings| settings.quiet_next_launch = false);
+            set_status(core, UpdateStatus::Failed { message: error.to_string() });
+        }
+        return;
+    }
+}
+
+fn is_idle(core: &SharedCore) -> bool {
+    let uploading = core
+        .uploads
+        .snapshot()
+        .iter()
+        .any(|job| matches!(job.state, JobState::Waiting | JobState::Uploading { .. }));
+    // The panel always exists (hidden); every other window only while open.
+    let window_open = core
+        .app
+        .webview_windows()
+        .iter()
+        .any(|(label, window)| label != crate::panel::LABEL || window.is_visible().unwrap_or(false));
+    !uploading && !window_open
+}
+
+/// On Windows the installer ends this process as it starts, without the
+/// usual cleanup, so the tray icon is taken down first; otherwise a dead
+/// icon stays behind until the pointer passes over it.
+fn run_installer(core: &SharedCore, update: &Update, bytes: Vec<u8>) -> Result<(), tauri_plugin_updater::Error> {
+    crate::tray::remove(&core.app);
+    let result = update.install(bytes);
+    if result.is_err() {
+        let _ = crate::tray::create(&core.app);
+    }
+    result
 }
 
 /// "Install and Relaunch" in the update window. On Windows the installer
@@ -141,7 +200,7 @@ pub async fn install(core: &SharedCore) {
         },
     };
     let Some(update) = core.updater.pending.lock().unwrap().clone() else { return };
-    if let Err(error) = update.install(bytes) {
+    if let Err(error) = run_installer(core, &update, bytes) {
         set_status(core, UpdateStatus::Failed { message: error.to_string() });
         return;
     }
@@ -154,12 +213,15 @@ pub fn install_pending_on_quit(core: &SharedCore) -> bool {
     let Some(bytes) = core.updater.downloaded.lock().unwrap().take() else { return false };
     let Some(update) = core.updater.pending.lock().unwrap().clone() else { return false };
     // The user asked to quit, so the installer shouldn't start Aktar again.
-    update.restart_after_install(false).install(bytes).is_ok()
+    run_installer(core, &update.restart_after_install(false), bytes).is_ok()
 }
 
 /// Checks at launch and then about once a day while "Automatically check
 /// for updates" is on.
 pub fn schedule(core: &SharedCore) {
+    if crate::package::is_packaged() {
+        return;
+    }
     let core = core.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(10)).await;

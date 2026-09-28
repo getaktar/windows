@@ -14,6 +14,7 @@ import {
   ArrowUploadRegular,
   ChevronDownRegular,
   ClipboardPasteRegular,
+  DismissRegular,
   FolderOpenRegular,
   MoreHorizontalRegular,
   SettingsRegular,
@@ -24,9 +25,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { MenuEntries, type MenuEntry } from "../components/Dialogs";
+import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
 import { FileIcon, Thumbnail } from "../components/FileVisuals";
-import { api, events, type DestinationConfig, type Job, type UploadRecord } from "../lib/api";
+import { api, errorMessage, events, type DestinationConfig, type Job, type UploadRecord } from "../lib/api";
 import { formatOutput, providerName, withoutScheme } from "../lib/format";
 import { useDestinations, useHistory, useJobs, useSettings, useTauriEvent } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
@@ -53,6 +54,9 @@ export default function Panel() {
 
   useTauriEvent(events.panelShown, () => setNotice(null));
 
+  const tRef = useRef(t);
+  tRef.current = t;
+
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       const payload = event.payload;
@@ -62,7 +66,7 @@ export default function Panel() {
         setIsTargeted(false);
       } else if (payload.type === "drop") {
         setIsTargeted(false);
-        if (payload.paths.length > 0) api.uploadFiles(payload.paths);
+        uploadDropped(payload.paths, tRef.current).then(setNotice);
         // Take focus, so the next click elsewhere closes the panel.
         getCurrentWindow().setFocus();
       }
@@ -73,7 +77,7 @@ export default function Panel() {
   }, []);
 
   const uploadClipboard = async () => {
-    const uploaded = await api.uploadClipboard();
+    const uploaded = await api.uploadClipboard().catch(() => false);
     setNotice(uploaded ? null : t("The clipboard has no file or image to upload."));
   };
 
@@ -82,7 +86,7 @@ export default function Panel() {
     await api.setPanelShowingDialog(true);
     try {
       const selection = await open({ multiple: true, directory: false });
-      if (Array.isArray(selection) && selection.length > 0) api.uploadFiles(selection);
+      if (Array.isArray(selection) && selection.length > 0) setNotice(await uploadDropped(selection, t));
     } finally {
       await api.setPanelShowingDialog(false);
       getCurrentWindow().setFocus();
@@ -92,6 +96,8 @@ export default function Panel() {
   // Shortcuts that work while the panel has focus.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Escape that closed a menu or dialog is theirs, not the panel's.
+      if (event.defaultPrevented || document.querySelector("[role='dialog'], [role='alertdialog'], [role='menu']")) return;
       const typing = (event.target as HTMLElement | null)?.closest("input, textarea");
       if (event.key === "Escape") api.hidePanel();
       else if (event.ctrlKey && event.key.toLowerCase() === "v" && !typing) uploadClipboard();
@@ -185,20 +191,33 @@ export default function Panel() {
                 </Text>
               </div>
             ) : (
-              <>
+              // Scrolls once there are many uploads in flight, so the list
+              // never pushes past the bottom of the screen.
+              <div className="recent-list">
                 {activeJobs.map((job) => (
                   <JobRow key={job.id} job={job} />
                 ))}
                 {recent.map((record) => (
-                  <RecentRow key={record.id} record={record} />
+                  <RecentRow key={record.id} record={record} onError={setNotice} />
                 ))}
-              </>
+              </div>
             )}
           </div>
         </>
       )}
     </div>
   );
+}
+
+/** Queues dropped or picked files and returns a notice when some of them
+ * couldn't be: folders, or virtual items (an Outlook attachment, an image
+ * dragged out of a browser) that come with no file path at all. With no
+ * destination, Rust itself explains and opens Welcome. */
+async function uploadDropped(paths: string[], t: ReturnType<typeof useI18n>["t"]): Promise<string | null> {
+  if (paths.length === 0) return t("This item can’t be uploaded. Save it as a file first, then drop the file.");
+  const queued = await api.uploadFiles(paths).catch(() => -1);
+  if (queued === 0) return t("Only files can be uploaded, not folders.");
+  return null;
 }
 
 function destinationLabel(destination: DestinationConfig, t: ReturnType<typeof useI18n>["t"]) {
@@ -241,6 +260,7 @@ function DestinationPicker({ destinations }: { destinations: DestinationConfig[]
 
 function JobRow({ job }: { job: Job }) {
   const { t } = useI18n();
+  const failed = job.state.kind === "failed";
   return (
     <div className="recent-row">
       <div className="thumb thumb-icon" style={{ width: 32, height: 32, borderRadius: 6 }}>
@@ -263,15 +283,34 @@ function JobRow({ job }: { job: Job }) {
           </div>
         ) : null}
       </div>
+      <Button
+        size="small"
+        appearance="subtle"
+        icon={<DismissRegular />}
+        aria-label={failed ? t("Remove") : t("Cancel")}
+        title={failed ? t("Remove") : t("Cancel")}
+        onClick={() => (failed ? api.dismissJob(job.id) : api.cancelJob(job.id))}
+      />
     </div>
   );
 }
 
-function RecentRow({ record }: { record: UploadRecord }) {
+function RecentRow({ record, onError }: { record: UploadRecord; onError: (message: string) => void }) {
   const { t } = useI18n();
   const [settings] = useSettings();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const copy = (mode: "url" | "markdown" | "html") =>
-    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate));
+    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType));
+
+  const deleteRemote = async () => {
+    setConfirmingDelete(false);
+    try {
+      const failures = await api.deleteRemote([record.id]);
+      if (failures[record.id]) onError(failures[record.id]);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
 
   const items: MenuEntry[] = [
     { label: t("Copy URL"), onClick: () => copy("url") },
@@ -281,7 +320,7 @@ function RecentRow({ record }: { record: UploadRecord }) {
     { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
     { label: t("Show in Library"), onClick: () => api.openWindow("library") },
     "divider",
-    { label: t("Delete"), destructive: true, onClick: () => api.deleteRemote([record.id]) },
+    { label: t("Delete Remote File…"), destructive: true, onClick: () => setConfirmingDelete(true) },
   ];
 
   return (
@@ -308,6 +347,15 @@ function RecentRow({ record }: { record: UploadRecord }) {
           </MenuList>
         </MenuPopover>
       </Menu>
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={t("Delete “{0}” from {1}?", record.localFilename, record.destinationName)}
+        message={t("The remote file will be removed and its link may stop working. This can’t be undone.")}
+        confirmLabel={t("Delete Remote File")}
+        destructive
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={deleteRemote}
+      />
     </div>
   );
 }

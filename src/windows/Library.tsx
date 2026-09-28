@@ -1,5 +1,5 @@
-import { Text } from "@fluentui/react-components";
-import { ArrowDownloadRegular, HistoryRegular } from "@fluentui/react-icons";
+import { Button, MessageBar, MessageBarActions, MessageBarBody, Text } from "@fluentui/react-components";
+import { ArrowDownloadRegular, DismissRegular, HistoryRegular } from "@fluentui/react-icons";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -11,6 +11,10 @@ import { BucketView } from "./library/BucketView";
 import { HistoryView } from "./library/HistoryView";
 
 type Source = { kind: "history" } | { kind: "bucket"; id: string };
+
+/** Uploads into a bucket view's open folder; resolves to how many files
+ * were queued. */
+export type BucketUpload = (paths: string[]) => Promise<number>;
 
 /** A browser is rebuilt when its destination's connection settings change,
  * but not when only the default destination changes. */
@@ -29,17 +33,20 @@ export default function Library() {
   // to the folder you were in.
   const [visited, setVisited] = useState<string[]>([]);
   const [isDropTargeted, setIsDropTargeted] = useState(false);
-  const uploadTargets = useRef(new Map<string, (paths: string[]) => void>());
+  const [notice, setNotice] = useState<string | null>(null);
+  const uploadTargets = useRef(new Map<string, BucketUpload>());
   const sourceRef = useRef(source);
   sourceRef.current = source;
+  const tRef = useRef(t);
+  tRef.current = t;
 
-  const registerUpload = useCallback((id: string, upload: ((paths: string[]) => void) | null) => {
+  const registerUpload = useCallback((id: string, upload: BucketUpload | null) => {
     if (upload) uploadTargets.current.set(id, upload);
     else uploadTargets.current.delete(id);
   }, []);
 
   useEffect(() => {
-    if (source.kind === "bucket" && !destinations.some((destination) => destination.id === source.id) && destinations.length > 0) {
+    if (source.kind === "bucket" && !destinations.some((destination) => destination.id === source.id)) {
       setSource({ kind: "history" });
     }
     setVisited((current) => current.filter((id) => destinations.some((destination) => destination.id === id)));
@@ -54,11 +61,18 @@ export default function Library() {
         setIsDropTargeted(false);
       } else if (payload.type === "drop") {
         setIsDropTargeted(false);
-        if (payload.paths.length === 0) return;
+        // Virtual items (an Outlook attachment, an image dragged out of a
+        // browser) arrive without a file path.
+        if (payload.paths.length === 0) {
+          setNotice(tRef.current("This item can’t be uploaded. Save it as a file first, then drop the file."));
+          return;
+        }
         const current = sourceRef.current;
         const bucketUpload = current.kind === "bucket" ? uploadTargets.current.get(current.id) : undefined;
-        if (bucketUpload) bucketUpload(payload.paths);
-        else api.uploadFiles(payload.paths);
+        const queued = bucketUpload ? bucketUpload(payload.paths) : api.uploadFiles(payload.paths);
+        queued
+          .then((count) => setNotice(count === 0 ? tRef.current("Only files can be uploaded, not folders.") : null))
+          .catch(() => {});
       }
     });
     return () => {
@@ -117,6 +131,19 @@ export default function Library() {
           />
         );
       })}
+
+      {notice && (
+        <div className="library-notice">
+          <MessageBar intent="info">
+            <MessageBarBody>{notice}</MessageBarBody>
+            <MessageBarActions
+              containerAction={
+                <Button appearance="transparent" icon={<DismissRegular />} aria-label={t("Close")} onClick={() => setNotice(null)} />
+              }
+            />
+          </MessageBar>
+        </div>
+      )}
 
       {isDropTargeted && (
         <div className="drop-overlay">

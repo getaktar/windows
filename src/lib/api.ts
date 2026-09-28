@@ -138,6 +138,11 @@ export type UpdateStatus =
 export interface AppInfo {
   version: string;
   language: string;
+  /** Windows' regional format (Settings > Time & language > Region), for
+   * dates and numbers, which can differ from the display language. */
+  regionLocale: string | null;
+  /** Installed from the Microsoft Store, which handles updates. */
+  packaged: boolean;
   languageOverride: string | null;
   languages: [string, string][];
 }
@@ -161,12 +166,15 @@ export const api = {
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>
     invoke<ConnectionResult>("test_connection", { config, credentials }),
 
+  /** Returns how many files were queued: folders are skipped, and nothing
+   * is queued when there's no destination (Rust then says so itself). */
   uploadFiles: (paths: string[], destinationId?: string) =>
     invoke<number>("upload_files", { paths, destinationId: destinationId ?? null }),
   uploadClipboard: () => invoke<boolean>("upload_clipboard"),
   listJobs: () => invoke<Job[]>("list_jobs"),
   retryJob: (id: string) => invoke<void>("retry_job", { id }),
   cancelJob: (id: string) => invoke<void>("cancel_job", { id }),
+  dismissJob: (id: string) => invoke<void>("dismiss_job", { id }),
 
   listHistory: () => invoke<UploadRecord[]>("list_history"),
   thumbnailsDir: () => invoke<string>("thumbnails_dir"),
@@ -183,12 +191,15 @@ export const api = {
   bucketPresign: (destinationId: string, key: string, seconds: number) =>
     invoke<string>("bucket_presign", { destinationId, key, seconds }),
   bucketUpload: (destinationId: string, paths: string[], prefix: string) =>
-    invoke<void>("bucket_upload", { destinationId, paths, prefix }),
+    invoke<number>("bucket_upload", { destinationId, paths, prefix }),
   fetchRemote: (url: string) => invoke<ArrayBuffer>("fetch_remote", { url }),
 
   getSettings: () => invoke<Settings>("get_settings"),
   updateSettings: (patch: SettingsPatch) => invoke<Settings>("update_settings", { patch }),
   setShortcut: (accelerator: string | null) => invoke<void>("set_shortcut", { accelerator }),
+  /** While recording a new shortcut, so pressing the current one records it
+   * instead of uploading the clipboard. */
+  setShortcutPaused: (paused: boolean) => invoke<void>("set_shortcut_paused", { paused }),
   setLanguage: (code: string | null) => invoke<string>("set_language", { code }),
   getLaunchAtLogin: () => invoke<boolean>("get_launch_at_login"),
   setLaunchAtLogin: (enabled: boolean) => invoke<boolean>("set_launch_at_login", { enabled }),
@@ -203,6 +214,8 @@ export const api = {
   openWindow: (name: AppWindowName) => invoke<void>("open_window", { name }),
   closeWindow: (name: AppWindowName) => invoke<void>("close_window", { name }),
   showPanel: () => invoke<void>("show_panel"),
+  /** Closes Welcome, then shows the panel once focus has settled. */
+  finishOnboarding: () => invoke<void>("finish_onboarding"),
   hidePanel: () => invoke<void>("hide_panel"),
   setPanelShowingDialog: (showing: boolean) => invoke<void>("set_panel_showing_dialog", { showing }),
   setPanelHeight: (height: number) => invoke<void>("set_panel_height", { height }),

@@ -2,7 +2,7 @@
 //! upload pipeline. Rust owns every piece of state; windows read it through
 //! commands and refresh when one of the events below fires.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -56,16 +56,22 @@ pub type SharedCore = Arc<Core>;
 impl Core {
     pub fn new(app: &AppHandle) -> Result<SharedCore, Box<dyn std::error::Error>> {
         let data_dir = app.path().app_data_dir()?;
+        let local_data_dir = app.path().app_local_data_dir()?;
         let cache_dir = app.path().app_cache_dir()?;
         std::fs::create_dir_all(&data_dir)?;
+        std::fs::create_dir_all(&local_data_dir)?;
         let thumbnails_dir = cache_dir.join("thumbnails");
         std::fs::create_dir_all(&thumbnails_dir)?;
+        // Settings and destinations roam with the user; the history database
+        // stays on this PC. SQLite locks and WAL files don't survive a
+        // roaming or redirected (network) AppData, common in companies.
+        let history_dir = move_history(&data_dir, &local_data_dir);
 
         Ok(Arc::new(Core {
             app: app.clone(),
             settings: SettingsStore::load(&data_dir),
             destinations: DestinationStore::load(&data_dir),
-            history: History::open(&data_dir, thumbnails_dir.clone())?,
+            history: History::open(&history_dir, thumbnails_dir.clone())?,
             uploads: UploadManager::default(),
             local_api: LocalApiService::default(),
             updater: UpdateService::default(),
@@ -81,6 +87,32 @@ impl Core {
     pub fn notify(&self, event: &str) {
         self.emit(event, ());
     }
+}
+
+/// Brings the history of a version that kept it in Roaming AppData over,
+/// unless there's one in the new place already. Returns the directory to
+/// open it from: the old one if it couldn't be moved.
+fn move_history(from: &Path, to: &Path) -> PathBuf {
+    if from == to || to.join("history.sqlite").exists() || !from.join("history.sqlite").exists() {
+        return to.to_path_buf();
+    }
+    // The database and its WAL go together or not at all: copied first, and
+    // the originals removed only once every copy is in place.
+    let names = ["history.sqlite", "history.sqlite-wal", "history.sqlite-shm"];
+    let present: Vec<&str> = names.into_iter().filter(|name| from.join(name).exists()).collect();
+    for name in &present {
+        if let Err(error) = std::fs::copy(from.join(name), to.join(name)) {
+            log::warn!("Could not move the upload history: {error}");
+            for copied in &present {
+                let _ = std::fs::remove_file(to.join(copied));
+            }
+            return from.to_path_buf();
+        }
+    }
+    for name in &present {
+        let _ = std::fs::remove_file(from.join(name));
+    }
+    to.to_path_buf()
 }
 
 pub fn core(app: &AppHandle) -> SharedCore {

@@ -205,8 +205,9 @@ fn parse_head(data: &[u8]) -> Option<Head> {
     let query = target.query_pairs().map(|(name, value)| (name.into_owned(), value.into_owned())).collect();
 
     let mut headers = HashMap::new();
-    for line in lines.filter(|line| !line.is_empty()) {
-        let (name, value) = line.split_once(':')?;
+    // A line that isn't a header is skipped, as the Mac app does, rather
+    // than failing the whole request.
+    for (name, value) in lines.filter_map(|line| line.split_once(':')) {
         headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
     }
     let content_length = match headers.get("content-length") {

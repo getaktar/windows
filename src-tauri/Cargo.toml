@@ -39,7 +39,8 @@ log = "0.4"
 aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "http-1x"] }
 aws-smithy-http-client = { version = "1", features = ["rustls-ring"] }
 aws-credential-types = "1"
-aws-smithy-types = "1"
+aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
+http-body = "1"
 aws-smithy-runtime-api = { version = "1", features = ["client"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 
@@ -57,7 +58,11 @@ url = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry"] }
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry", "Win32_Globalization", "Win32_Networking_WinSock", "Win32_Storage_Packaging_Appx"] }
+# WinRT, for the Microsoft Store (MSIX) build: its startup task, how it was
+# launched, and notifications under the package's own identity. The same
+# version Tauri already builds, so nothing extra is compiled.
+windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom"] }
 
 [profile.release]
 codegen-units = 1

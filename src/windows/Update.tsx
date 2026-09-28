@@ -69,7 +69,7 @@ export default function Update() {
             <Text size={500} weight="semibold">
               {t("Aktar {0} is ready to install", status.version)}
             </Text>
-            <Text>{t("It will be installed the next time you quit Aktar.")}</Text>
+            <Text>{t("It will be installed when you’re not using Aktar, or the next time you quit it.")}</Text>
             <div className="update-actions">
               <Button onClick={close}>{t("Later")}</Button>
               <Button appearance="primary" onClick={() => api.installUpdate()}>

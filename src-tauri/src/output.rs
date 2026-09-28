@@ -4,7 +4,7 @@
 //! so both apps produce identical keys and links.
 
 use chrono::{DateTime, Datelike, Local};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
 use crate::util::split_extension;
@@ -92,8 +92,10 @@ pub fn generate_key_at(template: &str, original_filename: &str, date: DateTime<L
     result
 }
 
-/// Everything Foundation's `.urlPathAllowed` would escape.
+/// Everything Foundation's `.urlPathAllowed` would escape, plus "+": S3
+/// decodes a "+" in a path as a space, so "a+b.png" would otherwise 404.
 const PATH_SEGMENT: &AsciiSet = &CONTROLS
+    .add(b'+')
     .add(b' ')
     .add(b'"')
     .add(b'#')
@@ -114,6 +116,20 @@ const PATH_SEGMENT: &AsciiSet = &CONTROLS
 pub fn encode_key_path(key: &str) -> String {
     key.split('/')
         .map(|segment| utf8_percent_encode(segment, PATH_SEGMENT).to_string())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Everything but unreserved characters, for the CopyObject source header,
+/// which S3-compatible servers decode in different ways; with only
+/// unreserved characters left as they are, they all agree.
+const COPY_SOURCE_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'.').remove(b'_').remove(b'~');
+
+/// The key part of a CopyObject source ("bucket/key"), each segment
+/// strictly percent-encoded.
+pub fn encode_copy_source(key: &str) -> String {
+    key.split('/')
+        .map(|segment| utf8_percent_encode(segment, COPY_SOURCE_SEGMENT).to_string())
         .collect::<Vec<_>>()
         .join("/")
 }
@@ -156,6 +172,12 @@ mod tests {
     fn resolves_public_urls() {
         assert_eq!(resolve_public_url("img.example.com/", "2026/09/a b.png"), "https://img.example.com/2026/09/a%20b.png");
         assert_eq!(resolve_public_url(" http://x.dev ", "ü/#1.txt"), "http://x.dev/%C3%BC/%231.txt");
+        assert_eq!(resolve_public_url("x.dev", "a+b (1).png"), "https://x.dev/a%2Bb%20(1).png");
+    }
+
+    #[test]
+    fn encodes_copy_sources_strictly() {
+        assert_eq!(encode_copy_source("dir/a+b (1)&ü.png"), "dir/a%2Bb%20%281%29%26%C3%BC.png");
     }
 
     #[test]

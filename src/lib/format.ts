@@ -24,7 +24,11 @@ const textExtensions = new Set([
   "ini", "cfg", "conf", "toml", "ps1", "bat", "cmd", "sh", "rs", "c", "h", "cpp", "cs", "java", "go", "sql", "tsx", "jsx",
 ]);
 
-export function isImage(filename: string) {
+/** Given the MIME type recorded at upload time, decides exactly like the
+ * Rust side does for the post-upload clipboard and the local API; the
+ * extension list is only for bucket objects, which have no recorded type. */
+export function isImage(filename: string, mimeType?: string) {
+  if (mimeType) return mimeType.startsWith("image/");
   return imageExtensions.has(extensionOf(filename));
 }
 
@@ -53,14 +57,20 @@ export function previewKind(filename: string, mimeType?: string): PreviewKind {
   return { kind: "unsupported" };
 }
 
-export function formatOutput(url: string, mode: OutputMode, filename: string, customTemplate = "![{filename}]({url})") {
+export function formatOutput(
+  url: string,
+  mode: OutputMode,
+  filename: string,
+  customTemplate = "![{filename}]({url})",
+  mimeType?: string,
+) {
   switch (mode) {
     case "url":
       return url;
     case "markdown":
-      return isImage(filename) ? `![](${url})` : `[${filename}](${url})`;
+      return isImage(filename, mimeType) ? `![](${url})` : `[${filename}](${url})`;
     case "html":
-      return isImage(filename) ? `<img src="${url}" alt="">` : `<a href="${url}">${filename}</a>`;
+      return isImage(filename, mimeType) ? `<img src="${url}" alt="">` : `<a href="${url}">${filename}</a>`;
     case "custom": {
       const [name, ext] = splitExtension(filename);
       return customTemplate
@@ -72,13 +82,14 @@ export function formatOutput(url: string, mode: OutputMode, filename: string, cu
   }
 }
 
-/** Decimal units, like File Explorer's and Foundation's file sizes. */
+/** Binary units labeled KB, MB..., the way File Explorer shows sizes, so a
+ * file reads the same here as in its Properties. */
 export function formatBytes(bytes: number, locale: string) {
   const units = ["byte", "kilobyte", "megabyte", "gigabyte", "terabyte"] as const;
   let value = bytes;
   let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
     unit += 1;
   }
   return new Intl.NumberFormat(locale, {
@@ -170,9 +181,10 @@ export function nameOfKey(key: string) {
   return key.split("/").pop() ?? key;
 }
 
-/** Characters Foundation's `.urlPathAllowed` keeps; everything else in a
- * key segment is percent-encoded, same as the Rust side and the Mac app. */
-const pathAllowed = /[A-Za-z0-9\-._~!$&'()*+,;=:@]/;
+/** Characters Foundation's `.urlPathAllowed` keeps, minus "+": S3 decodes a
+ * "+" in a path as a space, so "a+b.png" would 404. Everything else in a key
+ * segment is percent-encoded, same as the Rust side. */
+const pathAllowed = /[A-Za-z0-9\-._~!$&'()*,;=:@]/;
 
 export function encodeKeyPath(key: string) {
   return key

@@ -13,9 +13,11 @@ mod hotkey;
 mod i18n;
 mod local_api;
 mod output;
+mod package;
 mod panel;
 mod settings;
 mod storage;
+mod system;
 mod thumbnails;
 mod tray;
 mod updater;
@@ -50,7 +52,7 @@ pub fn run() {
         }));
     }
 
-    builder
+    let app = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -93,6 +95,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::set_shortcut,
+            commands::set_shortcut_paused,
             commands::set_language,
             commands::get_launch_at_login,
             commands::set_launch_at_login,
@@ -105,6 +108,7 @@ pub fn run() {
             commands::open_window,
             commands::close_window,
             commands::show_panel,
+            commands::finish_onboarding,
             commands::hide_panel,
             commands::set_panel_showing_dialog,
             commands::set_panel_height,
@@ -113,30 +117,44 @@ pub fn run() {
             commands::check_for_updates,
             commands::install_update,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building Aktar")
-        .run(|_app, event| {
-            // Closing the last window must not quit: Aktar lives in the
-            // notification area. Only an explicit exit (Quit) gets through.
-            if let RunEvent::ExitRequested { api, code: None, .. } = event {
-                api.prevent_exit();
-            }
-        });
+        .build(tauri::generate_context!());
+    let app = match app {
+        Ok(app) => app,
+        // Setup failed, e.g. the history database is locked or damaged.
+        Err(error) => {
+            system::show_fatal_error(&t!("Aktar couldn’t start. {0}", error));
+            std::process::exit(1);
+        }
+    };
+    app.run(|_app, event| {
+        // Closing the last window must not quit: Aktar lives in the
+        // notification area. Only an explicit exit (Quit) gets through.
+        if let RunEvent::ExitRequested { api, code: None, .. } = event {
+            api.prevent_exit();
+        }
+    });
 }
 
 fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
+    // The system language until settings are loaded, so an error opening
+    // them still comes out translated.
+    i18n::apply(None);
     let core = Core::new(&handle)?;
     app.manage(core.clone());
     app.manage(PanelState::default());
 
     let settings = core.settings.get();
     i18n::apply(settings.language.as_deref());
+    clipboard::remove_leftovers();
 
     panel::create(&handle)?;
     tray::create(&handle)?;
+    tray::follow_taskbar_theme(&handle);
     if let Err(message) = hotkey::register(&handle, settings.shortcut.as_deref()) {
-        log::warn!("Could not register the global shortcut: {message}");
+        // Taken by another app since it was set: without this, the shortcut
+        // would just seem broken.
+        uploads::show_notification(&core, &t!("Paste & upload from anywhere"), &message);
     }
     local_api::start(&core);
     updater::schedule(&core);
@@ -161,8 +179,13 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // Tray icons land in the hidden overflow by default, so a launch the
     // user started gets something visible: Welcome the first time, the
     // upload panel afterwards. Launches at sign-in stay quiet.
-    let autostarted = std::env::args().any(|arg| arg == AUTOSTART_FLAG);
-    if !autostarted && launch_links.is_empty() {
+    let autostarted = std::env::args().any(|arg| arg == AUTOSTART_FLAG) || package::launched_at_sign_in();
+    // Restarted by an update installed while the user was away.
+    let after_update = settings.quiet_next_launch;
+    if after_update {
+        core.settings.update(|settings| settings.quiet_next_launch = false);
+    }
+    if !autostarted && !after_update && launch_links.is_empty() {
         if core.destinations.all().is_empty() {
             windows::open(&handle, AppWindow::Onboarding);
         } else {

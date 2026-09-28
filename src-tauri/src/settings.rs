@@ -30,6 +30,10 @@ pub struct Settings {
     pub auto_install_updates: bool,
     /// Unix milliseconds of the last automatic update check.
     pub last_update_check: Option<i64>,
+    /// Set before an update installs on its own, so the relaunch it ends
+    /// with stays in the tray instead of opening the panel.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub quiet_next_launch: bool,
 }
 
 impl Default for Settings {
@@ -46,6 +50,7 @@ impl Default for Settings {
             auto_check_updates: true,
             auto_install_updates: false,
             last_update_check: None,
+            quiet_next_launch: false,
         }
     }
 }

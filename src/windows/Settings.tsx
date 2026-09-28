@@ -106,6 +106,7 @@ function GeneralSettings() {
   const [updateStatus] = useUpdateStatus();
   const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getLaunchAtLogin().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
@@ -121,9 +122,8 @@ function GeneralSettings() {
           <CardRow title={t("App language")} subtitle={t("Follows your Windows display language unless you pick one here.")}>
             <Select
               value={settings.language ?? ""}
-              onChange={async (_, data) => {
-                await api.setLanguage(data.value || null);
-                reload();
+              onChange={(_, data) => {
+                api.setLanguage(data.value || null).then(reload, reload);
               }}
             >
               <option value="">{t("System Default")}</option>
@@ -137,28 +137,31 @@ function GeneralSettings() {
         </Card>
       </SettingsSection>
 
-      <SettingsSection title={t("Updates")}>
-        <Card>
-          <ToggleRow
-            title={t("Automatically check for updates")}
-            subtitle={t("Look for a new version on GitHub once a day")}
-            checked={settings.autoCheckUpdates}
-            onChange={(value) => api.updateSettings({ autoCheckUpdates: value })}
-          />
-          <ToggleRow
-            title={t("Automatically install updates")}
-            subtitle={t("Download new versions in the background and install them when Aktar quits")}
-            checked={settings.autoInstallUpdates}
-            disabled={!settings.autoCheckUpdates}
-            onChange={(value) => api.updateSettings({ autoInstallUpdates: value })}
-          />
-        </Card>
-        <div>
-          <Button disabled={checking} onClick={() => api.checkForUpdates()}>
-            {t("Check for Updates…")}
-          </Button>
-        </div>
-      </SettingsSection>
+      {/* The Store updates its own packages. */}
+      {!info?.packaged && (
+        <SettingsSection title={t("Updates")}>
+          <Card>
+            <ToggleRow
+              title={t("Automatically check for updates")}
+              subtitle={t("Look for a new version on GitHub once a day")}
+              checked={settings.autoCheckUpdates}
+              onChange={(value) => api.updateSettings({ autoCheckUpdates: value })}
+            />
+            <ToggleRow
+              title={t("Automatically install updates")}
+              subtitle={t("Download new versions in the background and install them when you’re not using Aktar")}
+              checked={settings.autoInstallUpdates}
+              disabled={!settings.autoCheckUpdates}
+              onChange={(value) => api.updateSettings({ autoInstallUpdates: value })}
+            />
+          </Card>
+          <div>
+            <Button disabled={checking} onClick={() => api.checkForUpdates()}>
+              {t("Check for Updates…")}
+            </Button>
+          </div>
+        </SettingsSection>
+      )}
 
       <SettingsSection title={t("Startup")}>
         <Card>
@@ -170,12 +173,19 @@ function GeneralSettings() {
             onChange={async (value) => {
               try {
                 setLaunchAtLogin(await api.setLaunchAtLogin(value));
-              } catch {
+                setLaunchError(null);
+              } catch (error) {
                 setLaunchAtLogin(!value);
+                setLaunchError(errorMessage(error));
               }
             }}
           />
         </Card>
+        {launchError && (
+          <Text size={200} className="text-error">
+            {launchError}
+          </Text>
+        )}
       </SettingsSection>
 
       <SettingsSection title={t("Keyboard shortcut")}>
@@ -308,7 +318,8 @@ function DestinationsSettings() {
         destructive
         onCancel={() => setRemoving(null)}
         onConfirm={() => {
-          if (removing) api.removeDestination(removing.id);
+          // Removing can't fail on the Rust side; the list refreshes on its own.
+          if (removing) api.removeDestination(removing.id).catch(() => {});
           setRemoving(null);
         }}
       />
@@ -560,9 +571,11 @@ function AboutSettings() {
           )}
         </div>
         <div className="spacer" />
-        <Button disabled={checking} onClick={() => api.checkForUpdates()}>
-          {t("Check for Updates…")}
-        </Button>
+        {!info?.packaged && (
+          <Button disabled={checking} onClick={() => api.checkForUpdates()}>
+            {t("Check for Updates…")}
+          </Button>
+        )}
       </div>
 
       <SettingsSection title="Aktar">

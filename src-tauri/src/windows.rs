@@ -1,6 +1,9 @@
 //! The regular app windows. Each one is created on demand and destroyed
 //! when closed; Aktar itself keeps running in the notification area.
 
+use std::time::Duration;
+
+use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::t;
@@ -61,7 +64,10 @@ fn open_now(app: &AppHandle, which: AppWindow) {
     }
 
     let url = WebviewUrl::App(format!("index.html#/{}", which.label()).into());
-    let builder = WebviewWindowBuilder::new(app, which.label(), url).title(which.title()).center();
+    let builder = WebviewWindowBuilder::new(app, which.label(), url)
+        .title(which.title())
+        .background_color(background_color())
+        .center();
     let builder = match which {
         AppWindow::Library => builder.inner_size(1100.0, 680.0).min_inner_size(860.0, 500.0),
         AppWindow::Settings => builder.inner_size(880.0, 640.0).min_inner_size(720.0, 480.0),
@@ -83,6 +89,30 @@ fn open_now(app: &AppHandle, which: AppWindow) {
         }
         Err(error) => log::error!("Could not open the {} window: {error}", which.label()),
     }
+}
+
+/// Fluent's colorNeutralBackground2 for the current app mode (styles.css
+/// sets the same on the page), so a new window doesn't flash white in dark
+/// mode before its page has loaded.
+pub fn background_color() -> Color {
+    if crate::system::apps_use_light_theme() {
+        Color(0xfa, 0xfa, 0xfa, 0xff)
+    } else {
+        Color(0x1f, 0x1f, 0x1f, 0xff)
+    }
+}
+
+/// After the first destination is saved: Welcome closes, then the panel
+/// shows where Aktar lives from now on. In that order, and with a moment in
+/// between, so focus moving on from the closed window doesn't count as a
+/// click outside the panel and close it again.
+pub fn finish_onboarding(app: &AppHandle) {
+    close(app, AppWindow::Onboarding);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        crate::panel::show(&app);
+    });
 }
 
 pub fn close(app: &AppHandle, which: AppWindow) {

@@ -61,6 +61,9 @@ function topLevelFolder(key: string, prefix: string) {
 
 const byKey = (a: BucketObject, b: BucketObject) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
+/** "folder\name.png" typed the Windows way means the same as with "/". */
+const withForwardSlashes = (path: string) => path.replace(/\\/g, "/");
+
 export function useBucketBrowser(destination: DestinationConfig) {
   const id = destination.id;
   const [prefix, setPrefix] = useState("");
@@ -78,6 +81,8 @@ export function useBucketBrowser(destination: DestinationConfig) {
   const [searchGeneration, setSearchGeneration] = useState(0);
 
   const loadGeneration = useRef(0);
+  /** Whether pages past the first are showing ("Load More"). */
+  const hasLoadedMore = useRef(false);
   const prefixRef = useRef(prefix);
   prefixRef.current = prefix;
   const index = useRef<SearchIndex | null>(null);
@@ -97,8 +102,12 @@ export function useBucketBrowser(destination: DestinationConfig) {
       try {
         const page = await api.listObjects(id, forPrefix, token, false);
         if (generation !== loadGeneration.current) return;
+        hasLoadedMore.current = token !== null;
         setFolders((current) => (token ? [...current, ...page.folders] : page.folders));
-        setObjects((current) => (token ? [...current, ...page.objects] : page.objects));
+        // A later page can hold an upload that was already slotted in.
+        setObjects((current) =>
+          token ? [...current, ...page.objects.filter((object) => !current.some((existing) => existing.key === object.key))] : page.objects,
+        );
         setNextToken(page.nextContinuationToken);
         setHasLoaded(true);
       } catch (error) {
@@ -236,13 +245,21 @@ export function useBucketBrowser(destination: DestinationConfig) {
     }));
   }, []);
 
-  /** Reloads the open folder when an upload lands in it, and adds the new
-   * object to the search index. */
+  /** Shows an upload that lands in the open folder, and adds it to the
+   * search index. With only the first page loaded, that page is simply
+   * reloaded; past "Load More", the object is slotted in where it belongs,
+   * so the pages already loaded (and the scroll position) stay put. */
   useTauriEvent<UploadSucceeded>(events.uploadSucceeded, (event) => {
     const upload = event.payload;
     if (upload.destinationId !== id) return;
-    addToIndex({ key: upload.objectKey, size: upload.byteSize, lastModified: Date.now() });
-    if (parentOfKey(upload.objectKey) === prefixRef.current) load(prefixRef.current, null);
+    const object: BucketObject = { key: upload.objectKey, size: upload.byteSize, lastModified: Date.now() };
+    addToIndex(object);
+    if (parentOfKey(upload.objectKey) !== prefixRef.current) return;
+    if (!hasLoadedMore.current) {
+      load(prefixRef.current, null);
+      return;
+    }
+    setObjects((list) => [...list.filter((existing) => existing.key !== object.key), object].sort(byKey));
   });
 
   // MARK: Links
@@ -278,13 +295,15 @@ export function useBucketBrowser(destination: DestinationConfig) {
       return next;
     });
 
-  /** Uploads into the open folder under each file's own name. */
+  /** Uploads into the open folder under each file's own name. Resolves to
+   * how many files were queued (folders are skipped). */
   const upload = useCallback(
     async (paths: string[]) => {
       try {
-        await api.bucketUpload(id, paths, prefixRef.current);
+        return await api.bucketUpload(id, paths, prefixRef.current);
       } catch (error) {
         setActionError(errorMessage(error));
+        return -1;
       }
     },
     [id],
@@ -292,7 +311,7 @@ export function useBucketBrowser(destination: DestinationConfig) {
 
   const createFolder = useCallback(
     async (rawName: string) => {
-      const name = rawName.trim().replace(/^\/+|\/+$/g, "");
+      const name = withForwardSlashes(rawName).trim().replace(/^\/+|\/+$/g, "");
       if (!name) return;
       try {
         const folder = await api.bucketCreateFolder(id, prefixRef.current, name);
@@ -337,7 +356,7 @@ export function useBucketBrowser(destination: DestinationConfig) {
    * folder part moves it. Returns the new key if it stayed in view. */
   const move = useCallback(
     async (object: BucketObject, target: string): Promise<string | null> => {
-      const cleaned = target.trim().replace(/^\/+|\/+$/g, "");
+      const cleaned = withForwardSlashes(target).trim().replace(/^\/+|\/+$/g, "");
       if (!cleaned || cleaned === object.key) return null;
       setBusy(object.key, true);
       try {

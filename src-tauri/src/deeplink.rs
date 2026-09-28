@@ -40,9 +40,7 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
     }
     let action = url.host_str().unwrap_or_default().to_ascii_lowercase();
     match action.as_str() {
-        "upload-clipboard" if !launched_app => {
-            crate::uploads::upload_clipboard(core);
-        }
+        "upload-clipboard" if !launched_app => crate::uploads::upload_clipboard_in_background(core),
         "library" => crate::windows::open(&core.app, AppWindow::Library),
         "settings" => crate::windows::open(&core.app, AppWindow::Settings),
         "connect" => {
@@ -135,16 +133,31 @@ async fn connect(core: &SharedCore, url: &Url) {
     let context = serde_json::json!({ "aktar": { "port": port, "token": token } }).to_string();
 
     // Everything the extension put on the callback (like its pairing nonce
-    // in fallbackText) goes back untouched.
-    let kept: Vec<(String, String)> = callback
+    // in fallbackText) goes back untouched. Encoded like the Mac app does
+    // (URLComponents), with spaces as %20: form encoding's "+" would come
+    // back to Raycast as a literal plus.
+    let mut pairs: Vec<(String, String)> = callback
         .query_pairs()
         .filter(|(name, _)| name != "launchContext")
         .map(|(name, value)| (name.into_owned(), value.into_owned()))
         .collect();
-    callback.query_pairs_mut().clear().extend_pairs(kept).append_pair("launchContext", &context);
+    pairs.push(("launchContext".into(), context));
+    let query = pairs
+        .iter()
+        .map(|(name, value)| format!("{}={}", query_component(name), query_component(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    callback.set_query(Some(&query));
     if let Err(error) = core.app.opener().open_url(callback.as_str(), None::<&str>) {
         log::warn!("Could not open the Raycast callback: {error}");
     }
+}
+
+/// Percent-encodes everything but unreserved characters.
+fn query_component(text: &str) -> String {
+    const RESERVED: &percent_encoding::AsciiSet =
+        &percent_encoding::NON_ALPHANUMERIC.remove(b'-').remove(b'.').remove(b'_').remove(b'~');
+    percent_encoding::utf8_percent_encode(text, RESERVED).to_string()
 }
 
 async fn ask(app: &AppHandle, title: String, message: String) -> bool {
@@ -181,5 +194,10 @@ mod tests {
         assert_eq!(callback.query_pairs().next().unwrap().1, "abc");
         let bad = Url::parse("aktar://connect?callback=https%3A%2F%2Fevil.example%2Fmerttopuz%2Faktar%2Fconnect").unwrap();
         assert!(allowed_callback(&bad).is_none());
+    }
+
+    #[test]
+    fn encodes_spaces_as_percent_20() {
+        assert_eq!(query_component("a b+c/{\"x\":1}"), "a%20b%2Bc%2F%7B%22x%22%3A1%7D");
     }
 }

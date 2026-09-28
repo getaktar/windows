@@ -9,6 +9,15 @@
     "ja": "Aktarの新しいバージョンがあります！",
     "zh-Hans": "Aktar 有新版本可用！"
   },
+  "Aktar couldn’t start. {0}": {
+    "tr": "Aktar başlatılamadı. {0}",
+    "de": "Aktar konnte nicht starten. {0}",
+    "fr": "Impossible de démarrer Aktar. {0}",
+    "es": "Aktar no pudo iniciarse. {0}",
+    "pt-BR": "Não foi possível iniciar o Aktar. {0}",
+    "ja": "Aktarを起動できませんでした。{0}",
+    "zh-Hans": "Aktar 无法启动。{0}"
+  },
   "Aktar forgets this destination and its keys. Files already in the bucket aren’t touched.": {
     "tr": "Aktar bu hedefi ve anahtarlarını unutur. Bucket'taki dosyalara dokunulmaz.",
     "de": "Aktar vergisst dieses Ziel und seine Schlüssel. Dateien im Bucket bleiben unverändert.",
@@ -54,6 +63,15 @@
     "ja": "Aktar {0}をインストールする準備ができました",
     "zh-Hans": "Aktar {0} 已可安装"
   },
+  "Another app is already using this port. Pick a different port.": {
+    "tr": "Bu port zaten başka bir uygulama tarafından kullanılıyor. Farklı bir port seç.",
+    "de": "Eine andere App verwendet diesen Port bereits. Wähle einen anderen Port.",
+    "fr": "Une autre app utilise déjà ce port. Choisissez un autre port.",
+    "es": "Otra app ya está usando este puerto. Elige otro puerto.",
+    "pt-BR": "Outro app já está usando esta porta. Escolha uma porta diferente.",
+    "ja": "このポートは別のアプリがすでに使用しています。別のポートを選んでください。",
+    "zh-Hans": "另一个应用已在使用此端口。请选择其他端口。"
+  },
   "Checking for updates…": {
     "tr": "Güncellemeler denetleniyor…",
     "de": "Nach Updates suchen …",
@@ -72,6 +90,15 @@
     "ja": "消去",
     "zh-Hans": "清除"
   },
+  "Close": {
+    "tr": "Kapat",
+    "de": "Schließen",
+    "fr": "Fermer",
+    "es": "Cerrar",
+    "pt-BR": "Fechar",
+    "ja": "閉じる",
+    "zh-Hans": "关闭"
+  },
   "Close panel after upload": {
     "tr": "Yüklemeden sonra paneli kapat",
     "de": "Panel nach dem Upload schließen",
@@ -81,6 +108,15 @@
     "ja": "アップロード後にパネルを閉じる",
     "zh-Hans": "上传后关闭面板"
   },
+  "Could not connect. {0}": {
+    "tr": "Bağlanılamadı. {0}",
+    "de": "Verbindung fehlgeschlagen. {0}",
+    "fr": "Connexion impossible. {0}",
+    "es": "No se pudo conectar. {0}",
+    "pt-BR": "Não foi possível conectar. {0}",
+    "ja": "接続できませんでした。{0}",
+    "zh-Hans": "无法连接。{0}"
+  },
   "Credential Manager error ({0}).": {
     "tr": "Kimlik Bilgileri Yöneticisi hatası ({0}).",
     "de": "Fehler der Anmeldeinformationsverwaltung ({0}).",
@@ -89,6 +125,15 @@
     "pt-BR": "Erro do Gerenciador de Credenciais ({0}).",
     "ja": "資格情報マネージャーのエラー({0})。",
     "zh-Hans": "凭据管理器错误（{0}）。"
+  },
+  "Download new versions in the background and install them when you’re not using Aktar": {
+    "tr": "Yeni sürümleri arka planda indir ve Aktar'ı kullanmadığın bir anda yükle",
+    "de": "Neue Versionen im Hintergrund laden und installieren, wenn du Aktar gerade nicht verwendest",
+    "fr": "Télécharger les nouvelles versions en arrière-plan et les installer lorsque vous n’utilisez pas Aktar",
+    "es": "Descargar nuevas versiones en segundo plano e instalarlas cuando no estés usando Aktar",
+    "pt-BR": "Baixar novas versões em segundo plano e instalá-las quando você não estiver usando o Aktar",
+    "ja": "新しいバージョンをバックグラウンドでダウンロードし、Aktarを使っていないときにインストール",
+    "zh-Hans": "在后台下载新版本，并在你未使用 Aktar 时安装"
   },
   "Downloading Aktar {0}…": {
     "tr": "Aktar {0} indiriliyor…",
@@ -153,6 +198,15 @@
     "ja": "次にAktarを終了したときにインストールされます。",
     "zh-Hans": "将在你下次退出 Aktar 时安装。"
   },
+  "It will be installed when you’re not using Aktar, or the next time you quit it.": {
+    "tr": "Aktar'ı kullanmadığın bir anda ya da ondan bir sonraki çıkışında yüklenecek.",
+    "de": "Es wird installiert, wenn du Aktar gerade nicht verwendest, oder wenn du Aktar das nächste Mal beendest.",
+    "fr": "Elle sera installée lorsque vous n’utilisez pas Aktar, ou la prochaine fois que vous le quitterez.",
+    "es": "Se instalará cuando no estés usando Aktar o la próxima vez que lo cierres.",
+    "pt-BR": "Ela será instalada quando você não estiver usando o Aktar ou na próxima vez que você o encerrar.",
+    "ja": "Aktarを使っていないとき、または次にAktarを終了したときにインストールされます。",
+    "zh-Hans": "将在你未使用 Aktar 时或下次退出 Aktar 时安装。"
+  },
   "Later": {
     "tr": "Sonra",
     "de": "Später",
@@ -188,6 +242,24 @@
     "pt-BR": "Não há destino para enviar. Adicione um em Ajustes.",
     "ja": "アップロード先がありません。設定で追加してください。",
     "zh-Hans": "没有可上传的目标。请在设置中添加一个。"
+  },
+  "On many keyboards Ctrl+Alt types characters like @ or €. Add Shift or the Windows key.": {
+    "tr": "Birçok klavyede Ctrl+Alt, @ ya da € gibi karakterler yazar. Shift ya da Windows tuşunu da ekle.",
+    "de": "Auf vielen Tastaturen tippt Strg+Alt Zeichen wie @ oder €. Nimm Umschalt oder die Windows-Taste dazu.",
+    "fr": "Sur de nombreux claviers, Ctrl+Alt sert à taper des caractères comme @ ou €. Ajoutez Maj ou la touche Windows.",
+    "es": "En muchos teclados, Ctrl+Alt escribe caracteres como @ o €. Añade Mayús o la tecla Windows.",
+    "pt-BR": "Em muitos teclados, Ctrl+Alt digita caracteres como @ ou €. Adicione Shift ou a tecla Windows.",
+    "ja": "多くのキーボードでは、Ctrl+Altで@や€などの文字を入力します。ShiftキーかWindowsキーを追加してください。",
+    "zh-Hans": "在许多键盘上，Ctrl+Alt 用于输入 @ 或 € 等字符。请加上 Shift 或 Windows 键。"
+  },
+  "Only files can be uploaded, not folders.": {
+    "tr": "Yalnızca dosyalar yüklenebilir, klasörler yüklenemez.",
+    "de": "Nur Dateien können hochgeladen werden, keine Ordner.",
+    "fr": "Seuls les fichiers peuvent être téléversés, pas les dossiers.",
+    "es": "Solo se pueden subir archivos, no carpetas.",
+    "pt-BR": "Só é possível enviar arquivos, não pastas.",
+    "ja": "アップロードできるのはファイルのみで、フォルダはアップロードできません。",
+    "zh-Hans": "只能上传文件，不能上传文件夹。"
   },
   "Press a shortcut…": {
     "tr": "Bir kısayola bas…",
@@ -261,6 +333,15 @@
     "ja": "クリップボードにアップロードできるファイルや画像がありません。",
     "zh-Hans": "剪贴板中没有可上传的文件或图片。"
   },
+  "The connection stopped responding.": {
+    "tr": "Bağlantı yanıt vermeyi bıraktı.",
+    "de": "Die Verbindung reagiert nicht mehr.",
+    "fr": "La connexion ne répond plus.",
+    "es": "La conexión dejó de responder.",
+    "pt-BR": "A conexão parou de responder.",
+    "ja": "接続が応答しなくなりました。",
+    "zh-Hans": "连接已停止响应。"
+  },
   "The folder name is required.": {
     "tr": "Klasör adı gerekli.",
     "de": "Ein Ordnername ist erforderlich.",
@@ -270,6 +351,15 @@
     "ja": "フォルダ名を入力してください。",
     "zh-Hans": "需要填写文件夹名称。"
   },
+  "This item can’t be uploaded. Save it as a file first, then drop the file.": {
+    "tr": "Bu öge yüklenemiyor. Önce bir dosya olarak kaydet, sonra dosyayı bırak.",
+    "de": "Dieses Element kann nicht hochgeladen werden. Speichere es zuerst als Datei und zieh dann die Datei hierher.",
+    "fr": "Cet élément ne peut pas être téléversé. Enregistrez-le d’abord comme fichier, puis déposez le fichier.",
+    "es": "Este elemento no se puede subir. Guárdalo primero como archivo y luego suelta el archivo.",
+    "pt-BR": "Este item não pode ser enviado. Salve-o primeiro como arquivo e depois solte o arquivo.",
+    "ja": "この項目はアップロードできません。まずファイルとして保存してから、そのファイルをドロップしてください。",
+    "zh-Hans": "无法上传此项目。请先将其保存为文件，然后拖放该文件。"
+  },
   "This shortcut is already used by another app. Try a different one.": {
     "tr": "Bu kısayolu başka bir uygulama kullanıyor. Farklı bir tane dene.",
     "de": "Dieses Tastenkürzel wird schon von einer anderen App verwendet. Probier ein anderes.",
@@ -278,6 +368,15 @@
     "pt-BR": "Outro app já usa este atalho. Tente um diferente.",
     "ja": "このショートカットはほかのアプリで使用されています。別のショートカットを試してください。",
     "zh-Hans": "此快捷键已被其他应用使用，请换一个。"
+  },
+  "Turn on for servers without a subdomain for each bucket, such as MinIO or a server reached by IP address.": {
+    "tr": "Her bucket için alt alan adı olmayan sunucularda aç; örneğin MinIO ya da IP adresiyle erişilen bir sunucu.",
+    "de": "Für Server ohne eigene Subdomain pro Bucket einschalten, etwa MinIO oder einen Server, der per IP-Adresse erreicht wird.",
+    "fr": "À activer pour les serveurs sans sous-domaine par bucket, comme MinIO ou un serveur joint par son adresse IP.",
+    "es": "Actívalo para servidores sin un subdominio por bucket, como MinIO o un servidor al que se accede por dirección IP.",
+    "pt-BR": "Ative para servidores sem um subdomínio para cada bucket, como o MinIO ou um servidor acessado por endereço IP.",
+    "ja": "MinIOやIPアドレスで接続するサーバーなど、バケットごとのサブドメインがないサーバーではオンにします。",
+    "zh-Hans": "适用于没有为每个存储桶提供子域名的服务器，例如 MinIO 或通过 IP 地址访问的服务器。"
   },
   "Update check failed": {
     "tr": "Güncelleme denetlenemedi",
@@ -306,6 +405,15 @@
     "ja": "このPC上のほかのアプリからAktarを使います。",
     "zh-Hans": "在这台电脑上通过其他应用使用 Aktar。"
   },
+  "Use path-style addressing": {
+    "tr": "Yol tarzı adresleme kullan",
+    "de": "Pfadbasierte Adressierung verwenden",
+    "fr": "Utiliser l’adressage par chemin",
+    "es": "Usar direccionamiento por ruta",
+    "pt-BR": "Usar endereçamento por caminho",
+    "ja": "パス形式のアドレス指定を使用",
+    "zh-Hans": "使用路径样式寻址"
+  },
   "Version {0}": {
     "tr": "Sürüm {0}",
     "de": "Version {0}",
@@ -323,6 +431,24 @@
     "pt-BR": "Boas-vindas ao Aktar",
     "ja": "Aktarへようこそ",
     "zh-Hans": "欢迎使用 Aktar"
+  },
+  "Windows has reserved this port for another feature. Pick a different port.": {
+    "tr": "Windows bu portu başka bir özellik için ayırmış. Farklı bir port seç.",
+    "de": "Windows hat diesen Port für eine andere Funktion reserviert. Wähle einen anderen Port.",
+    "fr": "Windows a réservé ce port à une autre fonctionnalité. Choisissez un autre port.",
+    "es": "Windows ha reservado este puerto para otra función. Elige otro puerto.",
+    "pt-BR": "O Windows reservou esta porta para outro recurso. Escolha uma porta diferente.",
+    "ja": "Windowsがこのポートを別の機能用に予約しています。別のポートを選んでください。",
+    "zh-Hans": "Windows 已将此端口保留给其他功能。请选择其他端口。"
+  },
+  "Windows has turned off starting Aktar at sign-in. Turn it back on in Settings > Apps > Startup.": {
+    "tr": "Windows, Aktar'ın oturum açılışında başlamasını kapatmış. Ayarlar > Uygulamalar > Başlangıç'tan yeniden açabilirsin.",
+    "de": "Windows hat den Start von Aktar bei der Anmeldung deaktiviert. Schalte ihn unter Einstellungen > Apps > Autostart wieder ein.",
+    "fr": "Windows a désactivé le lancement d’Aktar à l’ouverture de session. Réactivez-le dans Paramètres > Applications > Démarrage.",
+    "es": "Windows ha desactivado el inicio de Aktar al iniciar sesión. Vuelve a activarlo en Configuración > Aplicaciones > Inicio.",
+    "pt-BR": "O Windows desativou a abertura do Aktar ao entrar. Ative novamente em Configurações > Aplicativos > Inicialização.",
+    "ja": "Windowsによって、サインイン時のAktarの起動がオフになっています。［設定］>［アプリ］>［スタートアップ］でオンに戻してください。",
+    "zh-Hans": "Windows 已关闭登录时启动 Aktar。请在“设置”>“应用”>“启动”中重新打开。"
   },
   "You’re up to date!": {
     "tr": "Güncelsin!",

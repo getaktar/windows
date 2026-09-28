@@ -42,10 +42,26 @@ pub fn read_inputs() -> Vec<UploadInput> {
 
 fn write_temporary_image(image: ImageData) -> Option<UploadInput> {
     let buffer = image::RgbaImage::from_raw(image.width as u32, image.height as u32, image.bytes.into_owned())?;
+    // The name the upload goes by (history, the object key), same as on the
+    // Mac. The file itself gets a unique name: two pastes within the same
+    // second must never write to the one file while the first is uploading.
     let filename = format!("clipboard-{}.png", chrono::Utc::now().timestamp());
-    let directory: PathBuf = std::env::temp_dir().join("Aktar");
+    let directory = temporary_directory();
     std::fs::create_dir_all(&directory).ok()?;
-    let path = directory.join(&filename);
+    let path = directory.join(format!("{}.png", crate::util::new_id()));
     buffer.save_with_format(&path, image::ImageFormat::Png).ok()?;
-    Some(UploadInput { path, original_filename: filename, object_key: None })
+    Some(UploadInput { path, original_filename: filename, object_key: None, temporary: true })
+}
+
+fn temporary_directory() -> PathBuf {
+    std::env::temp_dir().join("Aktar")
+}
+
+/// Clipboard images and local API uploads are staged in the temp folder
+/// only for as long as their job, and jobs don't outlive the app, so
+/// anything still there at launch was left by a crash or a failed upload
+/// that was never retried.
+pub fn remove_leftovers() {
+    let _ = std::fs::remove_dir_all(temporary_directory());
+    let _ = std::fs::remove_dir_all(std::env::temp_dir().join("AktarLocalAPI"));
 }

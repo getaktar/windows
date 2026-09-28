@@ -79,14 +79,19 @@ fn status(core: &SharedCore) -> Response {
 }
 
 fn list_uploads(core: &SharedCore, request: &Request) -> Response {
+    // Same as the Mac app: a negative limit means 1, and a destinationId
+    // that isn't a UUID at all is ignored rather than matching nothing.
     let limit = request
         .query
         .get("limit")
-        .and_then(|value| value.parse::<usize>().ok())
+        .and_then(|value| value.trim().parse::<i64>().ok())
         .unwrap_or(200)
-        .clamp(1, 1000);
+        .clamp(1, 1000) as usize;
     let query = request.query.get("query").map(|q| q.trim().to_lowercase()).unwrap_or_default();
-    let destination_id = request.query.get("destinationId").filter(|id| !id.is_empty());
+    let destination_id = request
+        .query
+        .get("destinationId")
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok());
 
     let uploads: Vec<UploadDto> = core
         .history
@@ -147,7 +152,7 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
         return Response::error(500, "Could not stage the file for upload.");
     }
 
-    let mut input = UploadInput { path, original_filename: filename.clone(), object_key: None };
+    let mut input = UploadInput { path, original_filename: filename.clone(), object_key: None, temporary: false };
     if let Some(raw_prefix) = request.query.get("prefix") {
         let prefix = bucket::normalized_folder(raw_prefix);
         let key = match credentials::load(&destination.id) {
@@ -174,7 +179,8 @@ async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
     let Some(destination) = core.destinations.find(request.query.get("destinationId").map(String::as_str)) else {
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
     };
-    let Some(input) = crate::clipboard::read_inputs().into_iter().next() else {
+    let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
+    let Some(input) = inputs.into_iter().next() else {
         return Response::error(422, "The clipboard has no file or image to upload.");
     };
     run(core, input, destination).await
@@ -340,6 +346,8 @@ struct StatusDto {
     version: String,
     build: String,
     api_version: u32,
+    // Left out when empty, as the Mac app does, rather than sent as null.
+    #[serde(skip_serializing_if = "Option::is_none")]
     default_destination_id: Option<String>,
     output_format: &'static str,
     platform: &'static str,
@@ -421,6 +429,7 @@ struct ListingDto {
     prefix: String,
     folders: Vec<FolderDto>,
     objects: Vec<ObjectDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     next_continuation_token: Option<String>,
 }
 
@@ -442,7 +451,9 @@ struct ObjectDto {
     key: String,
     name: String,
     size: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     last_modified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
 }
 

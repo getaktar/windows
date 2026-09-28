@@ -74,14 +74,28 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<I18n>(() => {
     const language = info?.language ?? "en";
-    return { t: translator(language), language, locale: language, info, reload };
+    return { t: translator(language), language, locale: formattingLocale(language, info?.regionLocale ?? null), info, reload };
   }, [info, reload]);
 
   useEffect(() => {
-    document.documentElement.lang = value.locale;
-  }, [value.locale]);
+    document.documentElement.lang = value.language;
+  }, [value.language]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+/** Dates and numbers follow Windows' regional format (English UI on an
+ * en-GB system: 24-hour, day first) as long as it's the same language as
+ * the UI, so month names never come out in a second language. */
+function formattingLocale(language: string, regionLocale: string | null) {
+  if (!regionLocale) return language;
+  const base = (code: string) => code.split("-")[0].toLowerCase();
+  if (base(regionLocale) !== base(language)) return language;
+  try {
+    return Intl.getCanonicalLocales(regionLocale)[0] ?? language;
+  } catch {
+    return language;
+  }
 }
 
 export function useI18n() {

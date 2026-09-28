@@ -16,6 +16,12 @@ import type {
   UploadRecord,
 } from "../lib/api";
 
+// VITE_MOCK_SCENE=store: tidy sample data for Microsoft Store screenshots
+// (one upload in progress, no errors, no update banner). VITE_MOCK_LANG sets
+// the language where there's no ?lang= to read, e.g. in the real app's
+// windows pointed at the mock dev server.
+const storeScene = import.meta.env.VITE_MOCK_SCENE === "store";
+
 const hour = 3_600_000;
 const now = Date.now();
 
@@ -69,16 +75,18 @@ let history: UploadRecord[] = [
   hasThumbnail: false,
 }));
 
-const jobs: Job[] = [
-  { id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0 } },
-  {
-    id: "J2",
-    filename: "huge-export.csv",
-    destinationId: "D1",
-    destinationName: "Screenshots",
-    state: { kind: "failed", message: "Could not authenticate. Check your Access Key ID and Secret Access Key." },
-  },
-];
+let jobs: Job[] = storeScene
+  ? [{ id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0.62 } }]
+  : [
+      { id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0 } },
+      {
+        id: "J2",
+        filename: "huge-export.csv",
+        destinationId: "D1",
+        destinationName: "Screenshots",
+        state: { kind: "failed", message: "Could not authenticate. Check your Access Key ID and Secret Access Key." },
+      },
+    ];
 
 let settings: Settings = {
   outputMode: "url",
@@ -100,7 +108,9 @@ const localApi: LocalApiState = {
   status: { kind: "running" },
 };
 
-const update: UpdateStatus = { kind: "available", version: "0.2.0", notes: "Faster uploads and a new bucket search." };
+const update: UpdateStatus = storeScene
+  ? { kind: "idle" }
+  : { kind: "available", version: "0.2.0", notes: "Faster uploads and a new bucket search." };
 
 function listing(prefix: string, recursive: boolean): BucketListing {
   const objects = [
@@ -125,7 +135,8 @@ function listing(prefix: string, recursive: boolean): BucketListing {
 }
 
 export function installMockBackend(route: string) {
-  const language = new URLSearchParams(window.location.search).get("lang") ?? "en";
+  const language =
+    new URLSearchParams(window.location.search).get("lang") ?? import.meta.env.VITE_MOCK_LANG ?? "en";
   mockWindows(route || "panel");
   mockConvertFileSrc("windows");
   mockIPC(
@@ -136,6 +147,8 @@ export function installMockBackend(route: string) {
           return {
             version: "0.1.0",
             language,
+            regionLocale: null,
+            packaged: storeScene,
             languageOverride: null,
             languages: [
               ["en", "English"], ["tr", "Türkçe"], ["de", "Deutsch"], ["fr", "Français"],
@@ -176,6 +189,13 @@ export function installMockBackend(route: string) {
           return { bucketReachable: true, writable: true, publicUrlReachable: true };
         case "upload_clipboard":
           return false;
+        case "upload_files":
+        case "bucket_upload":
+          return (args.paths as string[]).length;
+        case "dismiss_job":
+        case "cancel_job":
+          jobs = jobs.filter((job) => job.id !== args.id);
+          return null;
         default:
           return null;
       }

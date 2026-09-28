@@ -72,7 +72,8 @@ document.addEventListener("keydown", (event) => {
   const blocked =
     key === "f5" ||
     key === "f7" ||
-    (event.ctrlKey && (key === "r" || key === "p" || key === "g" || key === "u" || key === "j")) ||
+    // Ctrl+F too: WebView2's own find bar; the Library's search handles it.
+    (event.ctrlKey && (key === "r" || key === "p" || key === "g" || key === "u" || key === "j" || key === "f")) ||
     (event.ctrlKey && event.shiftKey && key === "i" && !import.meta.env.DEV);
   if (blocked) event.preventDefault();
 });

@@ -3,7 +3,8 @@
 //! notify. Runs up to `MAX_CONCURRENT` jobs at once.
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
@@ -15,10 +16,15 @@ use crate::credentials;
 use crate::destinations::DestinationConfig;
 use crate::history::NewRecord;
 use crate::output;
-use crate::storage::{S3Provider, UploadResult};
+use crate::storage::{Progress, S3Provider, StorageError, UploadResult};
 use crate::t;
+use crate::windows::AppWindow;
 
 const MAX_CONCURRENT: usize = 3;
+/// An upload that has sent nothing, and heard nothing back, for this long
+/// has stalled (Wi-Fi dropped mid-request, a proxy swallowed it) and is
+/// failed so it can be retried, instead of spinning forever.
+const STALL_TIMEOUT_MS: i64 = 120_000;
 
 #[derive(Debug, Clone)]
 pub struct UploadInput {
@@ -27,6 +33,9 @@ pub struct UploadInput {
     /// Uploads to exactly this key instead of one generated from the
     /// destination's object path template (bucket browser, local API).
     pub object_key: Option<String>,
+    /// A copy Aktar made (a clipboard image), deleted once its job is done
+    /// with it: uploaded, cancelled, or dismissed.
+    pub temporary: bool,
 }
 
 impl UploadInput {
@@ -35,7 +44,13 @@ impl UploadInput {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "file".into());
-        Self { path, original_filename, object_key: None }
+        Self { path, original_filename, object_key: None, temporary: false }
+    }
+
+    fn remove_if_temporary(&self) {
+        if self.temporary {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -107,7 +122,15 @@ pub struct Queued {
 /// keeps the destination it was started for, so a retry or a change of
 /// default later doesn't redirect it.
 pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>) -> Vec<Queued> {
+    if inputs.is_empty() {
+        return Vec::new();
+    }
+    // Nowhere to upload to yet (the shortcut or a drop before setup): say
+    // so, and open Welcome, where the first destination gets added.
     let Some(destination) = destination.or_else(|| core.destinations.default_destination()) else {
+        inputs.iter().for_each(UploadInput::remove_if_temporary);
+        show_notification(core, &t!("Upload failed"), &t!("No destination to upload to. Add one in Settings."));
+        crate::windows::open(&core.app, AppWindow::Onboarding);
         return Vec::new();
     };
     let mut queued = Vec::new();
@@ -128,14 +151,27 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
 }
 
 /// Uploads whatever is on the clipboard. Returns false when there's
-/// nothing uploadable on it.
-pub fn upload_clipboard(core: &SharedCore) -> bool {
-    let inputs = crate::clipboard::read_inputs();
+/// nothing uploadable on it. Reading and PNG-encoding a large screenshot
+/// takes a moment, so it's done off the async runtime's workers.
+pub async fn upload_clipboard(core: &SharedCore) -> bool {
+    let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
     if inputs.is_empty() {
         return false;
     }
     enqueue(core, inputs, None);
     true
+}
+
+/// For the shortcut, the tray menu, and aktar:// links, whose handlers run
+/// on the UI thread: uploads the clipboard in the background, and says so
+/// when there's nothing on it to upload.
+pub fn upload_clipboard_in_background(core: &SharedCore) {
+    let core = core.clone();
+    tauri::async_runtime::spawn(async move {
+        if !upload_clipboard(&core).await {
+            show_notification(&core, "Aktar", &t!("The clipboard has no file or image to upload."));
+        }
+    });
 }
 
 pub fn retry(core: &SharedCore, job_id: &str) {
@@ -159,6 +195,7 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
             if let Some(task) = job.task {
                 task.abort();
             }
+            job.input.remove_if_temporary();
             job.sender.send_replace(JobState::Cancelled);
         }
     }
@@ -168,7 +205,16 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
 /// Drops a job from the list, e.g. one started through the local API whose
 /// staged file is already gone, so it can't be retried.
 pub fn dismiss(core: &SharedCore, job_id: &str) {
-    core.uploads.jobs.lock().unwrap().retain(|job| job.id != job_id);
+    {
+        let mut jobs = core.uploads.jobs.lock().unwrap();
+        if let Some(index) = jobs.iter().position(|job| job.id == job_id) {
+            let job = jobs.remove(index);
+            if let Some(task) = job.task {
+                task.abort();
+            }
+            job.input.remove_if_temporary();
+        }
+    }
     core.notify(events::JOBS_CHANGED);
 }
 
@@ -191,7 +237,7 @@ fn drain(core: &SharedCore) {
             let input = job.input.clone();
             let destination = job.destination.clone();
             job.task = Some(tauri::async_runtime::spawn(async move {
-                match run(&input, &destination).await {
+                match run(&task_core, &job_id, &input, &destination).await {
                     Ok(result) => finish(&task_core, &job_id, &input, &destination, result).await,
                     Err(message) => fail(&task_core, &job_id, &input, message),
                 }
@@ -201,7 +247,7 @@ fn drain(core: &SharedCore) {
     core.notify(events::JOBS_CHANGED);
 }
 
-async fn run(input: &UploadInput, destination: &DestinationConfig) -> Result<UploadResult, String> {
+async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<UploadResult, String> {
     let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
     let provider = S3Provider::new(destination.clone(), credentials);
     let object_key = input
@@ -209,10 +255,44 @@ async fn run(input: &UploadInput, destination: &DestinationConfig) -> Result<Upl
         .clone()
         .unwrap_or_else(|| output::generate_key(&destination.object_path_template, &input.original_filename));
     let content_type = output::content_type(&input.original_filename);
-    provider
-        .upload(&input.path, &object_key, &content_type)
-        .await
-        .map_err(|error| error.to_string())
+
+    let progress = Arc::new(Progress::default());
+    let upload = provider.upload(&input.path, &object_key, &content_type, progress.clone());
+    tokio::pin!(upload);
+    let mut ticker = tokio::time::interval(Duration::from_millis(250));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut reported = 0.0;
+    loop {
+        tokio::select! {
+            result = &mut upload => return result.map_err(|error| error.to_string()),
+            _ = ticker.tick() => {
+                if let Some(fraction) = progress.fraction() {
+                    // Whole percents are plenty, and spare the windows a
+                    // refresh every tick.
+                    if fraction - reported >= 0.01 {
+                        reported = fraction;
+                        report_progress(core, job_id, fraction);
+                    }
+                }
+                if progress.idle_millis() > STALL_TIMEOUT_MS {
+                    return Err(StorageError::Network(t!("The connection stopped responding.")).to_string());
+                }
+            }
+        }
+    }
+}
+
+fn report_progress(core: &SharedCore, job_id: &str, fraction: f64) {
+    {
+        let mut jobs = core.uploads.jobs.lock().unwrap();
+        let Some(job) = jobs.iter_mut().find(|job| job.id == job_id) else { return };
+        if !matches!(job.state, JobState::Uploading { .. }) {
+            return;
+        }
+        job.state = JobState::Uploading { progress: fraction };
+        job.sender.send_replace(job.state.clone());
+    }
+    core.notify(events::JOBS_CHANGED);
 }
 
 fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
@@ -245,6 +325,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         let target = core.history.thumbnail_path(&record.id);
         let _ = tauri::async_runtime::spawn_blocking(move || crate::thumbnails::store(&source, &target)).await;
     }
+    input.remove_if_temporary();
 
     set_state(
         core,
@@ -280,7 +361,12 @@ fn fail(core: &SharedCore, job_id: &str, input: &UploadInput, message: String) {
 }
 
 pub fn show_notification(core: &SharedCore, title: &str, body: &str) {
-    if let Err(error) = core.app.notification().builder().title(title).body(body).show() {
+    let result = if crate::package::is_packaged() {
+        crate::package::show_notification(title, body)
+    } else {
+        core.app.notification().builder().title(title).body(body).show().map_err(|error| error.to_string())
+    };
+    if let Err(error) = result {
         log::warn!("Could not show a notification: {error}");
     }
 }

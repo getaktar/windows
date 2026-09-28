@@ -3,7 +3,10 @@
 //! single adapter, never a separate upload engine per provider.
 
 use std::path::Path;
-use std::sync::OnceLock;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use aws_credential_types::Credentials;
@@ -15,12 +18,13 @@ use aws_sdk_s3::Client;
 use aws_smithy_runtime_api::client::http::SharedHttpClient;
 use aws_smithy_runtime_api::client::orchestrator::HttpResponse;
 use aws_smithy_http_client::tls::{self, rustls_provider::CryptoMode};
+use aws_smithy_types::body::SdkBody;
 use aws_smithy_types::timeout::TimeoutConfig;
 use serde::Serialize;
 
 use crate::credentials::StorageCredentials;
 use crate::destinations::DestinationConfig;
-use crate::output::{encode_key_path, resolve_public_url};
+use crate::output::{encode_copy_source, resolve_public_url};
 use crate::t;
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,6 +78,9 @@ pub enum StorageError {
     AccessDenied,
     #[error("{}", t!("Upload interrupted. {0}", .0))]
     Network(String),
+    /// A network failure outside an upload (listing, deleting, testing).
+    #[error("{}", t!("Could not connect. {0}", .0))]
+    Connection(String),
     #[error("{0}")]
     Unknown(String),
 }
@@ -162,27 +169,49 @@ impl S3Provider {
         Ok(ConnectionResult { bucket_reachable: true, writable, public_url_reachable })
     }
 
-    pub async fn upload(&self, path: &Path, object_key: &str, content_type: &str) -> Result<UploadResult, StorageError> {
+    /// Uploads a file, counting the bytes sent into `progress` as the HTTP
+    /// client reads them.
+    pub async fn upload(
+        &self,
+        path: &Path,
+        object_key: &str,
+        content_type: &str,
+        progress: Arc<Progress>,
+    ) -> Result<UploadResult, StorageError> {
         let byte_size = tokio::fs::metadata(path)
             .await
             .map_err(|error| StorageError::Unknown(error.to_string()))?
-            .len() as i64;
-        let body = ByteStream::from_path(path)
+            .len();
+        progress.total.store(byte_size, Ordering::Relaxed);
+        let file = ByteStream::from_path(path)
             .await
-            .map_err(|error| StorageError::Unknown(error.to_string()))?;
+            .map_err(|error| StorageError::Unknown(error.to_string()))?
+            .into_inner();
+        // Rebuilt from the file for every attempt, so the SDK can still
+        // retry, with the count starting over each time.
+        let body = SdkBody::retryable(move || {
+            progress.sent.store(0, Ordering::Relaxed);
+            match file.try_clone() {
+                Some(inner) => SdkBody::from_body_1_x(CountingBody { inner, progress: progress.clone() }),
+                None => SdkBody::taken(),
+            }
+        });
         self.client
             .put_object()
             .bucket(self.bucket())
             .key(object_key)
             .content_type(content_type)
-            .body(body)
+            .body(ByteStream::new(body))
             .send()
             .await
-            .map_err(|error| map_error(error, self.bucket()))?;
+            .map_err(|error| match map_error(error, self.bucket()) {
+                StorageError::Connection(message) => StorageError::Network(message),
+                other => other,
+            })?;
         Ok(UploadResult {
             object_key: object_key.to_string(),
             public_url: resolve_public_url(&self.config.public_base_url, object_key),
-            byte_size,
+            byte_size: byte_size as i64,
         })
     }
 
@@ -283,7 +312,7 @@ impl S3Provider {
         self.client
             .copy_object()
             .bucket(self.bucket())
-            .copy_source(format!("{}/{}", self.bucket(), encode_key_path(source_key)))
+            .copy_source(format!("{}/{}", self.bucket(), encode_copy_source(source_key)))
             .key(destination_key)
             .send()
             .await
@@ -319,6 +348,69 @@ impl S3Provider {
             .await
             .map_err(|error| map_error(error, self.bucket()))?;
         Ok(request.uri().to_string())
+    }
+}
+
+/// How far an upload has got, and when it last moved.
+pub struct Progress {
+    sent: AtomicU64,
+    total: AtomicU64,
+    /// Unix milliseconds of the last bytes sent.
+    last_activity: AtomicI64,
+}
+
+impl Default for Progress {
+    fn default() -> Self {
+        Self { sent: AtomicU64::new(0), total: AtomicU64::new(0), last_activity: AtomicI64::new(crate::util::now_millis()) }
+    }
+}
+
+impl Progress {
+    /// 0 to 1, once the size is known.
+    pub fn fraction(&self) -> Option<f64> {
+        let total = self.total.load(Ordering::Relaxed);
+        (total > 0).then(|| (self.sent.load(Ordering::Relaxed) as f64 / total as f64).min(1.0))
+    }
+
+    /// How long nothing has been sent. After the last byte, this is how long
+    /// the server has taken to answer.
+    pub fn idle_millis(&self) -> i64 {
+        crate::util::now_millis() - self.last_activity.load(Ordering::Relaxed)
+    }
+}
+
+/// Passes a request body through unchanged, counting the bytes the HTTP
+/// client pulls from it.
+struct CountingBody {
+    inner: SdkBody,
+    progress: Arc<Progress>,
+}
+
+impl http_body::Body for CountingBody {
+    type Data = <SdkBody as http_body::Body>::Data;
+    type Error = <SdkBody as http_body::Body>::Error;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        let this = self.get_mut();
+        let poll = http_body::Body::poll_frame(Pin::new(&mut this.inner), context);
+        if let Poll::Ready(Some(Ok(frame))) = &poll {
+            if let Some(data) = frame.data_ref() {
+                this.progress.sent.fetch_add(data.len() as u64, Ordering::Relaxed);
+                this.progress.last_activity.store(crate::util::now_millis(), Ordering::Relaxed);
+            }
+        }
+        poll
+    }
+
+    fn is_end_stream(&self) -> bool {
+        http_body::Body::is_end_stream(&self.inner)
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::Body::size_hint(&self.inner)
     }
 }
 
@@ -361,7 +453,7 @@ where
         return StorageError::AccessDenied;
     }
     match &error {
-        SdkError::DispatchFailure(_) | SdkError::TimeoutError(_) => StorageError::Network(readable(&error)),
+        SdkError::DispatchFailure(_) | SdkError::TimeoutError(_) => StorageError::Connection(readable(&error)),
         _ => StorageError::Unknown(error.message().map(str::to_string).unwrap_or_else(|| readable(&error))),
     }
 }
@@ -422,8 +514,10 @@ mod live_tests {
 
         let file = std::env::temp_dir().join("aktar test ü.txt");
         std::fs::write(&file, b"hello from aktar").unwrap();
-        let uploaded = storage.upload(&file, "live/aktar test ü.txt", "text/plain").await.unwrap();
+        let progress = Arc::new(Progress::default());
+        let uploaded = storage.upload(&file, "live/aktar test ü.txt", "text/plain", progress.clone()).await.unwrap();
         assert_eq!(uploaded.byte_size, 16);
+        assert_eq!(progress.fraction(), Some(1.0));
         assert!(uploaded.public_url.ends_with("/live/aktar%20test%20%C3%BC.txt"));
 
         assert!(storage.object_exists("live/aktar test ü.txt").await.unwrap());
@@ -445,6 +539,14 @@ mod live_tests {
         assert!(signed.contains("X-Amz-Signature="));
         let body = reqwest::get(&signed).await.unwrap().text().await.unwrap();
         assert_eq!(body, "hello from aktar");
+
+        // "+" and parentheses survive both the public URL and CopyObject.
+        let plus = storage.upload(&file, "live/a+b (1).txt", "text/plain", Arc::new(Progress::default())).await.unwrap();
+        assert!(plus.public_url.ends_with("/live/a%2Bb%20(1).txt"));
+        assert!(crate::bucket::move_object(&storage, "live/a+b (1).txt", "live/c+d (2).txt").await.is_ok());
+        assert!(storage.object_exists("live/c+d (2).txt").await.unwrap());
+        assert!(!storage.object_exists("live/a+b (1).txt").await.unwrap());
+        storage.delete("live/c+d (2).txt").await.unwrap();
 
         storage.delete("moved/renamed.txt").await.unwrap();
         storage.delete("live/empty/").await.unwrap();
