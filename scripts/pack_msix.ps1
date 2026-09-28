@@ -66,7 +66,7 @@ if (-not (Test-Path $ExePath)) { throw "No build at $ExePath. Run with -Build, o
 # user name in it.
 & (Join-Path $PSScriptRoot 'check_binary.ps1') -Path $ExePath
 
-# The Store wants four-part versions ending in .0: 0.1.0 -> 0.1.0.0.
+# The Store wants four-part versions ending in .0: 0.1.1 -> 0.1.1.0.
 $config = Get-Content (Join-Path $root 'src-tauri\tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $version = "$($config.version -replace '[-+].*$', '').0"
 $identity = Get-Content (Join-Path $packaging 'identity.json') -Raw -Encoding UTF8 | ConvertFrom-Json
