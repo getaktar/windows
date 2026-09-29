@@ -75,6 +75,8 @@ export interface UploadRecord {
   mimeType: string;
   byteSize: number;
   createdAt: number;
+  /** When an expiring upload gets deleted (Unix milliseconds), or null. */
+  expiresAt: number | null;
   hasThumbnail: boolean;
 }
 
@@ -104,14 +106,57 @@ export interface Settings {
   localApiPort: number;
   autoCheckUpdates: boolean;
   autoInstallUpdates: boolean;
+  /** "Delete after": one of `expiryDurations`, or 0 to keep uploads. It
+   * only applies to a destination whose lifecycle rules are active. */
+  deleteAfterDays: number;
+  /** The last lifecycle rules check of each destination, by ID. Left out
+   * when there are none. */
+  expiryRules?: Record<string, ExpiryRulesCheck>;
 }
 
 export type SettingsPatch = Partial<
   Pick<
     Settings,
-    "outputMode" | "customTemplate" | "showNotification" | "closePanelAfterUpload" | "autoCheckUpdates" | "autoInstallUpdates"
+    | "outputMode"
+    | "customTemplate"
+    | "showNotification"
+    | "closePanelAfterUpload"
+    | "autoCheckUpdates"
+    | "autoInstallUpdates"
+    | "deleteAfterDays"
   >
 >;
+
+/** The only "Delete after" choices, in days (src-tauri/src/expiry.rs). */
+export const expiryDurations = [1, 7, 14, 30] as const;
+
+export type ExpiryRulesStatus =
+  | { kind: "active" }
+  | { kind: "denied"; message: string }
+  | { kind: "unsupported"; message: string };
+
+export interface ExpiryRulesCheck {
+  status: ExpiryRulesStatus;
+  checkedAt: number;
+}
+
+/** What the destination form found out about the lifecycle rules while it
+ * was open, recorded when the destination is saved. `check` is null when
+ * auto-delete was turned off there. */
+export type FormRules = { kind: "notChecked" } | { kind: "checked"; check: ExpiryRulesCheck | null };
+
+/** Whether the destination's bucket is known to have Aktar's lifecycle
+ * rules, which is what makes "Delete after" available for it. */
+export function expiryRulesActive(settings: Settings | null, destinationId: string | undefined) {
+  if (!settings || !destinationId) return false;
+  return settings.expiryRules?.[destinationId]?.status.kind === "active";
+}
+
+/** The "Delete after" that actually applies to a destination: the setting
+ * once its rules are active, and 0 (Off) until then. */
+export function effectiveDeleteAfterDays(settings: Settings | null, destinationId: string | undefined) {
+  return expiryRulesActive(settings, destinationId) ? (settings?.deleteAfterDays ?? 0) : 0;
+}
 
 export type LocalApiStatus =
   | { kind: "off" }
@@ -159,12 +204,17 @@ export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
 
   listDestinations: () => invoke<DestinationConfig[]>("list_destinations"),
-  saveDestination: (config: DestinationConfig, credentials: StorageCredentials | null) =>
-    invoke<DestinationConfig>("save_destination", { config, credentials }),
+  saveDestination: (config: DestinationConfig, credentials: StorageCredentials | null, rules: FormRules) =>
+    invoke<DestinationConfig>("save_destination", { config, credentials, rules }),
   removeDestination: (id: string) => invoke<void>("remove_destination", { id }),
   setDefaultDestination: (id: string) => invoke<void>("set_default_destination", { id }),
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>
     invoke<ConnectionResult>("test_connection", { config, credentials }),
+  expiryRulesStatus: (destinationId: string) => invoke<ExpiryRulesCheck | null>("expiry_rules_status", { destinationId }),
+  setUpExpiryRules: (config: DestinationConfig, credentials: StorageCredentials | null) =>
+    invoke<ExpiryRulesCheck>("set_up_expiry_rules", { config, credentials }),
+  removeExpiryRules: (config: DestinationConfig, credentials: StorageCredentials | null) =>
+    invoke<void>("remove_expiry_rules", { config, credentials }),
 
   /** Returns how many files were queued: folders are skipped, and nothing
    * is queued when there's no destination (Rust then says so itself). */

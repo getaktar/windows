@@ -72,6 +72,8 @@ let history: UploadRecord[] = [
   mimeType: mimeType as string,
   byteSize: size as number,
   createdAt: createdAt as number,
+  // Two expiring uploads (one about to go) outside the Store scene.
+  expiresAt: storeScene ? null : index === 0 ? (createdAt as number) + 7 * 24 * hour : index === 2 ? now + 0.5 * hour : null,
   hasThumbnail: false,
 }));
 
@@ -99,6 +101,9 @@ let settings: Settings = {
   localApiPort: 47913,
   autoCheckUpdates: true,
   autoInstallUpdates: false,
+  deleteAfterDays: storeScene ? 0 : 7,
+  // The default destination has the rules; the other one doesn't yet.
+  expiryRules: storeScene ? undefined : { D1: { status: { kind: "active" }, checkedAt: Date.now() - 3 * hour } },
 };
 
 const localApi: LocalApiState = {
@@ -185,6 +190,15 @@ export function installMockBackend(route: string) {
           return photo(1025);
         case "fetch_remote":
           return fetch(args.url as string).then((response) => response.arrayBuffer());
+        case "expiry_rules_status":
+          return settings.expiryRules?.[args.destinationId as string] ?? null;
+        case "set_up_expiry_rules":
+          return {
+            status: { kind: "denied", message: "Access Denied" },
+            checkedAt: Date.now(),
+          };
+        case "remove_expiry_rules":
+          return null;
         case "test_connection":
           return { bucketReachable: true, writable: true, publicUrlReachable: true };
         case "upload_clipboard":

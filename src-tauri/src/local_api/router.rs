@@ -7,8 +7,8 @@
 //! GET    /v1/status
 //! GET    /v1/destinations
 //! GET    /v1/uploads?query=&destinationId=&limit=
-//! POST   /v1/uploads?filename=&destinationId=&prefix=     (raw file bytes)
-//! POST   /v1/uploads/clipboard?destinationId=
+//! POST   /v1/uploads?filename=&destinationId=&prefix=&expires=     (raw file bytes)
+//! POST   /v1/uploads/clipboard?destinationId=&expires=
 //! DELETE /v1/uploads/{id}
 //! GET    /v1/destinations/{id}/objects?prefix=&continuationToken=
 //! DELETE /v1/destinations/{id}/objects?key=
@@ -16,6 +16,12 @@
 //! POST   /v1/destinations/{id}/folders                     {"prefix", "name"}
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
 //! ```
+//!
+//! `expires` is a number of days (1, 7, 14, or 30) after which the upload is
+//! deleted. Left out or 0, it's kept: the app's "Delete after" setting never
+//! applies here, so a script is never surprised by a file disappearing. It's
+//! refused (409) for a destination whose bucket doesn't have Aktar's
+//! lifecycle rules yet, since nothing would delete the file.
 
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +34,7 @@ use crate::destinations::DestinationConfig;
 use crate::history::UploadRecord;
 use crate::output::{self, resolve_public_url, OutputMode};
 use crate::storage::{BucketListing, BucketObject, S3Provider};
-use crate::uploads::{self, JobState, UploadInput};
+use crate::uploads::{self, Expiry, JobState, UploadInput};
 use crate::util::iso8601;
 
 pub async fn handle(core: &SharedCore, request: Request) -> Response {
@@ -132,6 +138,14 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     let Some(destination) = core.destinations.find(request.query.get("destinationId").map(String::as_str)) else {
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
     };
+    let expiry = match expiry_from(request, crate::expiry::is_active(core, &destination.id)) {
+        Ok(expiry) => expiry,
+        Err(response) => return response,
+    };
+    // A prefix picks the exact key, and exact keys never expire.
+    if request.query.contains_key("prefix") && expiry != Expiry::Never {
+        return Response::error(400, "The expires parameter can't be combined with prefix.");
+    }
 
     // The file is staged under a fixed name: the caller's name only becomes
     // the object key and history entry. Joining it into a path would let
@@ -152,7 +166,7 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
         return Response::error(500, "Could not stage the file for upload.");
     }
 
-    let mut input = UploadInput { path, original_filename: filename.clone(), object_key: None, temporary: false };
+    let mut input = UploadInput { path, original_filename: filename.clone(), object_key: None, temporary: false, expiry };
     if let Some(raw_prefix) = request.query.get("prefix") {
         let prefix = bucket::normalized_folder(raw_prefix);
         let key = match credentials::load(&destination.id) {
@@ -179,11 +193,34 @@ async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
     let Some(destination) = core.destinations.find(request.query.get("destinationId").map(String::as_str)) else {
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
     };
+    let expiry = match expiry_from(request, crate::expiry::is_active(core, &destination.id)) {
+        Ok(expiry) => expiry,
+        Err(response) => return response,
+    };
     let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
-    let Some(input) = inputs.into_iter().next() else {
+    let Some(mut input) = inputs.into_iter().next() else {
         return Response::error(422, "The clipboard has no file or image to upload.");
     };
+    input.expiry = expiry;
     run(core, input, destination).await
+}
+
+const EXPIRY_NOT_SET_UP: &str =
+    "Auto-delete isn't set up for this destination. Set it up from Aktar's panel (Delete after) or the destination's settings.";
+
+/// The `expires` query parameter: days until the upload is deleted. Only
+/// accepted for a destination whose lifecycle rules are active, since those
+/// are what deletes the file.
+fn expiry_from(request: &Request, rules_active: bool) -> Result<Expiry, Response> {
+    let Some(raw) = request.query.get("expires").map(|value| value.trim()).filter(|value| !value.is_empty()) else {
+        return Ok(Expiry::Never);
+    };
+    match raw.parse::<u32>() {
+        Ok(0) => Ok(Expiry::Never),
+        Ok(days) if crate::expiry::is_valid(days) && rules_active => Ok(Expiry::Days(days)),
+        Ok(days) if crate::expiry::is_valid(days) => Err(Response::error(409, EXPIRY_NOT_SET_UP)),
+        _ => Err(Response::error(400, "The expires parameter must be 0, 1, 7, 14, or 30 (days).")),
+    }
 }
 
 /// Queues the upload and waits for it to settle, so the caller gets the
@@ -398,6 +435,9 @@ struct UploadDto {
     mime_type: String,
     size: i64,
     created_at: String,
+    /// When an expiring upload gets deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
     formats: Formats,
 }
 
@@ -414,6 +454,7 @@ fn upload_dto(core: &SharedCore, record: &UploadRecord) -> UploadDto {
         mime_type: record.mime_type.clone(),
         size: record.byte_size,
         created_at: iso8601(record.created_at),
+        expires_at: record.expires_at.map(iso8601),
         formats: Formats {
             url: formatted(OutputMode::Url),
             markdown: formatted(OutputMode::Markdown),
@@ -474,5 +515,46 @@ fn object_dto(object: &BucketObject, destination: &DestinationConfig) -> ObjectD
         size: object.size,
         last_modified: object.last_modified.map(iso8601),
         url: has_public_url.then(|| resolve_public_url(&destination.public_base_url, &object.key)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    fn request(expires: Option<&str>) -> Request {
+        Request {
+            method: "POST".into(),
+            path: "/v1/uploads".into(),
+            query: expires.map(|value| HashMap::from([("expires".to_string(), value.to_string())])).unwrap_or_default(),
+            body: Vec::new(),
+            body_file: None,
+        }
+    }
+
+    fn error(result: Result<Expiry, Response>) -> (u16, String) {
+        let response = result.expect_err("should be refused");
+        let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        (response.status, body["error"].as_str().unwrap().to_string())
+    }
+
+    #[test]
+    fn reads_expires() {
+        assert_eq!(expiry_from(&request(None), false).ok(), Some(Expiry::Never));
+        assert_eq!(expiry_from(&request(Some("")), false).ok(), Some(Expiry::Never));
+        assert_eq!(expiry_from(&request(Some("0")), false).ok(), Some(Expiry::Never));
+        assert_eq!(expiry_from(&request(Some("7")), true).ok(), Some(Expiry::Days(7)));
+        assert_eq!(expiry_from(&request(Some(" 30 ")), true).ok(), Some(Expiry::Days(30)));
+        assert_eq!(error(expiry_from(&request(Some("3")), true)).0, 400);
+        assert_eq!(error(expiry_from(&request(Some("soon")), false)).0, 400);
+    }
+
+    #[test]
+    fn refuses_expires_without_rules() {
+        let (status, message) = error(expiry_from(&request(Some("7")), false));
+        assert_eq!(status, 409);
+        assert_eq!(message, EXPIRY_NOT_SET_UP);
     }
 }

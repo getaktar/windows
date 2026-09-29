@@ -14,6 +14,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::core::{events, SharedCore};
 use crate::credentials::{self, StorageCredentials};
 use crate::destinations::DestinationConfig;
+use crate::expiry::{self, FormRules, RulesCheck};
 use crate::history::UploadRecord;
 use crate::local_api::{self, LocalApiState};
 use crate::settings::{Settings, SettingsPatch};
@@ -68,14 +69,22 @@ fn filled(credentials: Option<StorageCredentials>) -> Option<StorageCredentials>
 
 /// Adds a destination (when `config.id` is empty) or updates one. Leaving
 /// the credential fields empty while editing keeps the stored ones.
+///
+/// `rules` is what the form found out about the lifecycle rules while it
+/// was open, recorded under the destination's ID. When nothing was checked
+/// there, a status that was true of another bucket or key no longer
+/// applies, so it's reset to not active.
 #[tauri::command]
 pub fn save_destination(
     core: Core,
     mut config: DestinationConfig,
     credentials: Option<StorageCredentials>,
+    rules: Option<FormRules>,
 ) -> Result<DestinationConfig, String> {
     let is_new = config.id.is_empty();
     let credentials = filled(credentials);
+    let rules = rules.unwrap_or_default();
+    let reconnected = !is_new && !is_saved_connection(&core, &config, credentials.as_ref());
     if is_new {
         config.id = crate::util::new_id();
         let Some(credentials) = credentials else {
@@ -89,13 +98,38 @@ pub fn save_destination(
         }
         core.destinations.update(config.clone());
     }
+    match rules {
+        FormRules::Checked { check } => expiry::record(&core, &config.id, check),
+        FormRules::NotChecked if reconnected => expiry::record(&core, &config.id, None),
+        FormRules::NotChecked => {}
+    }
     core.notify(events::DESTINATIONS_CHANGED);
     Ok(config)
+}
+
+/// Whether `config` reaches the same bucket with the same keys as the
+/// saved destination with its ID, so a lifecycle rules result obtained
+/// with it is true of that destination.
+fn is_saved_connection(core: &Core, config: &DestinationConfig, credentials: Option<&StorageCredentials>) -> bool {
+    let Some(saved) = core.destinations.find(Some(&config.id)).filter(|saved| saved.id == config.id) else {
+        return false;
+    };
+    let same_keys = match credentials {
+        None => true,
+        Some(entered) => credentials::load(&config.id).is_ok_and(|stored| {
+            stored.access_key_id == entered.access_key_id && stored.secret_access_key == entered.secret_access_key
+        }),
+    };
+    same_keys
+        && saved.endpoint.trim() == config.endpoint.trim()
+        && saved.bucket.trim() == config.bucket.trim()
+        && saved.region.trim() == config.region.trim()
 }
 
 #[tauri::command]
 pub fn remove_destination(core: Core, id: String) {
     core.destinations.remove(&id);
+    expiry::record(&core, &id, None);
     core.notify(events::DESTINATIONS_CHANGED);
 }
 
@@ -116,6 +150,52 @@ pub async fn test_connection(
         None => return Err(t!("Enter an Access Key ID and Secret Access Key.")),
     };
     S3Provider::new(config, credentials).test_connection().await.map_err(|error| error.to_string())
+}
+
+/// Whether the destination's lifecycle rules for expiring uploads were set
+/// up, as of the last check. None when they haven't been checked yet.
+#[tauri::command]
+pub fn expiry_rules_status(core: Core, destination_id: String) -> Option<RulesCheck> {
+    expiry::cached(&core, &destination_id)
+}
+
+/// The entered credentials, or the saved destination's.
+fn credentials_for(config: &DestinationConfig, credentials: Option<StorageCredentials>) -> Result<StorageCredentials, String> {
+    match filled(credentials) {
+        Some(credentials) => Ok(credentials),
+        None if !config.id.is_empty() => credentials::load(&config.id).map_err(|error| error.to_string()),
+        None => Err(t!("Enter an Access Key ID and Secret Access Key.")),
+    }
+}
+
+/// Installs the lifecycle rules for expiring uploads ("Set Up" in the
+/// destination form, "Set Up Auto-Delete" in the panel), with the
+/// credentials being entered or the saved ones. Once they're active, "Delete
+/// after" applies to the destination. The result is recorded right away
+/// only when it's true of the saved destination; the form records its own
+/// when it's saved.
+#[tauri::command]
+pub async fn set_up_expiry_rules(
+    core: Core<'_>,
+    config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+) -> Result<RulesCheck, String> {
+    let record = is_saved_connection(&core, &config, filled(credentials.clone()).as_ref());
+    let credentials = credentials_for(&config, credentials)?;
+    expiry::set_up(&core, config, credentials, record).await
+}
+
+/// "Turn Off and Remove Rules" in the destination form: takes Aktar's
+/// lifecycle rules out of the bucket, keeping its other rules.
+#[tauri::command]
+pub async fn remove_expiry_rules(
+    core: Core<'_>,
+    config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+) -> Result<(), String> {
+    let record = is_saved_connection(&core, &config, filled(credentials.clone()).as_ref());
+    let credentials = credentials_for(&config, credentials)?;
+    expiry::remove(&core, config, credentials, record).await
 }
 
 // MARK: - Uploads

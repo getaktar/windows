@@ -2,6 +2,8 @@ import {
   Button,
   Link,
   Menu,
+  MenuDivider,
+  MenuItem,
   MenuItemRadio,
   MenuList,
   MenuPopover,
@@ -18,17 +20,35 @@ import {
   FolderOpenRegular,
   MoreHorizontalRegular,
   SettingsRegular,
+  TimerRegular,
   TrayItemRemoveRegular,
 } from "@fluentui/react-icons";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { message, open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
-import { FileIcon, Thumbnail } from "../components/FileVisuals";
-import { api, errorMessage, events, type DestinationConfig, type Job, type UploadRecord } from "../lib/api";
-import { formatOutput, providerName, withoutScheme } from "../lib/format";
+import { ExpiryBadge, FileIcon, Thumbnail } from "../components/FileVisuals";
+import {
+  api,
+  effectiveDeleteAfterDays,
+  errorMessage,
+  events,
+  expiryDurations,
+  expiryRulesActive,
+  type DestinationConfig,
+  type Job,
+  type UploadRecord,
+} from "../lib/api";
+import {
+  durationLabel,
+  expiryRulesExplanation,
+  formatOutput,
+  providerName,
+  rulesStatusMessage,
+  withoutScheme,
+} from "../lib/format";
 import { useDestinations, useHistory, useJobs, useSettings, useTauriEvent } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 
@@ -37,6 +57,8 @@ export default function Panel() {
   const [destinations] = useDestinations();
   const [jobs] = useJobs();
   const [records] = useHistory();
+  const [settings] = useSettings();
+  const [isSettingUpExpiry, setIsSettingUpExpiry] = useState(false);
   const [isTargeted, setIsTargeted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -113,6 +135,36 @@ export default function Panel() {
 
   const activeJobs = jobs.filter((job) => job.state.kind !== "succeeded" && job.state.kind !== "cancelled");
   const recent = records.slice(0, 3);
+  const currentDestination = defaultDestination(destinations);
+  // Off for a destination whose bucket doesn't have the lifecycle rules,
+  // whatever the setting says: nothing uploaded there expires.
+  const deleteAfterDays = effectiveDeleteAfterDays(settings, currentDestination?.id);
+  const rulesActive = expiryRulesActive(settings, currentDestination?.id);
+
+  const setUpExpiry = async () => {
+    if (!currentDestination) return;
+    setIsSettingUpExpiry(true);
+    let failure: string | null = null;
+    try {
+      // Saved credentials; success updates the settings, which enables
+      // the durations.
+      const check = await api.setUpExpiryRules(currentDestination, null);
+      if (check.status.kind !== "active") failure = rulesStatusMessage(check.status.kind, t);
+    } catch (error) {
+      failure = errorMessage(error);
+    } finally {
+      setIsSettingUpExpiry(false);
+    }
+    if (failure === null) return;
+    // The dialog takes focus; that mustn't close the panel.
+    await api.setPanelShowingDialog(true);
+    try {
+      await message(expiryRulesExplanation(t), { title: failure, kind: "warning", okLabel: t("OK") });
+    } finally {
+      await api.setPanelShowingDialog(false);
+      getCurrentWindow().setFocus();
+    }
+  };
 
   return (
     <div ref={root} className={`panel ${isTargeted ? "panel-targeted" : ""}`}>
@@ -144,7 +196,16 @@ export default function Panel() {
             />
           </div>
 
-          <DestinationPicker destinations={destinations} />
+          <div className="picker-row">
+            <DestinationPicker destinations={destinations} />
+            <DeleteAfterPicker
+              days={deleteAfterDays}
+              available={rulesActive}
+              canSetUp={currentDestination !== undefined}
+              isSettingUp={isSettingUpExpiry}
+              onSetUp={setUpExpiry}
+            />
+          </div>
 
           <div className={`dropzone ${isTargeted ? "dropzone-targeted" : ""}`}>
             {isTargeted ? (
@@ -165,6 +226,13 @@ export default function Panel() {
                   </Button>
                 </div>
               </>
+            )}
+            {/* Always in view while it's on, so it's never forgotten. */}
+            {deleteAfterDays > 0 && (
+              <Text size={200} className="dropzone-expiry">
+                <TimerRegular />
+                {deleteAfterDays === 1 ? t("Deletes after 1 day") : t("Deletes after {0} days", deleteAfterDays)}
+              </Text>
             )}
           </div>
           {notice && (
@@ -224,9 +292,13 @@ function destinationLabel(destination: DestinationConfig, t: ReturnType<typeof u
   return `${destination.name} · ${providerName(destination.preset, t)}`;
 }
 
+function defaultDestination(destinations: DestinationConfig[]): DestinationConfig | undefined {
+  return destinations.find((destination) => destination.isDefault) ?? destinations[0];
+}
+
 function DestinationPicker({ destinations }: { destinations: DestinationConfig[] }) {
   const { t } = useI18n();
-  const current = destinations.find((destination) => destination.isDefault) ?? destinations[0];
+  const current = defaultDestination(destinations);
   return (
     <div className="destination-picker">
       <Text size={200} className="secondary">
@@ -251,6 +323,74 @@ function DestinationPicker({ destinations }: { destinations: DestinationConfig[]
                 {destinationLabel(destination, t)}
               </MenuItemRadio>
             ))}
+          </MenuList>
+        </MenuPopover>
+      </Menu>
+    </div>
+  );
+}
+
+/** "Delete after": sticky, and applies to every upload from the panel, the
+ * shortcut, and the tray, not to ones into a chosen bucket folder. The
+ * durations are only offered once the destination's bucket has the
+ * lifecycle rules; until then the menu offers to set them up, and `days`
+ * (the effective value) is 0. */
+function DeleteAfterPicker({
+  days,
+  available,
+  canSetUp,
+  isSettingUp,
+  onSetUp,
+}: {
+  days: number;
+  available: boolean;
+  canSetUp: boolean;
+  isSettingUp: boolean;
+  onSetUp: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="destination-picker delete-after-picker">
+      <Text size={200} className="secondary">
+        {t("Delete after")}
+      </Text>
+      <Menu
+        checkedValues={{ deleteAfter: [String(days)] }}
+        onCheckedValueChange={(_, data) => {
+          const value = Number(data.checkedItems[0]);
+          if (available && !Number.isNaN(value)) api.updateSettings({ deleteAfterDays: value });
+        }}
+      >
+        <MenuTrigger disableButtonEnhancement>
+          <Button
+            className="destination-button"
+            icon={<ChevronDownRegular />}
+            iconPosition="after"
+            aria-label={t("Delete after")}
+          >
+            <span className="ellipsis">{days > 0 ? durationLabel(days, t) : t("Off")}</span>
+          </Button>
+        </MenuTrigger>
+        <MenuPopover>
+          <MenuList>
+            <MenuItemRadio name="deleteAfter" value="0" disabled={!available}>
+              {t("Off")}
+            </MenuItemRadio>
+            {expiryDurations.map((duration) => (
+              <MenuItemRadio key={duration} name="deleteAfter" value={String(duration)} disabled={!available}>
+                {durationLabel(duration, t)}
+              </MenuItemRadio>
+            ))}
+            {!available && canSetUp && (
+              <>
+                <MenuDivider />
+                {/* Stays open, so "Setting Up…" shows and the durations
+                    turn on in place once it's done. */}
+                <MenuItem persistOnClick disabled={isSettingUp} onClick={onSetUp}>
+                  {isSettingUp ? t("Setting Up…") : t("Set Up Auto-Delete…")}
+                </MenuItem>
+              </>
+            )}
           </MenuList>
         </MenuPopover>
       </Menu>
@@ -330,9 +470,12 @@ function RecentRow({ record, onError }: { record: UploadRecord; onError: (messag
         <Text size={200} className="ellipsis">
           {record.localFilename}
         </Text>
-        <Text size={100} className="secondary ellipsis">
-          {withoutScheme(record.publicUrl)}
-        </Text>
+        <span className="inline-row recent-subtitle">
+          <Text size={100} className="secondary ellipsis">
+            {withoutScheme(record.publicUrl)}
+          </Text>
+          <ExpiryBadge expiresAt={record.expiresAt} />
+        </span>
       </button>
       <Button size="small" onClick={() => copy("url")}>
         {t("Copy")}

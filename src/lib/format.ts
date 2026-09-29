@@ -140,6 +140,40 @@ export function shortDay(millis: number, locale: string, t: Translate) {
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(millis));
 }
 
+/** "7 days", for the "Delete after" choices. */
+export function durationLabel(days: number, t: Translate) {
+  return days === 1 ? t("1 day") : t("{0} days", days);
+}
+
+/** What a lifecycle rules check that didn't end up "active" says about the
+ * bucket. Denied has its own message: the upload one ("can't upload
+ * files") would be wrong, since the key usually uploads fine. */
+export function rulesStatusMessage(kind: "denied" | "unsupported", t: Translate) {
+  return kind === "denied"
+    ? t("This key can't change the bucket's lifecycle rules.")
+    : t("This provider doesn't support lifecycle rules.");
+}
+
+/** Why "Delete after" is off for a destination and how to turn it on, when
+ * the key can't add the lifecycle rules itself. */
+export function expiryRulesExplanation(t: Translate) {
+  return t(
+    "“Delete after” stays off until the bucket has Aktar's lifecycle rules. This key can't add them: use a key with admin access to the bucket, or add these rules in your provider's dashboard and check again: tmp/1d/ after 1 day, tmp/7d/ after 7 days, tmp/14d/ after 14 days, tmp/30d/ after 30 days.",
+  );
+}
+
+/** The badge on an expiring upload: "Deletes in 5 days", rounded to the
+ * nearest day so a fresh 7-day upload says 7, and "today" for its last
+ * half day, however the calendar falls. */
+export function expiryLabel(expiresAt: number, now: number, t: Translate) {
+  const remaining = expiresAt - now;
+  if (remaining <= 0) return t("Expired");
+  const days = Math.round(remaining / 86_400_000);
+  if (days === 0) return t("Deletes today");
+  if (days === 1) return t("Deletes in 1 day");
+  return t("Deletes in {0} days", days);
+}
+
 export function providerName(preset: ProviderPreset, t: Translate) {
   switch (preset) {
     case "cloudflareR2":

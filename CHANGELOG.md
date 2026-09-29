@@ -33,6 +33,14 @@ The first Windows version, with the features of Aktar for Mac 0.4.1.
 - Raycast integration: the same opt-in local API as the Mac app (127.0.0.1
   only, token-protected), and `aktar://` links (`upload-clipboard`,
   `library`, `settings`, `connect`)
+- Expiring uploads: "Delete after" 1, 7, 14, or 30 days next to the
+  destination picker, available once the destination's bucket has Aktar's
+  lifecycle rules (set up from the picker or the destination's settings,
+  keeping the bucket's other rules exactly as they are, including ones like
+  R2's default multipart rule). They go under `tmp/{N}d/` and the bucket
+  deletes them. "Turn Off..." in the destination's settings stops offering
+  it, optionally removing Aktar's rules from the bucket. The local API takes
+  `expires=`
 - Automatic updates from GitHub releases, verified before installing, and
   installed while Aktar isn't in use
 - Launch at sign-in

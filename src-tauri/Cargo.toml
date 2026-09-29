@@ -43,6 +43,11 @@ aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
 http-body = "1"
 aws-smithy-runtime-api = { version = "1", features = ["client"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+# Bucket lifecycle requests are signed by hand and sent with reqwest, so the
+# XML goes out exactly as written (see `storage::lifecycle_request`). Both
+# are already built for the SDK.
+aws-sigv4 = "1"
+md-5 = "0.11"
 
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 arboard = "3"

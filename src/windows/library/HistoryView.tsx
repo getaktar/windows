@@ -33,7 +33,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog, ContextMenu, MenuEntries, type ContextMenuState, type MenuEntry } from "../../components/Dialogs";
-import { FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
+import { ExpiryBadge, FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
 import { api, errorMessage, type Job, type UploadRecord } from "../../lib/api";
 import { dayBucket, formatBytes, formatDateTime, formatOutput, formatTime, shortDay } from "../../lib/format";
@@ -390,6 +390,7 @@ function RecordRow(props: {
           {props.subtitle}
         </Text>
       </span>
+      <ExpiryBadge expiresAt={props.record.expiresAt} />
       {props.deleting && <Spinner size="extra-tiny" />}
     </div>
   );
@@ -497,6 +498,7 @@ function UploadDetail(props: {
           <Text className="secondary">
             {t("{0} · Uploaded {1}", record.destinationName, formatDateTime(record.createdAt, locale))}
           </Text>
+          <ExpiryBadge expiresAt={record.expiresAt} />
         </header>
         <Preview
           url={record.publicUrl}

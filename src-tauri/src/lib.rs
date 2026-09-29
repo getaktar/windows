@@ -8,6 +8,7 @@ mod core;
 mod credentials;
 mod deeplink;
 mod destinations;
+mod expiry;
 mod history;
 mod hotkey;
 mod i18n;
@@ -75,6 +76,9 @@ pub fn run() {
             commands::remove_destination,
             commands::set_default_destination,
             commands::test_connection,
+            commands::expiry_rules_status,
+            commands::set_up_expiry_rules,
+            commands::remove_expiry_rules,
             commands::upload_files,
             commands::upload_clipboard,
             commands::list_jobs,
@@ -158,6 +162,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     }
     local_api::start(&core);
     updater::schedule(&core);
+    expiry::schedule_sweep(&core);
 
     // The installer registers aktar:// for installed builds; a dev build
     // registers itself so links can be tested.

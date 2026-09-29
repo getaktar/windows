@@ -36,6 +36,18 @@ pub struct UploadInput {
     /// A copy Aktar made (a clipboard image), deleted once its job is done
     /// with it: uploaded, cancelled, or dismissed.
     pub temporary: bool,
+    pub expiry: Expiry,
+}
+
+/// How long an upload is kept. Settled when it's queued, so a retry
+/// later doesn't pick up a "Delete after" changed in the meantime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Expiry {
+    /// The "Delete after" setting.
+    #[default]
+    FromSettings,
+    Never,
+    Days(u32),
 }
 
 impl UploadInput {
@@ -44,7 +56,15 @@ impl UploadInput {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "file".into());
-        Self { path, original_filename, object_key: None, temporary: false }
+        Self { path, original_filename, object_key: None, temporary: false, expiry: Expiry::FromSettings }
+    }
+
+    /// Days until the upload is deleted, once `enqueue` has settled it.
+    fn expire_after_days(&self) -> Option<u32> {
+        match self.expiry {
+            Expiry::Days(days) => Some(days),
+            _ => None,
+        }
     }
 
     fn remove_if_temporary(&self) {
@@ -133,10 +153,13 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
         crate::windows::open(&core.app, AppWindow::Onboarding);
         return Vec::new();
     };
+    let delete_after_days = core.settings.get().delete_after_days;
+    let rules_active = crate::expiry::is_active(core, &destination.id);
     let mut queued = Vec::new();
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
-        for (offset, input) in inputs.into_iter().enumerate() {
+        for (offset, mut input) in inputs.into_iter().enumerate() {
+            input.expiry = settled_expiry(input.expiry, input.object_key.is_some(), rules_active, delete_after_days);
             let (sender, receiver) = watch::channel(JobState::Waiting);
             let id = crate::util::new_id();
             queued.push(Queued { job_id: id.clone(), receiver });
@@ -148,6 +171,22 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
     }
     drain(core);
     queued
+}
+
+/// How long a queued upload is kept. Nothing expires on a destination
+/// whose bucket isn't known to have the lifecycle rules, whatever "Delete
+/// after" is set to: the effective setting is `delete_after_days` once the
+/// rules are active, and 0 (keep) until then. An upload to an exact key
+/// (the bucket browser) is exactly where the user put it, and stays.
+fn settled_expiry(expiry: Expiry, exact_key: bool, rules_active: bool, delete_after_days: u32) -> Expiry {
+    if exact_key || !rules_active {
+        return Expiry::Never;
+    }
+    match expiry {
+        Expiry::FromSettings if crate::expiry::is_valid(delete_after_days) => Expiry::Days(delete_after_days),
+        Expiry::Days(days) if crate::expiry::is_valid(days) => Expiry::Days(days),
+        _ => Expiry::Never,
+    }
 }
 
 /// Uploads whatever is on the clipboard. Returns false when there's
@@ -250,10 +289,13 @@ fn drain(core: &SharedCore) {
 async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<UploadResult, String> {
     let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
     let provider = S3Provider::new(destination.clone(), credentials);
-    let object_key = input
-        .object_key
-        .clone()
-        .unwrap_or_else(|| output::generate_key(&destination.object_path_template, &input.original_filename));
+    let object_key = input.object_key.clone().unwrap_or_else(|| {
+        let key = output::generate_key(&destination.object_path_template, &input.original_filename);
+        match input.expire_after_days() {
+            Some(days) => crate::expiry::expiring_key(&key, days),
+            None => key,
+        }
+    });
     let content_type = output::content_type(&input.original_filename);
 
     let progress = Arc::new(Progress::default());
@@ -317,6 +359,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         destination,
         mime_type: &mime_type,
         byte_size: result.byte_size,
+        expire_after_days: input.expire_after_days(),
     });
     // Before the job counts as finished: whoever started it (the local API)
     // may delete the file as soon as it has.
@@ -338,7 +381,11 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
     let copied = output::format(&result.public_url, settings.output_mode, &input.original_filename, &settings.custom_template);
     crate::clipboard::copy(&copied);
     if settings.show_notification {
-        show_notification(core, &t!("Uploaded"), &input.original_filename);
+        let body = match input.expire_after_days() {
+            Some(days) => format!("{}\n{}", input.original_filename, deletes_in(days)),
+            None => input.original_filename.clone(),
+        };
+        show_notification(core, &t!("Uploaded"), &body);
     }
     core.emit(
         events::UPLOAD_SUCCEEDED,
@@ -358,6 +405,15 @@ fn fail(core: &SharedCore, job_id: &str, input: &UploadInput, message: String) {
     set_state(core, job_id, JobState::Failed { message: message.clone() });
     show_notification(core, &t!("Upload failed"), &format!("{}: {message}", input.original_filename));
     drain(core);
+}
+
+/// "Deletes in 7 days", as the history badge words it on the upload's day.
+fn deletes_in(days: u32) -> String {
+    if days == 1 {
+        t!("Deletes in 1 day")
+    } else {
+        t!("Deletes in {0} days", days)
+    }
 }
 
 pub fn show_notification(core: &SharedCore, title: &str, body: &str) {
@@ -392,4 +448,26 @@ pub async fn delete_remote(core: &SharedCore, record_id: &str) -> Result<(), Str
     core.history.delete(&record.id);
     core.notify(events::HISTORY_CHANGED);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expires_only_on_destinations_with_rules() {
+        // The sticky setting applies once the bucket has the rules.
+        assert_eq!(settled_expiry(Expiry::FromSettings, false, true, 7), Expiry::Days(7));
+        assert_eq!(settled_expiry(Expiry::FromSettings, false, true, 0), Expiry::Never);
+        // Until then, nothing expires, whatever it says.
+        assert_eq!(settled_expiry(Expiry::FromSettings, false, false, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(30), false, false, 0), Expiry::Never);
+        // An explicit duration (the local API) wins over the setting.
+        assert_eq!(settled_expiry(Expiry::Days(1), false, true, 7), Expiry::Days(1));
+        assert_eq!(settled_expiry(Expiry::Never, false, true, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(3), false, true, 7), Expiry::Never);
+        // Exact keys never expire.
+        assert_eq!(settled_expiry(Expiry::FromSettings, true, true, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(7), true, true, 0), Expiry::Never);
+    }
 }

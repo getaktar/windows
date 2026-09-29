@@ -10,6 +10,10 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use aws_credential_types::Credentials;
+use aws_sigv4::http_request::{
+    sign, PayloadChecksumKind, PercentEncodingMode, SignableBody, SignableRequest, SigningSettings, UriPathNormalizationMode,
+};
+use aws_sigv4::sign::v4;
 use aws_sdk_s3::config::{BehaviorVersion, Region, RequestChecksumCalculation, ResponseChecksumValidation};
 use aws_sdk_s3::error::{DisplayErrorContext, ProvideErrorMetadata, SdkError};
 use aws_sdk_s3::presigning::PresigningConfig;
@@ -24,6 +28,7 @@ use serde::Serialize;
 
 use crate::credentials::StorageCredentials;
 use crate::destinations::DestinationConfig;
+use crate::expiry::{Removal, RulesStatus};
 use crate::output::{encode_copy_source, resolve_public_url};
 use crate::t;
 
@@ -81,6 +86,11 @@ pub enum StorageError {
     /// A network failure outside an upload (listing, deleting, testing).
     #[error("{}", t!("Could not connect. {0}", .0))]
     Connection(String),
+    /// A lifecycle request the key isn't allowed to make.
+    #[error("{}", t!("This key can't change the bucket's lifecycle rules."))]
+    LifecycleNotAllowed,
+    #[error("{}", t!("This provider doesn't support lifecycle rules."))]
+    LifecycleUnsupported,
     #[error("{0}")]
     Unknown(String),
 }
@@ -100,6 +110,9 @@ fn http_client() -> SharedHttpClient {
 pub struct S3Provider {
     config: DestinationConfig,
     client: Client,
+    /// For the requests signed by hand (lifecycle rules).
+    credentials: Credentials,
+    region: String,
 }
 
 impl S3Provider {
@@ -118,12 +131,12 @@ impl S3Provider {
         let s3_config = aws_sdk_s3::Config::builder()
             .behavior_version(BehaviorVersion::latest())
             .http_client(http_client())
-            .region(Region::new(region))
+            .region(Region::new(region.clone()))
             .endpoint_url(normalized_endpoint(&config.endpoint))
             // Path-style for providers that need it (MinIO), virtual-hosted
             // otherwise, same as the Mac app.
             .force_path_style(config.force_path_style)
-            .credentials_provider(credentials)
+            .credentials_provider(credentials.clone())
             // Newer SDKs add CRC checksums (and aws-chunked bodies) to every
             // upload by default, which several S3-compatible providers
             // reject. Only send them when an operation requires one.
@@ -131,7 +144,7 @@ impl S3Provider {
             .response_checksum_validation(ResponseChecksumValidation::WhenRequired)
             .timeout_config(TimeoutConfig::builder().connect_timeout(Duration::from_secs(15)).build())
             .build();
-        Self { config, client: Client::from_conf(s3_config) }
+        Self { config, client: Client::from_conf(s3_config), credentials, region }
     }
 
     fn bucket(&self) -> &str {
@@ -334,6 +347,113 @@ impl S3Provider {
         Ok(())
     }
 
+    /// Installs the lifecycle rules that delete expiring uploads (see
+    /// `expiry`), keeping every other rule the bucket has exactly as it
+    /// was. Saves nothing when they're already in place. A key that isn't
+    /// allowed to manage rules, or a provider without them, is a status
+    /// rather than an error.
+    pub async fn ensure_expiry_rules(&self) -> Result<RulesStatus, StorageError> {
+        match self.write_expiry_rules().await {
+            Ok(()) => Ok(RulesStatus::Active),
+            Err(error @ StorageError::LifecycleNotAllowed) => Ok(RulesStatus::Denied { message: error.to_string() }),
+            Err(error @ StorageError::LifecycleUnsupported) => Ok(RulesStatus::Unsupported { message: error.to_string() }),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn write_expiry_rules(&self) -> Result<(), StorageError> {
+        let existing = self.lifecycle_rules().await?.unwrap_or_default();
+        self.put_lifecycle(crate::expiry::merged_rules(&existing)).await
+    }
+
+    async fn put_lifecycle(&self, xml: Option<String>) -> Result<(), StorageError> {
+        let Some(xml) = xml else { return Ok(()) };
+        let response = self.lifecycle_request(reqwest::Method::PUT, Some(xml.as_bytes())).await?;
+        response.ok_or_failure(self.bucket())
+    }
+
+    /// Takes Aktar's expiry rules back out of the bucket, leaving its other
+    /// rules as they are. Nothing is written when there are none; when no
+    /// rules would be left, the configuration is deleted, since S3 doesn't
+    /// accept an empty one.
+    pub async fn remove_expiry_rules(&self) -> Result<(), StorageError> {
+        let Some(existing) = self.lifecycle_rules().await? else { return Ok(()) };
+        match crate::expiry::without_aktar_rules(&existing) {
+            Removal::Nothing => Ok(()),
+            Removal::Put(xml) => self.put_lifecycle(Some(xml)).await,
+            Removal::DeleteConfiguration => {
+                let response = self.lifecycle_request(reqwest::Method::DELETE, None).await?;
+                response.ok_or_failure(self.bucket())
+            }
+        }
+    }
+
+    /// The bucket's lifecycle rules, or None when it has no configuration
+    /// (answered with NoSuchLifecycleConfiguration rather than an empty one).
+    async fn lifecycle_rules(&self) -> Result<Option<Vec<crate::expiry::XmlRule>>, StorageError> {
+        let response = self.lifecycle_request(reqwest::Method::GET, None).await?;
+        if response.is_success() {
+            return Ok(Some(crate::expiry::parse_rules(&response.body)));
+        }
+        if crate::expiry::error_code(&response.body).0.as_deref() == Some("NoSuchLifecycleConfiguration") {
+            return Ok(None);
+        }
+        Err(lifecycle_failure(response.status, &response.body, self.bucket()))
+    }
+
+    /// `?lifecycle` on the bucket, signed here and sent as is: the SDK's
+    /// operations would decode and re-encode the rules (see `expiry`).
+    async fn lifecycle_request(&self, method: reqwest::Method, body: Option<&[u8]>) -> Result<RawResponse, StorageError> {
+        let url = bucket_url(&self.config, "lifecycle")?;
+        let content_md5 = body.map(|body| {
+            use md5::Digest;
+            aws_smithy_types::base64::encode(md5::Md5::digest(body))
+        });
+        let mut headers: Vec<(&str, &str)> = Vec::new();
+        if let Some(content_md5) = &content_md5 {
+            headers.push(("content-type", "application/xml"));
+            headers.push(("content-md5", content_md5));
+        }
+
+        let identity = self.credentials.clone().into();
+        let mut settings = SigningSettings::default();
+        // S3 wants x-amz-content-sha256, and the path as it is.
+        settings.payload_checksum_kind = PayloadChecksumKind::XAmzSha256;
+        settings.percent_encoding_mode = PercentEncodingMode::Single;
+        settings.uri_path_normalization_mode = UriPathNormalizationMode::Disabled;
+        let params = v4::SigningParams::builder()
+            .identity(&identity)
+            .region(&self.region)
+            .name("s3")
+            .time(std::time::SystemTime::now())
+            .settings(settings)
+            .build()
+            .map_err(|error| StorageError::Unknown(error.to_string()))?
+            .into();
+        let signable = SignableRequest::new(
+            method.as_str(),
+            url.as_str(),
+            headers.iter().copied(),
+            SignableBody::Bytes(body.unwrap_or_default()),
+        )
+        .map_err(|error| StorageError::Unknown(error.to_string()))?;
+        let (instructions, _) = sign(signable, &params)
+            .map_err(|error| StorageError::Unknown(error.to_string()))?
+            .into_parts();
+
+        let mut request = lifecycle_client().request(method, url);
+        for (name, value) in headers.iter().copied().chain(instructions.headers()) {
+            request = request.header(name, value);
+        }
+        if let Some(body) = body {
+            request = request.body(body.to_vec());
+        }
+        let response = request.send().await.map_err(|error| StorageError::Connection(innermost(&error)))?;
+        let status = response.status().as_u16();
+        let body = response.text().await.map_err(|error| StorageError::Connection(innermost(&error)))?;
+        Ok(RawResponse { status, body })
+    }
+
     /// A presigned GET URL, which works for private buckets and doesn't
     /// depend on the public base URL being set up correctly.
     pub async fn temporary_url(&self, object_key: &str, expires_in_seconds: u64) -> Result<String, StorageError> {
@@ -458,6 +578,85 @@ where
     }
 }
 
+struct RawResponse {
+    status: u16,
+    body: String,
+}
+
+impl RawResponse {
+    fn is_success(&self) -> bool {
+        (200..300).contains(&self.status)
+    }
+
+    fn ok_or_failure(self, bucket: &str) -> Result<(), StorageError> {
+        if self.is_success() {
+            Ok(())
+        } else {
+            Err(lifecycle_failure(self.status, &self.body, bucket))
+        }
+    }
+}
+
+/// Lifecycle requests get their own client, with an overall timeout: the
+/// shared SDK client isn't one reqwest can use.
+fn lifecycle_client() -> reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(15))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_default()
+        })
+        .clone()
+}
+
+/// `https://endpoint/bucket?query` (path style) or
+/// `https://bucket.endpoint/?query` (virtual hosted), the same URLs the SDK
+/// uses for the destination.
+fn bucket_url(config: &DestinationConfig, query: &str) -> Result<url::Url, StorageError> {
+    let invalid = || StorageError::Unknown(t!("The endpoint URL is not valid."));
+    let bucket = config.bucket.trim();
+    let mut url = url::Url::parse(&normalized_endpoint(&config.endpoint)).map_err(|_| invalid())?;
+    let host = url.host_str().filter(|host| !host.is_empty()).ok_or_else(invalid)?.to_string();
+    if bucket.is_empty() {
+        return Err(invalid());
+    }
+    let base_path = url.path().trim_end_matches('/').to_string();
+    if config.force_path_style {
+        url.set_path(&format!("{base_path}/{bucket}"));
+    } else {
+        url.set_host(Some(&format!("{bucket}.{host}"))).map_err(|_| invalid())?;
+        url.set_path(&format!("{base_path}/"));
+    }
+    url.set_query(Some(query));
+    Ok(url)
+}
+
+/// What a failed lifecycle request says. Keys that can upload but not
+/// change bucket settings (an R2 "Object Read & Write" token) get "access
+/// denied"; a provider without lifecycle rules answers "not implemented"
+/// or refuses the method.
+fn lifecycle_failure(status: u16, body: &str, bucket: &str) -> StorageError {
+    let (code, message) = crate::expiry::error_code(body);
+    match (status, code.as_deref()) {
+        (_, Some("NoSuchBucket")) => StorageError::BucketNotFound(bucket.to_string()),
+        (_, Some("InvalidAccessKeyId" | "SignatureDoesNotMatch")) => StorageError::InvalidCredentials,
+        (403, _) | (_, Some("AccessDenied")) => StorageError::LifecycleNotAllowed,
+        (405 | 501, _) | (_, Some("NotImplemented")) => StorageError::LifecycleUnsupported,
+        _ => StorageError::Unknown(message.or(code).unwrap_or_else(|| format!("HTTP {status}"))),
+    }
+}
+
+fn innermost(error: &dyn std::error::Error) -> String {
+    let mut source = error;
+    while let Some(next) = source.source() {
+        source = next;
+    }
+    source.to_string()
+}
+
 /// The innermost cause is usually the useful part ("connection refused",
 /// "dns error: ..."), not the SDK's "dispatch failure" wrapper.
 fn readable<E: std::error::Error + 'static, R: std::fmt::Debug>(error: &SdkError<E, R>) -> String {
@@ -468,12 +667,69 @@ fn readable<E: std::error::Error + 'static, R: std::fmt::Debug>(error: &SdkError
     source.to_string()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::destinations::ProviderPreset;
+
+    fn config(endpoint: &str, bucket: &str, force_path_style: bool) -> DestinationConfig {
+        DestinationConfig {
+            id: "TEST".into(),
+            name: "Test".into(),
+            preset: ProviderPreset::CustomS3,
+            account_id: None,
+            endpoint: endpoint.into(),
+            region: "auto".into(),
+            bucket: bucket.into(),
+            public_base_url: String::new(),
+            object_path_template: "{filename}.{ext}".into(),
+            force_path_style,
+            is_default: false,
+        }
+    }
+
+    #[test]
+    fn builds_bucket_urls() {
+        let url = |endpoint: &str, path_style: bool| bucket_url(&config(endpoint, "files", path_style), "lifecycle").map(|url| url.to_string());
+        assert_eq!(url("https://acc.r2.cloudflarestorage.com", false).unwrap(), "https://files.acc.r2.cloudflarestorage.com/?lifecycle");
+        assert_eq!(url("acc.r2.cloudflarestorage.com/", false).unwrap(), "https://files.acc.r2.cloudflarestorage.com/?lifecycle");
+        assert_eq!(url("http://127.0.0.1:9000", true).unwrap(), "http://127.0.0.1:9000/files?lifecycle");
+        assert_eq!(url("https://minio.example.com/s3/", true).unwrap(), "https://minio.example.com/s3/files?lifecycle");
+        assert!(url("", false).is_err());
+        assert!(bucket_url(&config("https://example.com", " ", true), "lifecycle").is_err());
+    }
+
+    fn failure(status: u16, code: &str) -> StorageError {
+        let body = format!("<?xml version=\"1.0\"?><Error><Code>{code}</Code><Message>Details</Message></Error>");
+        lifecycle_failure(status, &body, "files")
+    }
+
+    #[test]
+    fn sorts_lifecycle_failures() {
+        assert!(matches!(failure(403, "AccessDenied"), StorageError::LifecycleNotAllowed));
+        assert!(matches!(lifecycle_failure(403, "", "files"), StorageError::LifecycleNotAllowed));
+        assert!(matches!(failure(400, "AccessDenied"), StorageError::LifecycleNotAllowed));
+        assert!(matches!(failure(403, "InvalidAccessKeyId"), StorageError::InvalidCredentials));
+        assert!(matches!(failure(403, "SignatureDoesNotMatch"), StorageError::InvalidCredentials));
+        assert!(matches!(failure(404, "NoSuchBucket"), StorageError::BucketNotFound(bucket) if bucket == "files"));
+        assert!(matches!(failure(501, "NotImplemented"), StorageError::LifecycleUnsupported));
+        assert!(matches!(lifecycle_failure(405, "", "files"), StorageError::LifecycleUnsupported));
+        assert!(matches!(failure(400, "NotImplemented"), StorageError::LifecycleUnsupported));
+        assert!(matches!(failure(400, "MalformedXML"), StorageError::Unknown(message) if message == "Details"));
+        assert!(matches!(lifecycle_failure(500, "", "files"), StorageError::Unknown(message) if message == "HTTP 500"));
+    }
+}
+
 /// Runs against a real S3-compatible server, e.g. `moto_server -p 9100`
 /// with a bucket named "aktar-test":
 ///
 /// ```text
 /// AKTAR_TEST_S3_ENDPOINT=http://127.0.0.1:9100 cargo test storage -- --ignored
 /// ```
+///
+/// To check request signatures too, start moto with
+/// `INITIAL_NO_AUTH_ACTION_COUNT` set, create an IAM user and key, and pass
+/// them as `AKTAR_TEST_S3_ACCESS_KEY` and `AKTAR_TEST_S3_SECRET`.
 #[cfg(test)]
 mod live_tests {
     use super::*;
@@ -494,9 +750,10 @@ mod live_tests {
             force_path_style: true,
             is_default: true,
         };
+        // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
-            access_key_id: "AKIATEST".into(),
-            secret_access_key: secret.into(),
+            access_key_id: std::env::var("AKTAR_TEST_S3_ACCESS_KEY").unwrap_or_else(|_| "AKIATEST".into()),
+            secret_access_key: std::env::var("AKTAR_TEST_S3_SECRET").unwrap_or_else(|_| secret.into()),
             session_token: None,
         };
         Some(S3Provider::new(config, credentials))
@@ -551,6 +808,57 @@ mod live_tests {
         storage.delete("moved/renamed.txt").await.unwrap();
         storage.delete("live/empty/").await.unwrap();
         assert!(!storage.object_exists("moved/renamed.txt").await.unwrap());
+    }
+
+    async fn lifecycle_xml(storage: &S3Provider) -> Option<String> {
+        let response = storage.lifecycle_request(reqwest::Method::GET, None).await.unwrap();
+        response.is_success().then_some(response.body)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn sets_up_and_removes_expiry_rules() {
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+
+        // One of the user's own rules, which must survive both ways.
+        let own = "<ID>user-logs</ID><Filter><Prefix>logs/</Prefix></Filter><Status>Enabled</Status><Expiration><Days>90</Days></Expiration>";
+        let configuration = format!(r#"<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule>{own}</Rule></LifecycleConfiguration>"#);
+        storage.put_lifecycle(Some(configuration)).await.unwrap();
+
+        assert_eq!(storage.ensure_expiry_rules().await.unwrap(), RulesStatus::Active);
+        assert_eq!(storage.ensure_expiry_rules().await.unwrap(), RulesStatus::Active);
+        let rules = crate::expiry::parse_rules(&lifecycle_xml(&storage).await.unwrap());
+        let ids: Vec<&str> = rules.iter().filter_map(|rule| rule.id.as_deref()).collect();
+        assert_eq!(ids, ["user-logs", "aktar-expire-1d", "aktar-expire-7d", "aktar-expire-14d", "aktar-expire-30d"]);
+        assert_eq!(crate::expiry::merged_rules(&rules), None);
+
+        // Removing keeps the user's rule; removing again changes nothing.
+        storage.remove_expiry_rules().await.unwrap();
+        let rules = crate::expiry::parse_rules(&lifecycle_xml(&storage).await.unwrap());
+        assert_eq!(rules.iter().filter_map(|rule| rule.id.as_deref()).collect::<Vec<_>>(), ["user-logs"]);
+        storage.remove_expiry_rules().await.unwrap();
+
+        // A bucket with no rules at all answers NoSuchLifecycleConfiguration.
+        let response = storage.lifecycle_request(reqwest::Method::DELETE, None).await.unwrap();
+        assert!(response.is_success());
+        assert_eq!(lifecycle_xml(&storage).await, None);
+        storage.remove_expiry_rules().await.unwrap();
+        assert_eq!(storage.ensure_expiry_rules().await.unwrap(), RulesStatus::Active);
+        assert_eq!(crate::expiry::parse_rules(&lifecycle_xml(&storage).await.unwrap()).len(), 4);
+
+        // With only Aktar's rules left, the configuration goes entirely.
+        storage.remove_expiry_rules().await.unwrap();
+        assert_eq!(lifecycle_xml(&storage).await, None);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn lifecycle_requests_report_missing_buckets() {
+        let Some(storage) = provider("no-such-bucket-aktar", "secret") else { return };
+        match storage.ensure_expiry_rules().await {
+            Err(StorageError::BucketNotFound(bucket)) => assert_eq!(bucket, "no-such-bucket-aktar"),
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[tokio::test]

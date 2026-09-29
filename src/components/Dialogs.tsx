@@ -26,6 +26,8 @@ export function ConfirmDialog(props: {
   message: string;
   confirmLabel: string;
   destructive?: boolean;
+  /** A second way to confirm, next to the main one. */
+  alternative?: { label: string; onSelect: () => void };
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -40,6 +42,11 @@ export function ConfirmDialog(props: {
             <Button appearance="secondary" onClick={props.onCancel}>
               {t("Cancel")}
             </Button>
+            {props.alternative && (
+              <Button appearance="secondary" onClick={props.alternative.onSelect}>
+                {props.alternative.label}
+              </Button>
+            )}
             <Button
               appearance="primary"
               className={props.destructive ? "destructive" : undefined}

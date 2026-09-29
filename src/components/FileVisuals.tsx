@@ -1,3 +1,4 @@
+import { Badge } from "@fluentui/react-components";
 import {
   CloudRegular,
   DatabaseRegular,
@@ -10,6 +11,7 @@ import {
   MusicNote2Regular,
   ServerRegular,
   StorageRegular,
+  TimerRegular,
   VideoRegular,
   BoxRegular,
 } from "@fluentui/react-icons";
@@ -17,7 +19,8 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
 import { api, type ProviderPreset, type UploadRecord } from "../lib/api";
-import { fileKind } from "../lib/format";
+import { expiryLabel, fileKind, formatDateTime } from "../lib/format";
+import { useI18n } from "../lib/i18n";
 
 /** A generic icon for a file, based on its extension, wherever a real
  * thumbnail isn't available. */
@@ -93,5 +96,24 @@ export function Thumbnail({ record, size }: { record: UploadRecord; size: number
     <div className="thumb thumb-icon" style={{ width: size, height: size, borderRadius: radius }}>
       <FileIcon filename={record.localFilename} size={Math.round(size * 0.45)} />
     </div>
+  );
+}
+
+/** "Deletes in 5 days" on an expiring upload, with the exact time on hover. */
+export function ExpiryBadge({ expiresAt }: { expiresAt: number | null }) {
+  const { t, locale } = useI18n();
+  if (expiresAt === null) return null;
+  const expired = expiresAt <= Date.now();
+  return (
+    <Badge
+      className="expiry-badge"
+      appearance="tint"
+      color={expired ? "danger" : "warning"}
+      size="small"
+      icon={<TimerRegular />}
+      title={formatDateTime(expiresAt, locale, "full")}
+    >
+      {expiryLabel(expiresAt, Date.now(), t)}
+    </Badge>
   );
 }

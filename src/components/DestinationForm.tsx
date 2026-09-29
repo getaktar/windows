@@ -15,9 +15,17 @@ import {
 } from "@fluentui/react-components";
 import { useEffect, useState } from "react";
 
-import { api, errorMessage, type DestinationConfig, type ProviderPreset } from "../lib/api";
-import { providerName } from "../lib/format";
+import {
+  api,
+  errorMessage,
+  type DestinationConfig,
+  type ExpiryRulesCheck,
+  type FormRules,
+  type ProviderPreset,
+} from "../lib/api";
+import { expiryRulesExplanation, formatDateTime, providerName, rulesStatusMessage } from "../lib/format";
 import { useI18n } from "../lib/i18n";
+import { ConfirmDialog } from "./Dialogs";
 
 const presets: ProviderPreset[] = ["cloudflareR2", "amazonS3", "minIO", "backblazeB2", "digitalOceanSpaces", "customS3"];
 
@@ -37,7 +45,7 @@ interface Props {
 }
 
 export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [preset, setPreset] = useState<ProviderPreset>("cloudflareR2");
   const [name, setName] = useState("");
   const [accountID, setAccountID] = useState("");
@@ -53,9 +61,21 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [rulesCheck, setRulesCheck] = useState<ExpiryRulesCheck | null>(null);
+  const [isCheckingRules, setIsCheckingRules] = useState(false);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  /** The rules result obtained in this form (checked, set up, or turned
+   * off), which saving records instead of guessing from what was edited. */
+  const [formRules, setFormRules] = useState<FormRules>({ kind: "notChecked" });
+  const [isConfirmingTurnOff, setIsConfirmingTurnOff] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setRulesCheck(null);
+    setRulesError(null);
+    setFormRules({ kind: "notChecked" });
+    setIsConfirmingTurnOff(false);
+    if (existing) api.expiryRulesStatus(existing.id).then(setRulesCheck).catch(() => {});
     const initialPreset = existing?.preset ?? "cloudflareR2";
     setPreset(initialPreset);
     setName(existing?.name ?? "");
@@ -120,11 +140,42 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     }
   };
 
+  const setUpRules = async () => {
+    setIsCheckingRules(true);
+    setRulesError(null);
+    try {
+      const check = await api.setUpExpiryRules(currentConfig(), credentials());
+      setRulesCheck(check);
+      setFormRules({ kind: "checked", check });
+    } catch (error) {
+      setRulesError(errorMessage(error));
+    } finally {
+      setIsCheckingRules(false);
+    }
+  };
+
+  /** "Turn Off" marks the destination not active; "Turn Off and Remove
+   * Rules" also takes Aktar's rules out of the bucket first. */
+  const turnOffRules = async (removingRules: boolean) => {
+    setIsConfirmingTurnOff(false);
+    setIsCheckingRules(true);
+    setRulesError(null);
+    try {
+      if (removingRules) await api.removeExpiryRules(currentConfig(), credentials());
+      setRulesCheck(null);
+      setFormRules({ kind: "checked", check: null });
+    } catch (error) {
+      setRulesError(errorMessage(error));
+    } finally {
+      setIsCheckingRules(false);
+    }
+  };
+
   const save = async () => {
     setIsSaving(true);
     setSaveError(null);
     try {
-      onSaved(await api.saveDestination(currentConfig(), credentials()));
+      onSaved(await api.saveDestination(currentConfig(), credentials(), formRules));
     } catch (error) {
       setSaveError(errorMessage(error));
     } finally {
@@ -270,6 +321,41 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 </Field>
               </div>
 
+              <Text weight="semibold" className="form-heading">
+                {t("Auto-delete")}
+              </Text>
+              <div className="form-group">
+                <Text size={200} className="secondary">
+                  {t("Uploads with “Delete after” turned on are removed by lifecycle rules in the bucket.")}
+                </Text>
+                <ExpiryRulesState check={rulesCheck} />
+                {rulesError && (
+                  <Text size={200} className="text-error">
+                    {rulesError}
+                  </Text>
+                )}
+                <div className="inline-row">
+                  <Button
+                    size="small"
+                    disabled={isCheckingRules}
+                    icon={isCheckingRules ? <Spinner size="tiny" /> : undefined}
+                    onClick={setUpRules}
+                  >
+                    {isCheckingRules ? t("Checking…") : rulesCheck ? t("Check Again") : t("Set Up")}
+                  </Button>
+                  {rulesCheck?.status.kind === "active" && (
+                    <Button size="small" disabled={isCheckingRules} onClick={() => setIsConfirmingTurnOff(true)}>
+                      {t("Turn Off…")}
+                    </Button>
+                  )}
+                  {rulesCheck && (
+                    <Text size={200} className="secondary">
+                      {t("Last checked {0}", formatDateTime(rulesCheck.checkedAt, locale))}
+                    </Text>
+                  )}
+                </div>
+              </div>
+
               {testResult && (
                 <Text size={200} className={testResult.ok ? "text-success" : "text-error"}>
                   {testResult.message}
@@ -301,7 +387,51 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
             </DialogActions>
           </DialogBody>
         </form>
+        <ConfirmDialog
+          open={isConfirmingTurnOff}
+          title={t("Turn off auto-delete for this destination?")}
+          message={t(
+            "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.",
+          )}
+          alternative={{ label: t("Turn Off"), onSelect: () => turnOffRules(false) }}
+          confirmLabel={t("Turn Off and Remove Rules")}
+          destructive
+          onConfirm={() => turnOffRules(true)}
+          onCancel={() => setIsConfirmingTurnOff(false)}
+        />
       </DialogSurface>
     </Dialog>
+  );
+}
+
+/** Whether the bucket deletes expiring uploads itself, and if the key
+ * can't set that up, how to do it by hand. */
+function ExpiryRulesState({ check }: { check: ExpiryRulesCheck | null }) {
+  const { t } = useI18n();
+  if (!check) {
+    return (
+      <Text size={200} className="secondary">
+        {t("Not set up yet.")}
+      </Text>
+    );
+  }
+  if (check.status.kind === "active") {
+    return (
+      <Text size={200} className="text-success">
+        {t("Lifecycle rules are set up.")}
+      </Text>
+    );
+  }
+  return (
+    <div className="expiry-rules-help">
+      <Text size={200} className="text-warning" title={check.status.message}>
+        {rulesStatusMessage(check.status.kind, t)}
+      </Text>
+      {check.status.kind === "denied" && (
+        <Text size={200} className="secondary">
+          {expiryRulesExplanation(t)}
+        </Text>
+      )}
+    </div>
   );
 }

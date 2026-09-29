@@ -1,5 +1,14 @@
 {
   "// About this file": "Strings that only exist in the Windows app, with their translations. scripts/extract_locales.py merges them into src/locales on top of the Mac app's String Catalog. Keep the tone of the catalog: 'sen' in Turkish, 'du' in German, 'vous' in French, 'tú' in Spanish, 'você' in Portuguese.",
+  "1 day": {
+    "tr": "1 gün",
+    "de": "1 Tag",
+    "fr": "1 jour",
+    "es": "1 día",
+    "pt-BR": "1 dia",
+    "ja": "1日",
+    "zh-Hans": "1 天"
+  },
   "A new version of Aktar is available!": {
     "tr": "Aktar'ın yeni bir sürümü var!",
     "de": "Eine neue Version von Aktar ist verfügbar!",
@@ -72,6 +81,24 @@
     "ja": "このポートは別のアプリがすでに使用しています。別のポートを選んでください。",
     "zh-Hans": "另一个应用已在使用此端口。请选择其他端口。"
   },
+  "Auto-delete": {
+    "tr": "Otomatik silme",
+    "de": "Automatisch löschen",
+    "fr": "Suppression automatique",
+    "es": "Eliminación automática",
+    "pt-BR": "Exclusão automática",
+    "ja": "自動削除",
+    "zh-Hans": "自动删除"
+  },
+  "Check Again": {
+    "tr": "Tekrar Kontrol Et",
+    "de": "Erneut prüfen",
+    "fr": "Vérifier à nouveau",
+    "es": "Comprobar de nuevo",
+    "pt-BR": "Verificar novamente",
+    "ja": "再確認",
+    "zh-Hans": "重新检查"
+  },
   "Checking for updates…": {
     "tr": "Güncellemeler denetleniyor…",
     "de": "Nach Updates suchen …",
@@ -80,6 +107,15 @@
     "pt-BR": "Verificando atualizações…",
     "ja": "アップデートを確認中…",
     "zh-Hans": "正在检查更新…"
+  },
+  "Checking…": {
+    "tr": "Kontrol ediliyor…",
+    "de": "Wird geprüft…",
+    "fr": "Vérification…",
+    "es": "Comprobando…",
+    "pt-BR": "Verificando…",
+    "ja": "確認中…",
+    "zh-Hans": "正在检查…"
   },
   "Clear": {
     "tr": "Temizle",
@@ -126,6 +162,60 @@
     "ja": "資格情報マネージャーのエラー({0})。",
     "zh-Hans": "凭据管理器错误（{0}）。"
   },
+  "Delete after": {
+    "tr": "Silinme süresi",
+    "de": "Löschen nach",
+    "fr": "Supprimer après",
+    "es": "Eliminar tras",
+    "pt-BR": "Excluir após",
+    "ja": "削除まで",
+    "zh-Hans": "删除期限"
+  },
+  "Deletes after 1 day": {
+    "tr": "1 gün sonra silinir",
+    "de": "Wird nach 1 Tag gelöscht",
+    "fr": "Supprimé après 1 jour",
+    "es": "Se elimina tras 1 día",
+    "pt-BR": "Excluído após 1 dia",
+    "ja": "1日後に削除されます",
+    "zh-Hans": "1 天后删除"
+  },
+  "Deletes after {0} days": {
+    "tr": "{0} gün sonra silinir",
+    "de": "Wird nach {0} Tagen gelöscht",
+    "fr": "Supprimé après {0} jours",
+    "es": "Se elimina tras {0} días",
+    "pt-BR": "Excluído após {0} dias",
+    "ja": "{0}日後に削除されます",
+    "zh-Hans": "{0} 天后删除"
+  },
+  "Deletes in 1 day": {
+    "tr": "1 gün içinde silinecek",
+    "de": "Wird in 1 Tag gelöscht",
+    "fr": "Supprimé dans 1 jour",
+    "es": "Se elimina en 1 día",
+    "pt-BR": "Será excluído em 1 dia",
+    "ja": "あと1日で削除",
+    "zh-Hans": "将在 1 天后删除"
+  },
+  "Deletes in {0} days": {
+    "tr": "{0} gün içinde silinecek",
+    "de": "Wird in {0} Tagen gelöscht",
+    "fr": "Supprimé dans {0} jours",
+    "es": "Se elimina en {0} días",
+    "pt-BR": "Será excluído em {0} dias",
+    "ja": "あと{0}日で削除",
+    "zh-Hans": "将在 {0} 天后删除"
+  },
+  "Deletes today": {
+    "tr": "Bugün silinecek",
+    "de": "Wird heute gelöscht",
+    "fr": "Supprimé aujourd’hui",
+    "es": "Se elimina hoy",
+    "pt-BR": "Será excluído hoje",
+    "ja": "今日削除",
+    "zh-Hans": "今天删除"
+  },
   "Download new versions in the background and install them when you’re not using Aktar": {
     "tr": "Yeni sürümleri arka planda indir ve Aktar'ı kullanmadığın bir anda yükle",
     "de": "Neue Versionen im Hintergrund laden und installieren, wenn du Aktar gerade nicht verwendest",
@@ -152,6 +242,15 @@
     "pt-BR": "Insira um Access Key ID e uma Secret Access Key.",
     "ja": "アクセスキーIDとシークレットアクセスキーを入力してください。",
     "zh-Hans": "请输入 Access Key ID 和 Secret Access Key。"
+  },
+  "Expired": {
+    "tr": "Süresi doldu",
+    "de": "Abgelaufen",
+    "fr": "Expiré",
+    "es": "Caducado",
+    "pt-BR": "Expirado",
+    "ja": "期限切れ",
+    "zh-Hans": "已过期"
   },
   "Folders": {
     "tr": "Klasörler",
@@ -207,6 +306,15 @@
     "ja": "Aktarを使っていないとき、または次にAktarを終了したときにインストールされます。",
     "zh-Hans": "将在你未使用 Aktar 时或下次退出 Aktar 时安装。"
   },
+  "Last checked {0}": {
+    "tr": "Son kontrol: {0}",
+    "de": "Zuletzt geprüft: {0}",
+    "fr": "Dernière vérification : {0}",
+    "es": "Última comprobación: {0}",
+    "pt-BR": "Última verificação: {0}",
+    "ja": "最終確認：{0}",
+    "zh-Hans": "上次检查：{0}"
+  },
   "Later": {
     "tr": "Sonra",
     "de": "Später",
@@ -215,6 +323,15 @@
     "pt-BR": "Mais tarde",
     "ja": "あとで",
     "zh-Hans": "稍后"
+  },
+  "Lifecycle rules are set up.": {
+    "tr": "Yaşam döngüsü kuralları kurulu.",
+    "de": "Lebenszyklusregeln sind eingerichtet.",
+    "fr": "Les règles de cycle de vie sont configurées.",
+    "es": "Las reglas de ciclo de vida están configuradas.",
+    "pt-BR": "As regras de ciclo de vida estão configuradas.",
+    "ja": "ライフサイクルルールは設定済みです。",
+    "zh-Hans": "生命周期规则已设置。"
   },
   "More": {
     "tr": "Daha Fazla",
@@ -242,6 +359,15 @@
     "pt-BR": "Não há destino para enviar. Adicione um em Ajustes.",
     "ja": "アップロード先がありません。設定で追加してください。",
     "zh-Hans": "没有可上传的目标。请在设置中添加一个。"
+  },
+  "Not set up yet.": {
+    "tr": "Henüz kurulmadı.",
+    "de": "Noch nicht eingerichtet.",
+    "fr": "Pas encore configuré.",
+    "es": "Aún no está configurado.",
+    "pt-BR": "Ainda não configurado.",
+    "ja": "まだ設定されていません。",
+    "zh-Hans": "尚未设置。"
   },
   "On many keyboards Ctrl+Alt types characters like @ or €. Add Shift or the Windows key.": {
     "tr": "Birçok klavyede Ctrl+Alt, @ ya da € gibi karakterler yazar. Shift ya da Windows tuşunu da ekle.",
@@ -305,6 +431,15 @@
     "pt-BR": "Remover “{0}”?",
     "ja": "“{0}”を削除しますか？",
     "zh-Hans": "要移除“{0}”吗？"
+  },
+  "Set Up": {
+    "tr": "Kur",
+    "de": "Einrichten",
+    "fr": "Configurer",
+    "es": "Configurar",
+    "pt-BR": "Configurar",
+    "ja": "設定",
+    "zh-Hans": "设置"
   },
   "Software Update": {
     "tr": "Yazılım Güncelleme",
@@ -396,6 +531,15 @@
     "ja": "クリップボードをアップロード",
     "zh-Hans": "上传剪贴板内容"
   },
+  "Uploads with “Delete after” turned on are removed by lifecycle rules in the bucket.": {
+    "tr": "“Silinme süresi” açık olan yüklemeler, bucket'taki yaşam döngüsü kurallarıyla silinir.",
+    "de": "Uploads mit „Löschen nach“ werden durch Lebenszyklusregeln im Bucket entfernt.",
+    "fr": "Les envois avec « Supprimer après » activé sont supprimés par les règles de cycle de vie du bucket.",
+    "es": "Las subidas con “Eliminar tras” activado se eliminan mediante reglas de ciclo de vida del bucket.",
+    "pt-BR": "Os envios com “Excluir após” ativado são removidos por regras de ciclo de vida do bucket.",
+    "ja": "「削除まで」を設定したアップロードは、バケットのライフサイクルルールで削除されます。",
+    "zh-Hans": "开启“删除期限”的上传会由存储桶的生命周期规则删除。"
+  },
   "Use Aktar from other apps on this PC.": {
     "tr": "Aktar'ı bu bilgisayardaki diğer uygulamalardan kullan.",
     "de": "Nutze Aktar aus anderen Apps auf diesem PC.",
@@ -458,5 +602,14 @@
     "pt-BR": "Você está atualizado!",
     "ja": "最新の状態です！",
     "zh-Hans": "已是最新版本！"
+  },
+  "{0} days": {
+    "tr": "{0} gün",
+    "de": "{0} Tage",
+    "fr": "{0} jours",
+    "es": "{0} días",
+    "pt-BR": "{0} dias",
+    "ja": "{0}日",
+    "zh-Hans": "{0} 天"
   }
 }

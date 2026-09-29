@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use arboard::{Clipboard, ImageData};
 
-use crate::uploads::UploadInput;
+use crate::uploads::{Expiry, UploadInput};
 
 pub fn copy(text: &str) {
     match Clipboard::new() {
@@ -50,7 +50,7 @@ fn write_temporary_image(image: ImageData) -> Option<UploadInput> {
     std::fs::create_dir_all(&directory).ok()?;
     let path = directory.join(format!("{}.png", crate::util::new_id()));
     buffer.save_with_format(&path, image::ImageFormat::Png).ok()?;
-    Some(UploadInput { path, original_filename: filename, object_key: None, temporary: true })
+    Some(UploadInput { path, original_filename: filename, object_key: None, temporary: true, expiry: Expiry::FromSettings })
 }
 
 fn temporary_directory() -> PathBuf {

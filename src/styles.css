@@ -221,10 +221,21 @@ body {
   justify-content: space-between;
 }
 
+.picker-row {
+  display: flex;
+  gap: 8px;
+}
+
 .destination-picker {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.delete-after-picker {
+  flex: 0 0 104px;
 }
 
 .destination-button {
@@ -254,6 +265,26 @@ body {
 .dropzone-buttons {
   display: flex;
   gap: 8px;
+}
+
+.dropzone-expiry {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  color: var(--colorPaletteDarkOrangeForeground1);
+}
+
+.expiry-badge {
+  flex-shrink: 0;
+}
+
+.detail-header .expiry-badge {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.recent-subtitle {
+  gap: 6px;
 }
 
 .panel-notice {
@@ -541,6 +572,12 @@ body {
 
 .form-heading {
   margin-top: 6px;
+}
+
+.expiry-rules-help {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .dialog-stack {

@@ -2,11 +2,13 @@
 //! goes here: storage credentials and the local API token live in Windows
 //! Credential Manager (see `credentials`).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::expiry::RulesCheck;
 use crate::output::OutputMode;
 
 pub const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Alt+KeyU";
@@ -30,6 +32,13 @@ pub struct Settings {
     pub auto_install_updates: bool,
     /// Unix milliseconds of the last automatic update check.
     pub last_update_check: Option<i64>,
+    /// "Delete after" for uploads from the panel, the shortcut, and
+    /// everything else that uses the destination's path template: one of
+    /// `expiry::DURATIONS`, or 0 to keep them.
+    pub delete_after_days: u32,
+    /// Whether each destination's lifecycle rules are set up, by ID.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub expiry_rules: HashMap<String, RulesCheck>,
     /// Set before an update installs on its own, so the relaunch it ends
     /// with stays in the tray instead of opening the panel.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -50,6 +59,8 @@ impl Default for Settings {
             auto_check_updates: true,
             auto_install_updates: false,
             last_update_check: None,
+            delete_after_days: 0,
+            expiry_rules: HashMap::new(),
             quiet_next_launch: false,
         }
     }
@@ -66,6 +77,7 @@ pub struct SettingsPatch {
     pub close_panel_after_upload: Option<bool>,
     pub auto_check_updates: Option<bool>,
     pub auto_install_updates: Option<bool>,
+    pub delete_after_days: Option<u32>,
 }
 
 pub struct SettingsStore {
@@ -82,6 +94,9 @@ impl SettingsStore {
             .unwrap_or_default();
         if settings.local_api_port < 1024 {
             settings.local_api_port = DEFAULT_LOCAL_API_PORT;
+        }
+        if !crate::expiry::is_valid(settings.delete_after_days) {
+            settings.delete_after_days = 0;
         }
         Self { path, settings: Mutex::new(settings) }
     }
@@ -118,6 +133,9 @@ impl SettingsStore {
             }
             if let Some(value) = patch.auto_install_updates {
                 settings.auto_install_updates = value;
+            }
+            if let Some(value) = patch.delete_after_days.filter(|days| *days == 0 || crate::expiry::is_valid(*days)) {
+                settings.delete_after_days = value;
             }
         })
     }
