@@ -38,6 +38,7 @@ import {
   DocumentCopyRegular,
   CloudAddRegular,
 } from "@fluentui/react-icons";
+import { message } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState, type ReactElement } from "react";
 
 import { ConfirmDialog } from "../components/Dialogs";
@@ -285,6 +286,16 @@ function DestinationsSettings() {
                         {!destination.isDefault && (
                           <MenuItem onClick={() => api.setDefaultDestination(destination.id)}>{t("Set as Default")}</MenuItem>
                         )}
+                        <MenuItem
+                          onClick={() =>
+                            api
+                              .duplicateDestination(destination.id)
+                              .then(openForm)
+                              .catch((error) => message(errorMessage(error), { kind: "error" }))
+                          }
+                        >
+                          {t("Duplicate")}
+                        </MenuItem>
                         <MenuDivider />
                         <MenuItem className="menu-destructive" onClick={() => setRemoving(destination)}>
                           {t("Remove")}

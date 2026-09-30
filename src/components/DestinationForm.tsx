@@ -13,18 +13,35 @@ import {
   Switch,
   Text,
 } from "@fluentui/react-components";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   api,
   errorMessage,
+  expiryDurations,
+  folderUploadModes,
+  imageMetadataPolicies,
+  temporaryLinkDurations,
+  type ConnectionResult,
   type DestinationConfig,
   type ExpiryRulesCheck,
+  type FolderUploadMode,
   type FormRules,
+  type ImageMetadataPolicy,
+  type OutputMode,
   type ProviderPreset,
+  type PublicLinkCheck,
 } from "../lib/api";
-import { expiryRulesExplanation, formatDateTime, providerName, rulesStatusMessage } from "../lib/format";
-import { useI18n } from "../lib/i18n";
+import {
+  durationLabel,
+  expiryRulesExplanation,
+  formatDateTime,
+  providerName,
+  rulesStatusMessage,
+  temporaryLinkLabel,
+} from "../lib/format";
+import { useSettings } from "../lib/hooks";
+import { useI18n, type Translate } from "../lib/i18n";
 import { ConfirmDialog } from "./Dialogs";
 
 const presets: ProviderPreset[] = ["cloudflareR2", "amazonS3", "minIO", "backblazeB2", "digitalOceanSpaces", "customS3"];
@@ -57,7 +74,22 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [publicBaseURL, setPublicBaseURL] = useState("");
   const [objectPathTemplate, setObjectPathTemplate] = useState("{year}/{month}/{uuid}.{ext}");
   const [forcePathStyle, setForcePathStyle] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [settings] = useSettings();
+  /** Upload Defaults; null follows Settings > Output. */
+  const [outputMode, setOutputMode] = useState<OutputMode | null>(null);
+  const [temporaryLink, setTemporaryLink] = useState<number | null>(null);
+  const [expiryDays, setExpiryDays] = useState(0);
+  const [imageMetadata, setImageMetadata] = useState<ImageMetadataPolicy>("removeLocation");
+  const [folderUpload, setFolderUpload] = useState<FolderUploadMode>("zip");
+  const [testResult, setTestResult] = useState<ConnectionResult | null>(null);
+  /** Why the test couldn't reach the bucket at all. */
+  const [testError, setTestError] = useState<string | null>(null);
+  const testOutcome = useRef<HTMLDivElement>(null);
+
+  // The result is at the bottom of a long form: bring it into view.
+  useEffect(() => {
+    if (testResult || testError) testOutcome.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [testResult, testError]);
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -91,8 +123,15 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setPublicBaseURL(existing?.publicBaseURL ?? "");
     setObjectPathTemplate(existing?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
     setForcePathStyle(existing?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
+    setOutputMode(existing?.outputMode ?? null);
+    setTemporaryLink(existing?.temporaryLink ?? null);
+    setExpiryDays(existing?.expiryDays ?? settings?.deleteAfterDays ?? 0);
+    setImageMetadata(existing?.imageMetadata ?? "removeLocation");
+    setFolderUpload(existing?.folderUpload ?? "zip");
     setTestResult(null);
+    setTestError(null);
     setSaveError(null);
+    // Settings only supply the starting "Delete after" of a new form.
   }, [open, existing]);
 
   const hasNewCredentials = accessKeyId.trim() !== "" && secretAccessKey !== "";
@@ -116,6 +155,11 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     objectPathTemplate: objectPathTemplate.trim() || "{year}/{month}/{uuid}.{ext}",
     forcePathStyle,
     isDefault: existing?.isDefault ?? false,
+    outputMode,
+    expiryDays,
+    temporaryLink,
+    imageMetadata,
+    folderUpload,
   });
 
   const credentials = () => (hasNewCredentials ? { accessKeyId, secretAccessKey, sessionToken: null } : null);
@@ -131,6 +175,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
    * the one it points at now. */
   const connectionEdited = () => {
     setTestResult(null);
+    setTestError(null);
     setRulesError(null);
     if (formRules.kind === "checked" || rulesCheck) {
       setFormRules({ kind: "notChecked" });
@@ -159,21 +204,11 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const test = async () => {
     setIsTesting(true);
     setTestResult(null);
+    setTestError(null);
     try {
-      const result = await api.testConnection(currentConfig(), credentials());
-      const parts: string[] = [];
-      if (result.writable) parts.push(t("✓ Connection successful."));
-      parts.push(result.writable ? t("Bucket reachable. Write access: Yes.") : t("Bucket reachable. Write access: No."));
-      if (result.publicUrlReachable !== null) {
-        parts.push(
-          result.publicUrlReachable
-            ? t("Public URL: Reachable.")
-            : t("⚠ Public URL does not appear to be publicly accessible."),
-        );
-      }
-      setTestResult({ ok: result.writable, message: parts.join(" ") });
+      setTestResult(await api.testConnection(currentConfig(), credentials()));
     } catch (error) {
-      setTestResult({ ok: false, message: errorMessage(error) });
+      setTestError(errorMessage(error));
     } finally {
       setIsTesting(false);
     }
@@ -308,6 +343,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                       onChange={(_, data) => {
                         setForcePathStyle(data.checked);
                         setTestResult(null);
+                        setTestError(null);
                       }}
                     />
                   </Field>
@@ -360,7 +396,11 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                     value={publicBaseURL}
                     placeholder="img.example.com"
                     spellCheck={false}
-                    onChange={(_, data) => setPublicBaseURL(data.value)}
+                    onChange={(_, data) => {
+                      setPublicBaseURL(data.value);
+                      setTestResult(null);
+                      setTestError(null);
+                    }}
                   />
                 </Field>
               </div>
@@ -416,11 +456,82 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 </div>
               </div>
 
-              {testResult && (
-                <Text size={200} className={testResult.ok ? "text-success" : "text-error"}>
-                  {testResult.message}
+              <Text weight="semibold" className="form-heading">
+                {t("Upload Defaults")}
+              </Text>
+              <div className="form-group">
+                <Field label={t("Copy as")}>
+                  <Select
+                    value={outputMode ?? ""}
+                    onChange={(_, data) => setOutputMode((data.value || null) as OutputMode | null)}
+                  >
+                    <option value="">{t("Same as Settings")}</option>
+                    <option value="url">URL</option>
+                    <option value="markdown">Markdown</option>
+                    <option value="html">HTML</option>
+                    <option value="custom">{t("Custom")}</option>
+                  </Select>
+                </Field>
+                <Field label={t("Link")}>
+                  <Select
+                    value={String(temporaryLink ?? "")}
+                    onChange={(_, data) => setTemporaryLink(data.value ? Number(data.value) : null)}
+                  >
+                    <option value="">{temporaryLinkLabel(null, t)}</option>
+                    {temporaryLinkDurations.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {temporaryLinkLabel(seconds, t)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t("Delete after")}>
+                  <Select
+                    value={String(expiryDays)}
+                    disabled={rulesCheck?.status.kind !== "active"}
+                    onChange={(_, data) => setExpiryDays(Number(data.value))}
+                  >
+                    <option value="0">{t("Off")}</option>
+                    {expiryDurations.map((days) => (
+                      <option key={days} value={days}>
+                        {durationLabel(days, t)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t("Image metadata")}>
+                  <Select value={imageMetadata} onChange={(_, data) => setImageMetadata(data.value as ImageMetadataPolicy)}>
+                    {imageMetadataPolicies.map((policy) => (
+                      <option key={policy} value={policy}>
+                        {imageMetadataLabel(policy, t)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t("Folders")}>
+                  <Select value={folderUpload} onChange={(_, data) => setFolderUpload(data.value as FolderUploadMode)}>
+                    {folderUploadModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode === "zip" ? t("Upload as ZIP") : t("Keep folder structure")}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Text size={200} className="secondary">
+                  {t(
+                    "Applied whenever this destination is picked. Add one destination per kind of file, such as Builds, Logs or Screenshots, each with its own path and defaults. A temporary link stops working after the time you pick and works for private buckets too. Image metadata applies to photos: Remove location drops the GPS position, Remove all also drops the camera, date and other details. A folder is uploaded as one ZIP file, or file by file with its subfolders.",
+                  )}
                 </Text>
-              )}
+              </div>
+
+              <div ref={testOutcome}>
+                {testError && (
+                  <Text size={200} className="text-error">
+                    {testError}
+                  </Text>
+                )}
+                {testResult && <TestResult result={testResult} />}
+              </div>
               {saveError && (
                 <Text size={200} className="text-error">
                   {saveError}
@@ -474,6 +585,71 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       </DialogSurface>
     </Dialog>
   );
+}
+
+function imageMetadataLabel(policy: ImageMetadataPolicy, t: Translate) {
+  switch (policy) {
+    case "removeLocation":
+      return t("Remove location");
+    case "removeAll":
+      return t("Remove all");
+    case "keepAll":
+      return t("Keep all");
+  }
+}
+
+/** One line per step of the test, so a bucket that takes uploads but won't
+ * serve them reads as a problem instead of a success. */
+function TestResult({ result }: { result: ConnectionResult }) {
+  const { t } = useI18n();
+  const link = result.publicLink;
+  const hint = publicLinkHint(link, t);
+  return (
+    <div className="test-result">
+      {result.writable ? (
+        <Text size={200} className="text-success">
+          ✓ {t("Upload: works")}
+        </Text>
+      ) : (
+        <Text size={200} className="text-error">
+          ✕ {t("Upload: failed. This key can read the bucket but can’t write to it.")}
+        </Text>
+      )}
+      {link?.kind === "reachable" && (
+        <Text size={200} className="text-success">
+          ✓ {t("Public link: works")}
+        </Text>
+      )}
+      {link?.kind === "status" && (
+        <Text size={200} className="text-error">
+          ✕ {t("Public link: failed (HTTP {0})", String(link.code))}
+        </Text>
+      )}
+      {link?.kind === "noResponse" && (
+        <Text size={200} className="text-error">
+          ✕ {t("Public link: no response")}
+        </Text>
+      )}
+      {hint && (
+        <Text size={200} className="secondary">
+          {hint}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+function publicLinkHint(check: PublicLinkCheck | null, t: Translate) {
+  if (!check || check.kind === "reachable") return null;
+  if (check.kind === "status" && (check.code === 401 || check.code === 403)) {
+    return t(
+      "Uploads work, but anyone who opens a link gets an error. Allow public reads on the bucket (on R2, turn on the r2.dev URL or connect a custom domain), or keep it private and share files with Copy Temporary Link in the Library.",
+    );
+  }
+  if (check.kind === "status" && check.code === 404) {
+    return t("The test file was uploaded, but it isn’t at the Public Base URL. Check that the URL points to this bucket.");
+  }
+  return t("The Public Base URL didn’t serve the test file. Check the domain and that it points to this bucket.");
 }
 
 /** Whether the bucket deletes expiring uploads itself, and if the key

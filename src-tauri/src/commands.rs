@@ -132,6 +132,47 @@ fn is_saved_connection(core: &Core, config: &DestinationConfig, credentials: Opt
         && saved.region.trim() == config.region.trim()
 }
 
+/// A copy under a new ID with the same keys, as a starting point for
+/// another upload profile on the same bucket.
+#[tauri::command]
+pub fn duplicate_destination(core: Core, id: String) -> Result<DestinationConfig, String> {
+    let original = core
+        .destinations
+        .find(Some(&id))
+        .filter(|destination| destination.id == id)
+        .ok_or_else(|| t!("No destination to upload to. Add one in Settings."))?;
+    let credentials = credentials::load(&original.id).map_err(|error| error.to_string())?;
+    let copy = DestinationConfig {
+        id: crate::util::new_id(),
+        name: t!("{0} Copy", original.name),
+        is_default: false,
+        ..original.clone()
+    };
+    credentials::save(&credentials, &copy.id).map_err(|error| error.to_string())?;
+    // Same bucket, same rules.
+    if let Some(check) = expiry::cached(&core, &original.id) {
+        expiry::record(&core, &copy.id, Some(check));
+    }
+    core.destinations.add(copy.clone());
+    core.notify(events::DESTINATIONS_CHANGED);
+    Ok(copy)
+}
+
+/// The panel's "Delete after" choice, kept per destination.
+#[tauri::command]
+pub fn set_destination_expiry(core: Core, id: String, days: u32) {
+    core.destinations.modify(&id, |destination| destination.expiry_days = Some(days));
+    core.notify(events::DESTINATIONS_CHANGED);
+}
+
+/// The panel's "Link" choice: the public URL (none) or a temporary link
+/// valid this many seconds.
+#[tauri::command]
+pub fn set_destination_link(core: Core, id: String, seconds: Option<u64>) {
+    core.destinations.modify(&id, |destination| destination.temporary_link = seconds);
+    core.notify(events::DESTINATIONS_CHANGED);
+}
+
 #[tauri::command]
 pub fn remove_destination(core: Core, id: String) {
     core.destinations.remove(&id);
@@ -222,13 +263,13 @@ fn inputs_from(paths: Vec<String>) -> Vec<UploadInput> {
     paths
         .into_iter()
         .map(PathBuf::from)
-        .filter(|path| path.is_file())
+        .filter(|path| path.is_file() || path.is_dir())
         .map(UploadInput::from_path)
         .collect()
 }
 
-/// Returns how many of `paths` are files (folders are skipped). With no
-/// destination set up, nothing is queued and the user is told why.
+/// Returns how many of `paths` are files or folders that could be queued.
+/// With no destination set up, nothing is queued and the user is told why.
 #[tauri::command]
 pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<String>) -> usize {
     let destination = destination_id.and_then(|id| core.destinations.find(Some(&id)));
@@ -270,6 +311,15 @@ pub fn dismiss_job(core: Core, id: String) {
 #[tauri::command]
 pub fn list_history(core: Core) -> Vec<UploadRecord> {
     core.history.all()
+}
+
+/// "Copy Temporary Link" for an upload in history: a fresh presigned link,
+/// which works even when the bucket is private or the one copied at upload
+/// time has run out.
+#[tauri::command]
+pub async fn record_temporary_link(core: Core<'_>, id: String, seconds: u64) -> Result<String, String> {
+    let record = core.history.get(&id).ok_or_else(|| t!("This upload’s destination was removed."))?;
+    uploads::temporary_url(&core, &record, seconds.clamp(60, 604_800)).await
 }
 
 #[tauri::command]
@@ -374,20 +424,40 @@ pub async fn bucket_presign(core: Core<'_>, destination_id: String, key: String,
 }
 
 /// Uploads into `prefix` under each file's own name, adding " 2", " 3"...
-/// when a name is taken so nothing is overwritten. Returns how many files
-/// were queued (folders are skipped).
+/// when a name is taken so nothing is overwritten. A folder keeps its
+/// structure here, like copying it in File Explorer. Returns how many
+/// files were queued.
 #[tauri::command]
 pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<String>, prefix: String) -> Result<usize, String> {
     let (destination, storage) = storage_for(&core, &destination_id)?;
+    let prefix = bucket::normalized_folder(&prefix);
     let mut claimed: Vec<String> = Vec::new();
     let mut inputs = Vec::new();
-    for mut input in inputs_from(paths) {
-        let key = bucket::available_key(&storage, &input.original_filename, &prefix, &claimed)
-            .await
-            .map_err(|error| error.to_string())?;
-        claimed.push(key.clone());
-        input.object_key = Some(key);
-        inputs.push(input);
+    for input in inputs_from(paths) {
+        let files = if input.path.is_dir() {
+            let root = format!("{prefix}{}/", crate::folder_upload::name(&input.path));
+            crate::folder_upload::files(&input.path, Some(crate::folder_upload::MAX_FILES))
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|entry| {
+                    let folder = match entry.relative_path.rfind('/') {
+                        Some(slash) => format!("{root}{}", &entry.relative_path[..=slash]),
+                        None => root.clone(),
+                    };
+                    (UploadInput::from_path(entry.path), folder)
+                })
+                .collect()
+        } else {
+            vec![(input, prefix.clone())]
+        };
+        for (mut file, folder) in files {
+            let key = bucket::available_key(&storage, &file.original_filename, &folder, &claimed)
+                .await
+                .map_err(|error| error.to_string())?;
+            claimed.push(key.clone());
+            file.object_key = Some(key);
+            inputs.push(file);
+        }
     }
     let count = inputs.len();
     uploads::enqueue(&core, inputs, Some(destination));

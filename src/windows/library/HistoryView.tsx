@@ -29,12 +29,13 @@ import {
   MoreHorizontalRegular,
   TrayItemAddRegular,
 } from "@fluentui/react-icons";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog, ContextMenu, MenuEntries, type ContextMenuState, type MenuEntry } from "../../components/Dialogs";
 import { ExpiryBadge, FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
+import { temporaryLinkMenu } from "../../components/temporaryLinkMenu";
 import { api, errorMessage, type Job, type UploadRecord } from "../../lib/api";
 import { dayBucket, formatBytes, formatDateTime, formatOutput, formatTime, shortDay } from "../../lib/format";
 import { hasTextSelection, useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
@@ -149,6 +150,7 @@ export function HistoryView({ active }: { active: boolean }) {
       { label: t("Copy URL"), onClick: () => copyAll([record], "url") },
       { label: t("Copy Markdown"), onClick: () => copyAll([record], "markdown") },
       { label: t("Copy HTML"), onClick: () => copyAll([record], "html") },
+      temporaryLinkMenu(record, t, showLinkError),
       "divider",
       { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
       { label: t("Reveal Details"), onClick: () => selection.set([record.id]) },
@@ -464,6 +466,7 @@ function UploadDetail(props: {
       ],
     },
     { label: t("Copy Object Key"), onClick: () => api.copyText(record.objectKey) },
+    temporaryLinkMenu(record, t, showLinkError),
     "divider",
     { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
     "divider",
@@ -587,4 +590,10 @@ function ZoomedPreview({ record, onClose }: { record: UploadRecord | null; onClo
       </DialogSurface>
     </Dialog>
   );
+}
+
+/** Signing happens locally, so this only shows when the upload's
+ * destination or its keys are gone. */
+function showLinkError(text: string) {
+  message(text, { kind: "error" }).catch(() => {});
 }

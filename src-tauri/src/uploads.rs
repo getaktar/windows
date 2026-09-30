@@ -1,7 +1,9 @@
-//! Coordinates the upload pipeline: generate object key -> upload -> resolve
-//! public URL -> store history -> format output -> copy to clipboard ->
-//! notify. Runs up to `MAX_CONCURRENT` jobs at once.
+//! Coordinates the upload pipeline: expand folders -> generate object key ->
+//! zip a folder / clean a photo's metadata -> upload -> resolve the link ->
+//! store history -> format output -> copy to clipboard -> notify. Runs up
+//! to `MAX_CONCURRENT` jobs at once.
 
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -13,8 +15,10 @@ use tokio::sync::watch;
 
 use crate::core::{events, SharedCore, UploadSucceeded};
 use crate::credentials;
-use crate::destinations::DestinationConfig;
-use crate::history::NewRecord;
+use crate::destinations::{DestinationConfig, FolderUploadMode};
+use crate::folder_upload;
+use crate::history::{NewRecord, UploadRecord};
+use crate::image_metadata;
 use crate::output;
 use crate::storage::{Progress, S3Provider, StorageError, UploadResult};
 use crate::t;
@@ -37,6 +41,21 @@ pub struct UploadInput {
     /// with it: uploaded, cancelled, or dismissed.
     pub temporary: bool,
     pub expiry: Expiry,
+    /// A file from a folder uploaded with its structure: its key, under the
+    /// folder's own prefix. Unlike `object_key`, "Delete after" still
+    /// applies.
+    pub folder_key: Option<String>,
+    /// The folder upload this file belongs to, so the links are copied
+    /// together once the last one is done.
+    pub group: Option<UploadGroup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadGroup {
+    pub id: String,
+    pub name: String,
+    pub index: usize,
+    pub count: usize,
 }
 
 /// How long an upload is kept. Settled when it's queued, so a retry
@@ -56,7 +75,15 @@ impl UploadInput {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "file".into());
-        Self { path, original_filename, object_key: None, temporary: false, expiry: Expiry::FromSettings }
+        Self {
+            path,
+            original_filename,
+            object_key: None,
+            temporary: false,
+            expiry: Expiry::FromSettings,
+            folder_key: None,
+            group: None,
+        }
     }
 
     /// Days until the upload is deleted, once `enqueue` has settled it.
@@ -109,9 +136,16 @@ pub struct JobSnapshot {
     pub state: JobState,
 }
 
+/// What a finished file from a folder left to copy: its link and name, by
+/// position in the folder.
+type GroupLinks = BTreeMap<usize, (String, String)>;
+
 #[derive(Default)]
 pub struct UploadManager {
     jobs: Mutex<Vec<Job>>,
+    /// Folders uploaded with their structure that still have files going,
+    /// with the destination whose copy format their links get.
+    open_groups: Mutex<HashMap<String, (DestinationConfig, GroupLinks)>>,
 }
 
 impl UploadManager {
@@ -153,8 +187,9 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
         crate::windows::open(&core.app, AppWindow::Onboarding);
         return Vec::new();
     };
-    let delete_after_days = core.settings.get().delete_after_days;
+    let delete_after_days = destination.expiry_days.unwrap_or(core.settings.get().delete_after_days);
     let rules_active = crate::expiry::is_active(core, &destination.id);
+    let inputs = expanding_folders(core, inputs, &destination);
     let mut queued = Vec::new();
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
@@ -171,6 +206,39 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
     }
     drain(core);
     queued
+}
+
+/// Folders become one ZIP input (zipped when its turn comes, so a big
+/// folder doesn't hold anything up) or one input per file, as the
+/// destination says. Exact keys (the bucket browser) are left alone.
+fn expanding_folders(core: &SharedCore, inputs: Vec<UploadInput>, destination: &DestinationConfig) -> Vec<UploadInput> {
+    let mut expanded = Vec::new();
+    for input in inputs {
+        if input.object_key.is_some() || input.folder_key.is_some() || !input.path.is_dir() {
+            expanded.push(input);
+            continue;
+        }
+        let name = folder_upload::name(&input.path);
+        match destination.folder_upload() {
+            FolderUploadMode::Zip => expanded.push(UploadInput { original_filename: format!("{name}.zip"), ..input }),
+            FolderUploadMode::KeepStructure => match folder_upload::files(&input.path, Some(folder_upload::MAX_FILES)) {
+                Ok(entries) => {
+                    let prefix = folder_upload::key_prefix(&destination.object_path_template, &name);
+                    let id = crate::util::new_id();
+                    core.uploads.open_groups.lock().unwrap().insert(id.clone(), (destination.clone(), GroupLinks::new()));
+                    let count = entries.len();
+                    expanded.extend(entries.into_iter().enumerate().map(|(index, entry)| UploadInput {
+                        folder_key: Some(format!("{prefix}{}", entry.relative_path)),
+                        group: Some(UploadGroup { id: id.clone(), name: name.clone(), index, count }),
+                        expiry: input.expiry,
+                        ..UploadInput::from_path(entry.path)
+                    }));
+                }
+                Err(error) => show_notification(core, &t!("Upload failed"), &format!("{name}: {error}")),
+            },
+        }
+    }
+    expanded
 }
 
 /// How long a queued upload is kept. Nothing expires on a destination
@@ -232,6 +300,7 @@ pub fn retry(core: &SharedCore, job_id: &str) {
 }
 
 pub fn cancel(core: &SharedCore, job_id: &str) {
+    let mut cancelled = None;
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         if let Some(index) = jobs.iter().position(|job| job.id == job_id) {
@@ -241,7 +310,11 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
             }
             job.input.remove_if_temporary();
             job.sender.send_replace(JobState::Cancelled);
+            cancelled = job.input.group.clone();
         }
+    }
+    if let Some(group) = cancelled {
+        finish_group_if_done(core, &group);
     }
     drain(core);
 }
@@ -282,7 +355,7 @@ fn drain(core: &SharedCore) {
             let destination = job.destination.clone();
             job.task = Some(tauri::async_runtime::spawn(async move {
                 match run(&task_core, &job_id, &input, &destination).await {
-                    Ok(result) => finish(&task_core, &job_id, &input, &destination, result).await,
+                    Ok((result, link)) => finish(&task_core, &job_id, &input, &destination, result, link).await,
                     Err(message) => fail(&task_core, &job_id, &input, message),
                 }
             }));
@@ -291,11 +364,40 @@ fn drain(core: &SharedCore) {
     core.notify(events::JOBS_CHANGED);
 }
 
-async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<UploadResult, String> {
+/// Files made for one upload (a folder's ZIP, a photo without its
+/// location), deleted once it's over, however it ends.
+#[derive(Default)]
+struct Scratch {
+    zip: Option<PathBuf>,
+    cleaned: Option<PathBuf>,
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if let Some(zip) = &self.zip {
+            folder_upload::remove_zip(zip);
+        }
+        if let Some(cleaned) = &self.cleaned {
+            image_metadata::remove_copy(cleaned);
+        }
+    }
+}
+
+/// Uploads the file and returns the result, with the link to copy: the
+/// public URL, or a temporary link when the destination is set to one.
+async fn run(
+    core: &SharedCore,
+    job_id: &str,
+    input: &UploadInput,
+    destination: &DestinationConfig,
+) -> Result<(UploadResult, String), String> {
     let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
     let provider = S3Provider::new(destination.clone(), credentials);
     let object_key = input.object_key.clone().unwrap_or_else(|| {
-        let key = output::generate_key(&destination.object_path_template, &input.original_filename);
+        let key = input
+            .folder_key
+            .clone()
+            .unwrap_or_else(|| output::generate_key(&destination.object_path_template, &input.original_filename));
         match input.expire_after_days() {
             Some(days) => crate::expiry::expiring_key(&key, days),
             None => key,
@@ -303,15 +405,52 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     });
     let content_type = output::content_type(&input.original_filename);
 
+    // A folder goes up as a ZIP made on the spot, and a photo without the
+    // metadata the destination removes; both are made off the async
+    // runtime's workers.
+    let policy = destination.image_metadata();
+    let mut scratch = Scratch::default();
+    let mut path = input.path.clone();
+    if path.is_dir() {
+        let folder = path.clone();
+        let zipped = tauri::async_runtime::spawn_blocking(move || folder_upload::zip(&folder, policy))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+        scratch.zip = Some(zipped.clone());
+        path = zipped;
+    } else {
+        let original = path.clone();
+        let cleaned = tauri::async_runtime::spawn_blocking(move || image_metadata::stripped_copy(&original, policy))
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())?;
+        if let Some(cleaned) = cleaned {
+            scratch.cleaned = Some(cleaned.clone());
+            path = cleaned;
+        }
+    }
+
     let progress = Arc::new(Progress::default());
-    let upload = provider.upload(&input.path, &object_key, &content_type, progress.clone());
+    let upload = provider.upload(&path, &object_key, &content_type, progress.clone());
     tokio::pin!(upload);
     let mut ticker = tokio::time::interval(Duration::from_millis(250));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut reported = 0.0;
     loop {
         tokio::select! {
-            result = &mut upload => return result.map_err(|error| error.to_string()),
+            result = &mut upload => {
+                let result = result.map_err(|error| error.to_string())?;
+                // Signing happens locally, so this only fails on a broken
+                // endpoint, where the public URL is the better fallback.
+                let mut link = result.public_url.clone();
+                if let Some(seconds) = destination.temporary_link {
+                    if let Ok(signed) = provider.temporary_url(&result.object_key, seconds).await {
+                        link = signed;
+                    }
+                }
+                return Ok((result, link));
+            }
             _ = ticker.tick() => {
                 if let Some(fraction) = progress.fraction() {
                     // Whole percents are plenty, and spare the windows a
@@ -355,7 +494,9 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
     }
 }
 
-async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, result: UploadResult) {
+/// `link` is what's copied: the public URL, or a temporary link. History
+/// keeps the public URL.
+async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, result: UploadResult, link: String) {
     let mime_type = output::content_type(&input.original_filename);
     let record = core.history.insert(NewRecord {
         local_filename: &input.original_filename,
@@ -382,16 +523,6 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
     );
     core.notify(events::HISTORY_CHANGED);
 
-    let settings = core.settings.get();
-    let copied = output::format(&result.public_url, settings.output_mode, &input.original_filename, &settings.custom_template);
-    crate::clipboard::copy(&copied);
-    if settings.show_notification {
-        let body = match input.expire_after_days() {
-            Some(days) => format!("{}\n{}", input.original_filename, deletes_in(days)),
-            None => input.original_filename.clone(),
-        };
-        show_notification(core, &t!("Uploaded"), &body);
-    }
     core.emit(
         events::UPLOAD_SUCCEEDED,
         UploadSucceeded {
@@ -400,15 +531,83 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
             byte_size: result.byte_size,
         },
     );
-    if settings.close_panel_after_upload {
-        crate::panel::hide(&core.app);
+
+    // A file from a folder waits for the rest of it: the links are copied
+    // together, with one notification, once the last is done.
+    let grouped = input.group.as_ref().is_some_and(|group| {
+        let mut groups = core.uploads.open_groups.lock().unwrap();
+        let links = groups.get_mut(&group.id);
+        let open = links.is_some();
+        if let Some((_, links)) = links {
+            links.insert(group.index, (link.clone(), input.original_filename.clone()));
+        }
+        open
+    });
+    if let (true, Some(group)) = (grouped, &input.group) {
+        finish_group_if_done(core, group);
+    } else {
+        let settings = core.settings.get();
+        crate::clipboard::copy(&format_link(core, destination, &link, &input.original_filename));
+        if settings.show_notification {
+            let body = match input.expire_after_days() {
+                Some(days) => format!("{}\n{}", input.original_filename, deletes_in(days)),
+                None => input.original_filename.clone(),
+            };
+            show_notification(core, &t!("Uploaded"), &body);
+        }
+        close_panel_if_wanted(core);
     }
     drain(core);
+}
+
+/// What's copied for `link`: as the destination says, or Settings > Output.
+fn format_link(core: &SharedCore, destination: &DestinationConfig, link: &str, filename: &str) -> String {
+    let settings = core.settings.get();
+    let mode = destination.output_mode.unwrap_or(settings.output_mode);
+    output::format(link, mode, filename, &settings.custom_template)
+}
+
+fn close_panel_if_wanted(core: &SharedCore) {
+    if core.settings.get().close_panel_after_upload {
+        crate::panel::hide(&core.app);
+    }
+}
+
+/// Once none of a folder's files is waiting or uploading, copies the links
+/// of the ones that made it, one per line and in folder order. Failed
+/// files have their own notifications and can still be retried; a retry
+/// then copies just its own link.
+fn finish_group_if_done(core: &SharedCore, group: &UploadGroup) {
+    let still_going = core.uploads.jobs.lock().unwrap().iter().any(|job| {
+        job.input.group.as_ref().is_some_and(|other| other.id == group.id)
+            && matches!(job.state, JobState::Waiting | JobState::Uploading { .. })
+    });
+    if still_going {
+        return;
+    }
+    let Some((destination, links)) = core.uploads.open_groups.lock().unwrap().remove(&group.id) else { return };
+    if links.is_empty() {
+        return;
+    }
+    let copied: Vec<String> = links.values().map(|(link, filename)| format_link(core, &destination, link, filename)).collect();
+    crate::clipboard::copy(&copied.join("\n"));
+    if core.settings.get().show_notification {
+        let summary = if links.len() == group.count {
+            t!("{0} ({1} files)", group.name, group.count)
+        } else {
+            t!("{0} ({1} of {2} files)", group.name, links.len(), group.count)
+        };
+        show_notification(core, &t!("Uploaded"), &summary);
+    }
+    close_panel_if_wanted(core);
 }
 
 fn fail(core: &SharedCore, job_id: &str, input: &UploadInput, message: String) {
     set_state(core, job_id, JobState::Failed { message: message.clone() });
     show_notification(core, &t!("Upload failed"), &format!("{}: {message}", input.original_filename));
+    if let Some(group) = &input.group {
+        finish_group_if_done(core, group);
+    }
     drain(core);
 }
 
@@ -430,6 +629,22 @@ pub fn show_notification(core: &SharedCore, title: &str, body: &str) {
     if let Err(error) = result {
         log::warn!("Could not show a notification: {error}");
     }
+}
+
+/// A new temporary link to an uploaded file, for sharing it again from
+/// history, e.g. when the bucket is private.
+pub async fn temporary_url(core: &SharedCore, record: &UploadRecord, seconds: u64) -> Result<String, String> {
+    let destination = core
+        .destinations
+        .all()
+        .into_iter()
+        .find(|destination| destination.id == record.destination_id)
+        .ok_or_else(|| t!("This upload’s destination was removed."))?;
+    let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
+    S3Provider::new(destination, credentials)
+        .temporary_url(&record.object_key, seconds)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 /// Deletes the remote object and, on success, the history entry. If the

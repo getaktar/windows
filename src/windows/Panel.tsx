@@ -29,6 +29,7 @@ import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
+import { temporaryLinkMenu } from "../components/temporaryLinkMenu";
 import { ExpiryBadge, FileIcon, Thumbnail } from "../components/FileVisuals";
 import {
   api,
@@ -37,6 +38,7 @@ import {
   events,
   expiryDurations,
   expiryRulesActive,
+  temporaryLinkDurations,
   type DestinationConfig,
   type Job,
   type UploadRecord,
@@ -47,6 +49,7 @@ import {
   formatOutput,
   providerName,
   rulesStatusMessage,
+  temporaryLinkLabel,
   withoutScheme,
 } from "../lib/format";
 import { useDestinations, useHistory, useJobs, useSettings, useTauriEvent } from "../lib/hooks";
@@ -138,7 +141,7 @@ export default function Panel() {
   const currentDestination = defaultDestination(destinations);
   // Off for a destination whose bucket doesn't have the lifecycle rules,
   // whatever the setting says: nothing uploaded there expires.
-  const deleteAfterDays = effectiveDeleteAfterDays(settings, currentDestination?.id);
+  const deleteAfterDays = effectiveDeleteAfterDays(settings, currentDestination);
   const rulesActive = expiryRulesActive(settings, currentDestination?.id);
 
   const setUpExpiry = async () => {
@@ -224,15 +227,16 @@ export default function Panel() {
             />
           </div>
 
+          <DestinationPicker destinations={destinations} />
           <div className="picker-row">
-            <DestinationPicker destinations={destinations} />
             <DeleteAfterPicker
+              destination={currentDestination}
               days={deleteAfterDays}
               available={rulesActive}
-              canSetUp={currentDestination !== undefined}
               isSettingUp={isSettingUpExpiry}
               onSetUp={setUpExpiry}
             />
+            <LinkPicker destination={currentDestination} />
           </div>
 
           <div className={`dropzone ${isTargeted ? "dropzone-targeted" : ""}`}>
@@ -305,14 +309,13 @@ export default function Panel() {
   );
 }
 
-/** Queues dropped or picked files and returns a notice when some of them
- * couldn't be: folders, or virtual items (an Outlook attachment, an image
- * dragged out of a browser) that come with no file path at all. With no
+/** Queues dropped or picked files and folders, and returns a notice when
+ * none of them could be: virtual items (an Outlook attachment, an image
+ * dragged out of a browser) come with no file path at all. With no
  * destination, Rust itself explains and opens Welcome. */
 async function uploadDropped(paths: string[], t: ReturnType<typeof useI18n>["t"]): Promise<string | null> {
-  if (paths.length === 0) return t("This item can’t be uploaded. Save it as a file first, then drop the file.");
-  const queued = await api.uploadFiles(paths).catch(() => -1);
-  if (queued === 0) return t("Only files can be uploaded, not folders.");
+  const queued = paths.length === 0 ? 0 : await api.uploadFiles(paths).catch(() => -1);
+  if (queued === 0) return t("This item can’t be uploaded. Save it as a file first, then drop the file.");
   return null;
 }
 
@@ -358,27 +361,28 @@ function DestinationPicker({ destinations }: { destinations: DestinationConfig[]
   );
 }
 
-/** "Delete after": sticky, and applies to every upload from the panel, the
- * shortcut, and the tray, not to ones into a chosen bucket folder. The
- * durations are only offered once the destination's bucket has the
- * lifecycle rules; until then the menu offers to set them up, and `days`
- * (the effective value) is 0. */
+/** "Delete after", kept for the selected destination: it applies to every
+ * upload from the panel, the shortcut, and the tray, not to ones into a
+ * chosen bucket folder. The durations are only offered once the
+ * destination's bucket has the lifecycle rules; until then the menu offers
+ * to set them up, and `days` (the effective value) is 0. */
 function DeleteAfterPicker({
+  destination,
   days,
   available,
-  canSetUp,
   isSettingUp,
   onSetUp,
 }: {
+  destination: DestinationConfig | undefined;
   days: number;
   available: boolean;
-  canSetUp: boolean;
   isSettingUp: boolean;
   onSetUp: () => void;
 }) {
   const { t } = useI18n();
+  const canSetUp = destination !== undefined;
   return (
-    <div className="destination-picker delete-after-picker">
+    <div className="destination-picker">
       <Text size={200} className="secondary">
         {t("Delete after")}
       </Text>
@@ -386,7 +390,7 @@ function DeleteAfterPicker({
         checkedValues={{ deleteAfter: [String(days)] }}
         onCheckedValueChange={(_, data) => {
           const value = Number(data.checkedItems[0]);
-          if (available && !Number.isNaN(value)) api.updateSettings({ deleteAfterDays: value });
+          if (destination && available && !Number.isNaN(value)) api.setDestinationExpiry(destination.id, value);
         }}
       >
         <MenuTrigger disableButtonEnhancement>
@@ -419,6 +423,53 @@ function DeleteAfterPicker({
                 </MenuItem>
               </>
             )}
+          </MenuList>
+        </MenuPopover>
+      </Menu>
+    </div>
+  );
+}
+
+/** Public URL or a temporary link, for the selected destination. */
+function LinkPicker({ destination }: { destination: DestinationConfig | undefined }) {
+  const { t } = useI18n();
+  const current = destination?.temporaryLink ?? null;
+  return (
+    <div className="destination-picker">
+      <Text size={200} className="secondary">
+        {t("Link")}
+      </Text>
+      <Menu
+        checkedValues={{ link: [String(current ?? "")] }}
+        onCheckedValueChange={(_, data) => {
+          const value = data.checkedItems[0];
+          if (destination) api.setDestinationLink(destination.id, value ? Number(value) : null);
+        }}
+      >
+        <MenuTrigger disableButtonEnhancement>
+          <Button
+            className="destination-button"
+            icon={<ChevronDownRegular />}
+            iconPosition="after"
+            disabled={!destination}
+            aria-label={t("Link")}
+            title={t(
+              "Copy the public URL after an upload, or a temporary link that stops working after this long. Temporary links also work for private buckets.",
+            )}
+          >
+            <span className="ellipsis">{temporaryLinkLabel(current, t)}</span>
+          </Button>
+        </MenuTrigger>
+        <MenuPopover>
+          <MenuList>
+            <MenuItemRadio name="link" value="">
+              {temporaryLinkLabel(null, t)}
+            </MenuItemRadio>
+            {temporaryLinkDurations.map((seconds) => (
+              <MenuItemRadio key={seconds} name="link" value={String(seconds)}>
+                {temporaryLinkLabel(seconds, t)}
+              </MenuItemRadio>
+            ))}
           </MenuList>
         </MenuPopover>
       </Menu>
@@ -484,6 +535,7 @@ function RecentRow({ record, onError }: { record: UploadRecord; onError: (messag
     { label: t("Copy URL"), onClick: () => copy("url") },
     { label: t("Copy Markdown"), onClick: () => copy("markdown") },
     { label: t("Copy HTML"), onClick: () => copy("html") },
+    temporaryLinkMenu(record, t, onError),
     "divider",
     { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
     { label: t("Show in Library"), onClick: () => api.openWindow("library") },

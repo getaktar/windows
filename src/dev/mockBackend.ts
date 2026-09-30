@@ -187,7 +187,18 @@ export function installMockBackend(route: string) {
         case "list_objects":
           return listing(args.prefix as string, args.recursive as boolean);
         case "bucket_presign":
+        case "record_temporary_link":
           return photo(1025);
+        case "set_destination_link": {
+          const destination = destinations.find((d) => d.id === args.id);
+          if (destination) destination.temporaryLink = (args.seconds as number | null) ?? null;
+          return null;
+        }
+        case "set_destination_expiry": {
+          const destination = destinations.find((d) => d.id === args.id);
+          if (destination) destination.expiryDays = args.days as number;
+          return null;
+        }
         case "fetch_remote":
           return fetch(args.url as string).then((response) => response.arrayBuffer());
         case "expiry_rules_status":
@@ -202,7 +213,7 @@ export function installMockBackend(route: string) {
         case "remove_expiry_rules":
           return null;
         case "test_connection":
-          return { bucketReachable: true, writable: true, publicUrlReachable: true };
+          return { bucketReachable: true, writable: true, publicLink: { kind: "status", code: 403 } };
         case "upload_clipboard":
           return false;
         case "upload_files":

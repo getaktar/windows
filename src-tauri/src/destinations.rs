@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::output::OutputMode;
 use crate::t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -66,6 +67,83 @@ pub struct DestinationConfig {
     pub force_path_style: bool,
     #[serde(default)]
     pub is_default: bool,
+    /// What's copied after an upload here; none follows Settings > Output.
+    /// With the fields below, destinations work as upload profiles
+    /// ("Builds", "Logs", "Screenshots"), even several on one bucket.
+    #[serde(default)]
+    pub output_mode: Option<OutputMode>,
+    /// "Delete after" for uploads here, in days (0 keeps them); none until
+    /// it's picked for this destination, when Settings' last choice applies.
+    #[serde(default)]
+    pub expiry_days: Option<u32>,
+    /// Copy a temporary link valid this many seconds (one of
+    /// `TEMPORARY_LINK_SECONDS`) after each upload instead of the public
+    /// URL; none copies the public URL.
+    #[serde(default)]
+    pub temporary_link: Option<u64>,
+    /// What to strip from photos before they're uploaded here; none is
+    /// `ImageMetadataPolicy::default()` (remove the location).
+    #[serde(default)]
+    pub image_metadata: Option<ImageMetadataPolicy>,
+    /// How folders are uploaded here; none is `FolderUploadMode::default()`
+    /// (as a ZIP).
+    #[serde(default)]
+    pub folder_upload: Option<FolderUploadMode>,
+}
+
+/// How long a temporary (presigned) link can stay valid, in seconds: 5 and
+/// 15 minutes, 1 hour, 1 day and 7 days, the longest S3 allows. The minute
+/// long ones are for confidential files: S3 can't count downloads, so a
+/// link can't be single-use, but one that dies minutes after it's sent is
+/// close.
+pub const TEMPORARY_LINK_SECONDS: [u64; 5] = [300, 900, 3600, 86_400, 604_800];
+
+/// What happens to a photo's metadata before it's uploaded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImageMetadataPolicy {
+    /// Drops the GPS location and keeps everything else (camera, date,
+    /// orientation, color profile), so a shared photo never gives away
+    /// where it was taken.
+    #[default]
+    RemoveLocation,
+    /// Drops EXIF, GPS, IPTC and XMP. Orientation and the color profile
+    /// stay, so the image still looks the same.
+    RemoveAll,
+    KeepAll,
+}
+
+/// How a folder is uploaded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FolderUploadMode {
+    /// One .zip file, and one link to it.
+    #[default]
+    Zip,
+    /// Every file under one new folder in the bucket, with the same
+    /// subfolders, and all the links copied at the end.
+    KeepStructure,
+}
+
+impl DestinationConfig {
+    pub fn image_metadata(&self) -> ImageMetadataPolicy {
+        self.image_metadata.unwrap_or_default()
+    }
+
+    pub fn folder_upload(&self) -> FolderUploadMode {
+        self.folder_upload.unwrap_or_default()
+    }
+
+    /// Settings that can't be right (edited by hand, or from a newer
+    /// version) are dropped, so they fall back to the defaults.
+    fn sanitize(&mut self) {
+        if self.expiry_days.is_some_and(|days| days != 0 && !crate::expiry::is_valid(days)) {
+            self.expiry_days = None;
+        }
+        if self.temporary_link.is_some_and(|seconds| !TEMPORARY_LINK_SECONDS.contains(&seconds)) {
+            self.temporary_link = None;
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -88,6 +166,7 @@ impl DestinationStore {
             .ok()
             .and_then(|data| serde_json::from_slice(&data).ok())
             .unwrap_or_default();
+        wrapper.destinations.iter_mut().for_each(DestinationConfig::sanitize);
         sync_default_flags(&mut wrapper);
         Self { path, inner: Mutex::new(wrapper) }
     }
@@ -123,6 +202,7 @@ impl DestinationStore {
     }
 
     pub fn add(&self, mut destination: DestinationConfig) {
+        destination.sanitize();
         self.mutate(|wrapper| {
             if wrapper.destinations.is_empty() {
                 destination.is_default = true;
@@ -132,7 +212,8 @@ impl DestinationStore {
         });
     }
 
-    pub fn update(&self, destination: DestinationConfig) {
+    pub fn update(&self, mut destination: DestinationConfig) {
+        destination.sanitize();
         self.mutate(|wrapper| {
             if let Some(existing) = wrapper.destinations.iter_mut().find(|d| d.id == destination.id) {
                 *existing = destination;
@@ -148,6 +229,20 @@ impl DestinationStore {
             }
         });
         let _ = crate::credentials::delete(id);
+    }
+
+    /// Changes one destination in place, e.g. the panel's "Delete after"
+    /// or "Link" choice for it.
+    pub fn modify(&self, id: &str, change: impl FnOnce(&mut DestinationConfig)) -> Option<DestinationConfig> {
+        let mut changed = None;
+        self.mutate(|wrapper| {
+            if let Some(destination) = wrapper.destinations.iter_mut().find(|d| d.id == id) {
+                change(destination);
+                destination.sanitize();
+                changed = Some(destination.clone());
+            }
+        });
+        changed
     }
 
     pub fn set_default(&self, id: &str) {

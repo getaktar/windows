@@ -37,7 +37,21 @@ use crate::t;
 pub struct ConnectionResult {
     pub bucket_reachable: bool,
     pub writable: bool,
-    pub public_url_reachable: Option<bool>,
+    /// What opening the test file's public link returned. None when
+    /// nothing was uploaded to open.
+    pub public_link: Option<PublicLinkCheck>,
+}
+
+/// The outcome of opening a link the way someone it's shared with would.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PublicLinkCheck {
+    Reachable,
+    /// The server answered with a status outside 2xx, such as 403 from a
+    /// bucket that accepts uploads but doesn't allow public reads.
+    Status { code: u16 },
+    /// No HTTP answer at all: DNS, TLS or a timeout.
+    NoResponse,
 }
 
 /// One level of a bucket as S3 lists it with a "/" delimiter: the
@@ -171,15 +185,15 @@ impl S3Provider {
             .await
             .is_ok();
 
-        let mut public_url_reachable = None;
+        let mut public_link = None;
         if writable && !self.config.public_base_url.trim().is_empty() {
             let url = resolve_public_url(&self.config.public_base_url, &test_key);
-            public_url_reachable = Some(probe(&url).await);
+            public_link = Some(probe(&url).await);
         }
         if writable {
             let _ = self.client.delete_object().bucket(self.bucket()).key(&test_key).send().await;
         }
-        Ok(ConnectionResult { bucket_reachable: true, writable, public_url_reachable })
+        Ok(ConnectionResult { bucket_reachable: true, writable, public_link })
     }
 
     /// Uploads a file, counting the bytes sent into `progress` as the HTTP
@@ -605,11 +619,26 @@ fn normalized_endpoint(raw: &str) -> String {
     }
 }
 
-async fn probe(url: &str) -> bool {
+async fn probe(url: &str) -> PublicLinkCheck {
     let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(8)).build() else {
-        return false;
+        return PublicLinkCheck::NoResponse;
     };
-    matches!(client.head(url).send().await, Ok(response) if response.status().is_success())
+    let status = |method: reqwest::Method| {
+        let request = client.request(method, url).header("cache-control", "no-cache");
+        async move { request.send().await.ok().map(|response| response.status().as_u16()) }
+    };
+    let head = status(reqwest::Method::HEAD).await;
+    // Some servers and CDNs don't answer HEAD; ask again the way a browser
+    // would before calling the link broken.
+    let code = match head {
+        Some(405 | 501) => status(reqwest::Method::GET).await,
+        other => other,
+    };
+    match code {
+        None => PublicLinkCheck::NoResponse,
+        Some(code) if (200..300).contains(&code) => PublicLinkCheck::Reachable,
+        Some(code) => PublicLinkCheck::Status { code },
+    }
 }
 
 fn map_error<E>(error: SdkError<E, HttpResponse>, bucket: &str) -> StorageError
@@ -747,6 +776,11 @@ mod tests {
             object_path_template: "{filename}.{ext}".into(),
             force_path_style,
             is_default: false,
+            output_mode: None,
+            expiry_days: None,
+            temporary_link: None,
+            image_metadata: None,
+            folder_upload: None,
         }
     }
 
@@ -811,6 +845,11 @@ mod live_tests {
             object_path_template: "{filename}.{ext}".into(),
             force_path_style: true,
             is_default: true,
+            output_mode: None,
+            expiry_days: None,
+            temporary_link: None,
+            image_metadata: None,
+            folder_upload: None,
         };
         // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
@@ -829,7 +868,7 @@ mod live_tests {
         let result = storage.test_connection().await.unwrap();
         assert!(result.writable);
         // Whether it's reachable depends on the bucket's policy; it's probed.
-        assert!(result.public_url_reachable.is_some());
+        assert!(result.public_link.is_some());
 
         let file = std::env::temp_dir().join("aktar test ü.txt");
         std::fs::write(&file, b"hello from aktar").unwrap();

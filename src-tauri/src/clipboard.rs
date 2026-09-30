@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use arboard::{Clipboard, ImageData};
 
-use crate::uploads::{Expiry, UploadInput};
+use crate::uploads::UploadInput;
 
 pub fn copy(text: &str) {
     match Clipboard::new() {
@@ -15,8 +15,8 @@ pub fn copy(text: &str) {
     }
 }
 
-/// Inspects the clipboard for something uploadable: files copied in File
-/// Explorer take priority, falling back to raw image data (a screenshot or
+/// Inspects the clipboard for something uploadable: files and folders
+/// copied in File Explorer take priority, falling back to raw image data (a screenshot or
 /// an image copied from a browser, which isn't backed by a file).
 pub fn read_inputs() -> Vec<UploadInput> {
     let Ok(mut clipboard) = Clipboard::new() else { return Vec::new() };
@@ -24,7 +24,7 @@ pub fn read_inputs() -> Vec<UploadInput> {
     if let Ok(paths) = clipboard.get().file_list() {
         let files: Vec<UploadInput> = paths
             .into_iter()
-            .filter(|path| path.is_file())
+            .filter(|path| path.is_file() || path.is_dir())
             .map(UploadInput::from_path)
             .collect();
         if !files.is_empty() {
@@ -50,7 +50,7 @@ fn write_temporary_image(image: ImageData) -> Option<UploadInput> {
     std::fs::create_dir_all(&directory).ok()?;
     let path = directory.join(format!("{}.png", crate::util::new_id()));
     buffer.save_with_format(&path, image::ImageFormat::Png).ok()?;
-    Some(UploadInput { path, original_filename: filename, object_key: None, temporary: true, expiry: Expiry::FromSettings })
+    Some(UploadInput { original_filename: filename, temporary: true, ..UploadInput::from_path(path) })
 }
 
 fn temporary_directory() -> PathBuf {

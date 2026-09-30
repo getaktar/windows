@@ -36,7 +36,35 @@ export interface DestinationConfig {
   objectPathTemplate: string;
   forcePathStyle: boolean;
   isDefault: boolean;
+  /** What's copied after an upload here; null follows Settings > Output.
+   * With the fields below, destinations work as upload profiles
+   * ("Builds", "Logs", "Screenshots"), even several on one bucket. */
+  outputMode?: OutputMode | null;
+  /** "Delete after" for uploads here, in days (0 keeps them); null until
+   * it's picked for this destination, when Settings' last choice applies. */
+  expiryDays?: number | null;
+  /** Copy a temporary link valid this many seconds (one of
+   * `temporaryLinkDurations`) instead of the public URL; null copies the
+   * public URL. */
+  temporaryLink?: number | null;
+  /** What to strip from photos before they're uploaded; null removes the
+   * location. */
+  imageMetadata?: ImageMetadataPolicy | null;
+  /** How folders are uploaded; null uploads them as a ZIP. */
+  folderUpload?: FolderUploadMode | null;
 }
+
+export type ImageMetadataPolicy = "removeLocation" | "removeAll" | "keepAll";
+export const imageMetadataPolicies: ImageMetadataPolicy[] = ["removeLocation", "removeAll", "keepAll"];
+
+export type FolderUploadMode = "zip" | "keepStructure";
+export const folderUploadModes: FolderUploadMode[] = ["zip", "keepStructure"];
+
+/** How long a temporary (presigned) link can stay valid, in seconds. Seven
+ * days is the longest S3 allows. The minute-long ones are for confidential
+ * files: S3 can't count downloads, so a link can't be single-use, but one
+ * that dies minutes after it's sent is close. */
+export const temporaryLinkDurations = [300, 900, 3600, 86_400, 604_800] as const;
 
 export interface StorageCredentials {
   accessKeyId: string;
@@ -47,8 +75,12 @@ export interface StorageCredentials {
 export interface ConnectionResult {
   bucketReachable: boolean;
   writable: boolean;
-  publicUrlReachable: boolean | null;
+  /** What opening the test file's public link returned; null when nothing
+   * was uploaded to open. */
+  publicLink: PublicLinkCheck | null;
 }
+
+export type PublicLinkCheck = { kind: "reachable" } | { kind: "status"; code: number } | { kind: "noResponse" };
 
 export type JobState =
   | { kind: "waiting" }
@@ -160,10 +192,16 @@ export function expiryRulesActive(settings: Settings | null, destinationId: stri
   return settings.expiryRules?.[destinationId]?.status.kind === "active";
 }
 
-/** The "Delete after" that actually applies to a destination: the setting
+/** The "Delete after" picked for a destination, whether or not its bucket
+ * has the rules yet. */
+export function deleteAfterDays(settings: Settings | null, destination: DestinationConfig | undefined) {
+  return destination?.expiryDays ?? settings?.deleteAfterDays ?? 0;
+}
+
+/** The "Delete after" that actually applies to a destination: its choice
  * once its rules are active, and 0 (Off) until then. */
-export function effectiveDeleteAfterDays(settings: Settings | null, destinationId: string | undefined) {
-  return expiryRulesActive(settings, destinationId) ? (settings?.deleteAfterDays ?? 0) : 0;
+export function effectiveDeleteAfterDays(settings: Settings | null, destination: DestinationConfig | undefined) {
+  return expiryRulesActive(settings, destination?.id) ? deleteAfterDays(settings, destination) : 0;
 }
 
 export type LocalApiStatus =
@@ -216,6 +254,11 @@ export const api = {
     invoke<DestinationConfig>("save_destination", { config, credentials, rules }),
   removeDestination: (id: string) => invoke<void>("remove_destination", { id }),
   setDefaultDestination: (id: string) => invoke<void>("set_default_destination", { id }),
+  /** A copy with the same keys, as a starting point for another profile on
+   * the same bucket. */
+  duplicateDestination: (id: string) => invoke<DestinationConfig>("duplicate_destination", { id }),
+  setDestinationExpiry: (id: string, days: number) => invoke<void>("set_destination_expiry", { id, days }),
+  setDestinationLink: (id: string, seconds: number | null) => invoke<void>("set_destination_link", { id, seconds }),
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>
     invoke<ConnectionResult>("test_connection", { config, credentials }),
   expiryRulesStatus: (destinationId: string) => invoke<ExpiryRulesCheck | null>("expiry_rules_status", { destinationId }),
@@ -228,8 +271,8 @@ export const api = {
   removeExpiryRules: (config: DestinationConfig, credentials: StorageCredentials | null) =>
     invoke<void>("remove_expiry_rules", { config, credentials }),
 
-  /** Returns how many files were queued: folders are skipped, and nothing
-   * is queued when there's no destination (Rust then says so itself). */
+  /** Returns how many files and folders were queued: nothing is queued
+   * when there's no destination (Rust then says so itself). */
   uploadFiles: (paths: string[], destinationId?: string) =>
     invoke<number>("upload_files", { paths, destinationId: destinationId ?? null }),
   uploadClipboard: () => invoke<boolean>("upload_clipboard"),
@@ -240,6 +283,8 @@ export const api = {
 
   listHistory: () => invoke<UploadRecord[]>("list_history"),
   thumbnailsDir: () => invoke<string>("thumbnails_dir"),
+  /** A fresh presigned link to an upload in history. */
+  recordTemporaryLink: (id: string, seconds: number) => invoke<string>("record_temporary_link", { id, seconds }),
   deleteRemote: (ids: string[]) => invoke<Record<string, string>>("delete_remote", { ids }),
   removeFromHistory: (ids: string[]) => invoke<void>("remove_from_history", { ids }),
 

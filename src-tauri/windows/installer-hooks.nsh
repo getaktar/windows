@@ -13,5 +13,6 @@
   ${If} $UpdateMode <> 1
     Delete "$SENDTO\Aktar.lnk"
     DeleteRegKey HKCU "Software\Classes\*\shell\Aktar.Upload"
+    DeleteRegKey HKCU "Software\Classes\Directory\shell\Aktar.Upload"
   ${EndIf}
 !macroend

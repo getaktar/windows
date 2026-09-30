@@ -58,6 +58,10 @@ sys-locale = "0.3"
 rand = "0.8"
 percent-encoding = "2"
 url = "2"
+# Reads photos' EXIF back after their metadata is removed, as a second
+# opinion (see `image_metadata`), and zips folders.
+exif = { package = "kamadak-exif", version = "0.6" }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

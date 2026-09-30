@@ -272,6 +272,11 @@ mod tests {
             object_path_template: "{uuid}.{ext}".into(),
             force_path_style: true,
             is_default: true,
+            output_mode: None,
+            expiry_days: None,
+            temporary_link: None,
+            image_metadata: None,
+            folder_upload: None,
         }
     }
 

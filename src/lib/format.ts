@@ -140,6 +140,40 @@ export function shortDay(millis: number, locale: string, t: Translate) {
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(millis));
 }
 
+/** "Public" or "15 minutes", for the "Link" choices. */
+export function temporaryLinkLabel(seconds: number | null | undefined, t: Translate) {
+  switch (seconds) {
+    case 300:
+      return t("5 minutes");
+    case 900:
+      return t("15 minutes");
+    case 3600:
+      return t("1 hour");
+    case 86_400:
+      return t("24 hours");
+    case 604_800:
+      return t("7 days");
+    default:
+      return t("Public");
+  }
+}
+
+/** "Valid for 15 Minutes", for "Copy Temporary Link" menus. */
+export function temporaryLinkTitle(seconds: number, t: Translate) {
+  switch (seconds) {
+    case 300:
+      return t("Valid for 5 Minutes");
+    case 900:
+      return t("Valid for 15 Minutes");
+    case 3600:
+      return t("Valid for 1 Hour");
+    case 86_400:
+      return t("Valid for 1 Day");
+    default:
+      return t("Valid for 7 Days");
+  }
+}
+
 /** "7 days", for the "Delete after" choices. */
 export function durationLabel(days: number, t: Translate) {
   return days === 1 ? t("1 day") : t("{0} days", days);

@@ -166,7 +166,7 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
         return Response::error(500, "Could not stage the file for upload.");
     }
 
-    let mut input = UploadInput { path, original_filename: filename.clone(), object_key: None, temporary: false, expiry };
+    let mut input = UploadInput { original_filename: filename.clone(), expiry, ..UploadInput::from_path(path) };
     if let Some(raw_prefix) = request.query.get("prefix") {
         let prefix = bucket::normalized_folder(raw_prefix);
         let key = match credentials::load(&destination.id) {
@@ -202,6 +202,12 @@ async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
         return Response::error(422, "The clipboard has no file or image to upload.");
     };
     input.expiry = expiry;
+    // One request, one upload: a folder always goes up as a ZIP here,
+    // whatever the destination does with folders.
+    let mut destination = destination;
+    if input.path.is_dir() {
+        destination.folder_upload = Some(crate::destinations::FolderUploadMode::Zip);
+    }
     run(core, input, destination).await
 }
 

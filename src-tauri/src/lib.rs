@@ -9,9 +9,11 @@ mod credentials;
 mod deeplink;
 mod destinations;
 mod expiry;
+mod folder_upload;
 mod history;
 mod hotkey;
 mod i18n;
+mod image_metadata;
 mod local_api;
 mod output;
 mod package;
@@ -101,6 +103,10 @@ pub fn run() {
             commands::bucket_move,
             commands::bucket_create_folder,
             commands::bucket_presign,
+            commands::duplicate_destination,
+            commands::set_destination_expiry,
+            commands::set_destination_link,
+            commands::record_temporary_link,
             commands::bucket_upload,
             commands::fetch_remote,
             commands::get_settings,

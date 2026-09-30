@@ -71,7 +71,9 @@ export default function Library() {
         const bucketUpload = current.kind === "bucket" ? uploadTargets.current.get(current.id) : undefined;
         const queued = bucketUpload ? bucketUpload(payload.paths) : api.uploadFiles(payload.paths);
         queued
-          .then((count) => setNotice(count === 0 ? tRef.current("Only files can be uploaded, not folders.") : null))
+          .then((count) =>
+            setNotice(count === 0 ? tRef.current("This item can’t be uploaded. Save it as a file first, then drop the file.") : null),
+          )
           .catch(() => {});
       }
     });

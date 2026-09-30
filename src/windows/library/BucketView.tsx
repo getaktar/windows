@@ -40,7 +40,7 @@ import {
 } from "../../components/Dialogs";
 import { FileIcon, ProviderIcon } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
-import { api, type BucketObject, type DestinationConfig } from "../../lib/api";
+import { api, temporaryLinkDurations, type BucketObject, type DestinationConfig } from "../../lib/api";
 import {
   folderDisplayName,
   formatBytes,
@@ -49,19 +49,12 @@ import {
   nameOfKey,
   parentOfFolder,
   parentOfKey,
+  temporaryLinkTitle,
 } from "../../lib/format";
 import { hasTextSelection, useFlag, useSelection } from "../../lib/hooks";
 import { useI18n, type Translate } from "../../lib/i18n";
 import type { BucketUpload } from "../Library";
 import { MAX_SEARCH_RESULTS, useBucketBrowser, type BucketBrowser } from "./useBucketBrowser";
-
-/** How long a "Copy Temporary Link" link stays valid. Seven days is the
- * longest an S3 presigned URL can last. */
-const temporaryLinkDurations = [
-  { seconds: 3600, title: "Valid for 1 Hour" },
-  { seconds: 86_400, title: "Valid for 1 Day" },
-  { seconds: 604_800, title: "Valid for 7 Days" },
-];
 
 /** Copy, open, rename, and delete actions for one object, shared by the
  * list's context menu and the detail pane's menu. */
@@ -80,11 +73,11 @@ function objectMenu(
     { label: t("Copy HTML"), onClick: () => api.copyText(formatOutput(url, "html", name)) },
     {
       submenu: t("Copy Temporary Link"),
-      items: temporaryLinkDurations.map((duration) => ({
-        label: t(duration.title),
+      items: temporaryLinkDurations.map((seconds) => ({
+        label: temporaryLinkTitle(seconds, t),
         onClick: () => {
           model
-            .temporaryURL(object.key, duration.seconds)
+            .temporaryURL(object.key, seconds)
             .then((link) => api.copyText(link))
             .catch((error) => model.setActionError(String(error)));
         },
