@@ -456,6 +456,7 @@ pub fn set_language(app: AppHandle, core: Core, code: Option<String>) -> String 
     let applied = i18n::apply(code.as_deref());
     crate::tray::refresh_menu(&app);
     crate::windows::retitle_all(&app);
+    crate::shell::register_context_menu();
     core.emit(events::LANGUAGE_CHANGED, applied.clone());
     core.notify(events::SETTINGS_CHANGED);
     applied

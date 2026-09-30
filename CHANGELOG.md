@@ -49,3 +49,6 @@ The first Windows version, with the features of Aktar for Mac 0.4.1.
 - English, Turkish, German, French, Spanish, Brazilian Portuguese, Japanese,
   and Simplified Chinese. The language can be changed in Settings without
   restarting
+- "Upload with Aktar" in File Explorer's right-click menu for files (under
+  "Show more options" on Windows 11), and Aktar in the "Send to" menu. Not in
+  the Microsoft Store version yet, which can't add them

@@ -531,6 +531,15 @@
     "ja": "クリップボードをアップロード",
     "zh-Hans": "上传剪贴板内容"
   },
+  "Upload with Aktar": {
+    "tr": "Aktar ile Yükle",
+    "de": "Mit Aktar hochladen",
+    "fr": "Envoyer avec Aktar",
+    "es": "Subir con Aktar",
+    "pt-BR": "Enviar com o Aktar",
+    "ja": "Aktarでアップロード",
+    "zh-Hans": "使用 Aktar 上传"
+  },
   "Uploads with “Delete after” turned on are removed by lifecycle rules in the bucket.": {
     "tr": "“Silinme süresi” açık olan yüklemeler, bucket'taki yaşam döngüsü kurallarıyla silinir.",
     "de": "Uploads mit „Löschen nach“ werden durch Lebenszyklusregeln im Bucket entfernt.",

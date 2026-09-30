@@ -17,6 +17,7 @@ mod output;
 mod package;
 mod panel;
 mod settings;
+mod shell;
 mod storage;
 mod system;
 mod thumbnails;
@@ -44,7 +45,12 @@ pub fn run() {
     // link) hands its arguments to the running copy and exits.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // Files from File Explorer's "Upload with Aktar" or "Send to".
+            if shell::is_upload(&argv) {
+                shell::handle(&core::core(app), &argv, std::path::Path::new(&cwd));
+                return;
+            }
             // Links are delivered through the deep-link plugin's
             // on_open_url; a plain second launch just shows the panel.
             if !argv.iter().any(|arg| arg.to_ascii_lowercase().starts_with("aktar:")) {
@@ -152,6 +158,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let settings = core.settings.get();
     i18n::apply(settings.language.as_deref());
     clipboard::remove_leftovers();
+    shell::register_context_menu();
 
     panel::create(&handle)?;
     tray::create(&handle)?;
@@ -186,12 +193,20 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // user started gets something visible: Welcome the first time, the
     // upload panel afterwards. Launches at sign-in stay quiet.
     let autostarted = std::env::args().any(|arg| arg == AUTOSTART_FLAG) || package::launched_at_sign_in();
+    // Started by File Explorer's "Upload with Aktar" or "Send to": upload
+    // and stay in the tray, like the shortcut does.
+    let args: Vec<String> = std::env::args().collect();
+    let explorer_upload = shell::is_upload(&args);
+    if explorer_upload {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        shell::handle(&core, &args, &cwd);
+    }
     // Restarted by an update installed while the user was away.
     let after_update = settings.quiet_next_launch;
     if after_update {
         core.settings.update(|settings| settings.quiet_next_launch = false);
     }
-    if !autostarted && !after_update && launch_links.is_empty() {
+    if !autostarted && !after_update && !explorer_upload && launch_links.is_empty() {
         if core.destinations.all().is_empty() {
             windows::open(&handle, AppWindow::Onboarding);
         } else {
