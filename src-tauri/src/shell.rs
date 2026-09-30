@@ -62,7 +62,7 @@ pub fn register_context_menu() {
     let Ok(exe) = std::env::current_exe() else { return };
     let exe = exe.to_string_lossy();
     for key in [r"Software\Classes\*\shell\Aktar.Upload", r"Software\Classes\Directory\shell\Aktar.Upload"] {
-        set(key, Some("MUIVerb"), &t!("Upload with Aktar"));
+        set(key, Some("MUIVerb"), &crate::t!("Upload with Aktar"));
         set(key, Some("Icon"), &format!("\"{exe}\",0"));
         // One aktar.exe per selected item, however many are selected;
         // each hands its path to the running copy.
