@@ -318,7 +318,7 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             }
             match bucket::move_object(&storage, &body.from, &new_key).await {
                 Ok(()) => {
-                    core.history.object_moved(&body.from, &new_key, &destination);
+                    core.history.object_moved(&body.from, &new_key, &destination, crate::expiry::is_active(core, &destination.id));
                     core.notify(events::HISTORY_CHANGED);
                     let object = BucketObject { key: new_key, size: 0, last_modified: Some(crate::util::now_millis()) };
                     Response::json(200, object_dto(&object, &destination))

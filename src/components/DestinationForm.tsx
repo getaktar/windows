@@ -68,6 +68,8 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
    * off), which saving records instead of guessing from what was edited. */
   const [formRules, setFormRules] = useState<FormRules>({ kind: "notChecked" });
   const [isConfirmingTurnOff, setIsConfirmingTurnOff] = useState(false);
+  /** tmp/{N}d/ folders that already hold files, while confirming set up. */
+  const [prefixesInUse, setPrefixesInUse] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +77,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setRulesError(null);
     setFormRules({ kind: "notChecked" });
     setIsConfirmingTurnOff(false);
+    setPrefixesInUse(null);
     if (existing) api.expiryRulesStatus(existing.id).then(setRulesCheck).catch(() => {});
     const initialPreset = existing?.preset ?? "cloudflareR2";
     setPreset(initialPreset);
@@ -117,6 +120,42 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
 
   const credentials = () => (hasNewCredentials ? { accessKeyId, secretAccessKey, sessionToken: null } : null);
 
+  /** The bucket a rules result is about, so saving can tell whether the
+   * connection was edited after it. */
+  const currentConnection = () => {
+    const config = currentConfig();
+    return { endpoint: config.endpoint, bucket: config.bucket, region: config.region };
+  };
+
+  /** A rules result for the bucket the form pointed at before isn't true of
+   * the one it points at now. */
+  const connectionEdited = () => {
+    setTestResult(null);
+    setRulesError(null);
+    if (formRules.kind === "checked" || rulesCheck) {
+      setFormRules({ kind: "notChecked" });
+      setRulesCheck(null);
+    }
+  };
+
+  const setUpRules = async () => {
+    setIsCheckingRules(true);
+    setRulesError(null);
+    try {
+      // Files already in those folders would start expiring with the
+      // rules, so that's confirmed first.
+      const inUse = await api.expiryPrefixesInUse(currentConfig(), credentials());
+      if (inUse.length > 0) {
+        setPrefixesInUse(inUse);
+        setIsCheckingRules(false);
+        return;
+      }
+    } catch {
+      // Setting up reports the same problem, with more to go on.
+    }
+    await applyRules();
+  };
+
   const test = async () => {
     setIsTesting(true);
     setTestResult(null);
@@ -140,13 +179,15 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     }
   };
 
-  const setUpRules = async () => {
+  const applyRules = async () => {
+    setPrefixesInUse(null);
     setIsCheckingRules(true);
     setRulesError(null);
     try {
+      const connection = currentConnection();
       const check = await api.setUpExpiryRules(currentConfig(), credentials());
       setRulesCheck(check);
-      setFormRules({ kind: "checked", check });
+      setFormRules({ kind: "checked", check, connection });
     } catch (error) {
       setRulesError(errorMessage(error));
     } finally {
@@ -161,9 +202,10 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setIsCheckingRules(true);
     setRulesError(null);
     try {
+      const connection = currentConnection();
       if (removingRules) await api.removeExpiryRules(currentConfig(), credentials());
       setRulesCheck(null);
-      setFormRules({ kind: "checked", check: null });
+      setFormRules({ kind: "checked", check: null, connection });
     } catch (error) {
       setRulesError(errorMessage(error));
     } finally {
@@ -204,7 +246,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                       setPreset(next);
                       setRegion(defaultRegion(next));
                       setForcePathStyle(defaultForcePathStyle(next));
-                      setTestResult(null);
+                      connectionEdited();
                     }}
                   >
                     {presets.map((value) => (
@@ -233,16 +275,28 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                       onChange={(_, data) => {
                         setAccountID(data.value);
                         setEndpoint(data.value.trim() ? r2Endpoint(data.value.trim()) : "");
+                        connectionEdited();
                       }}
                     />
                   </Field>
                 ) : (
                   <Field label={t("Endpoint")} required>
-                    <Input value={endpoint} placeholder="s3.example.com" onChange={(_, data) => setEndpoint(data.value)} />
+                    <Input value={endpoint} placeholder="s3.example.com" 
+                      onChange={(_, data) => {
+                        setEndpoint(data.value);
+                        connectionEdited();
+                      }}
+                    />
                   </Field>
                 )}
                 <Field label={t("Region")}>
-                  <Input value={region} onChange={(_, data) => setRegion(data.value)} />
+                  <Input
+                    value={region}
+                    onChange={(_, data) => {
+                      setRegion(data.value);
+                      connectionEdited();
+                    }}
+                  />
                 </Field>
                 {preset !== "cloudflareR2" && (
                   <Field
@@ -289,7 +343,13 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
               </Text>
               <div className="form-group">
                 <Field label={t("Bucket")} required>
-                  <Input value={bucket} placeholder="screenshots" spellCheck={false} onChange={(_, data) => setBucket(data.value)} />
+                  <Input value={bucket} placeholder="screenshots" 
+                    spellCheck={false}
+                    onChange={(_, data) => {
+                      setBucket(data.value);
+                      connectionEdited();
+                    }}
+                  />
                 </Field>
                 <Field
                   label={t("Public Base URL")}
@@ -398,6 +458,18 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
           destructive
           onConfirm={() => turnOffRules(true)}
           onCancel={() => setIsConfirmingTurnOff(false)}
+        />
+        <ConfirmDialog
+          open={prefixesInUse !== null}
+          title={t("Files already in these folders will be deleted")}
+          message={t(
+            "{0} already hold files. Once the rules are set up, the bucket deletes them too when they're older than the folder's number of days.",
+            (prefixesInUse ?? []).join(", "),
+          )}
+          confirmLabel={t("Set Up Anyway")}
+          destructive
+          onConfirm={applyRules}
+          onCancel={() => setPrefixesInUse(null)}
         />
       </DialogSurface>
     </Dialog>

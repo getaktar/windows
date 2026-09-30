@@ -102,6 +102,35 @@ pub fn parse_rules(xml: &str) -> Vec<XmlRule> {
         .collect()
 }
 
+/// The rules of a GET ?lifecycle response, or None when it doesn't read as
+/// a lifecycle configuration whose every rule could be parsed: a proxy's
+/// HTML page, a provider answering with something else, or elements this
+/// parser doesn't follow (namespace prefixes). Writing Aktar's rules on top
+/// of a misread configuration would replace the bucket's own rules, so
+/// nothing is written then.
+pub fn parse_configuration(xml: &str) -> Option<Vec<XmlRule>> {
+    if blocks("LifecycleConfiguration", xml).len() != 1 {
+        return None;
+    }
+    let rules = parse_rules(xml);
+    let opened = xml.match_indices("<Rule").filter(|(index, _)| is_tag_end(&xml[index + "<Rule".len()..])).count();
+    (rules.len() == opened).then_some(rules)
+}
+
+fn is_tag_end(rest: &str) -> bool {
+    rest.starts_with(|c: char| c == '>' || c == '/' || c.is_ascii_whitespace())
+}
+
+/// Whether all of Aktar's rules are in `rules`, exactly as installed.
+pub fn rules_in_place(rules: &[XmlRule]) -> bool {
+    DURATIONS.iter().all(|days| rules.iter().any(|rule| matches_aktar_rule(rule, *days)))
+}
+
+/// The durations whose rule isn't in place yet.
+pub fn missing_durations(rules: &[XmlRule]) -> Vec<u32> {
+    DURATIONS.into_iter().filter(|days| !rules.iter().any(|rule| matches_aktar_rule(rule, *days))).collect()
+}
+
 fn is_aktar_rule(rule: &XmlRule) -> bool {
     rule.id.as_deref().is_some_and(|id| DURATIONS.iter().any(|days| rule_id(*days) == id))
 }
@@ -133,10 +162,7 @@ fn document(rules: impl IntoIterator<Item = String>) -> String {
 /// Aktar's four (replacing older versions of them). None when all four are
 /// already in place, so nothing needs writing.
 pub fn merged_rules(existing: &[XmlRule]) -> Option<String> {
-    let in_place = DURATIONS
-        .iter()
-        .all(|days| existing.iter().any(|rule| matches_aktar_rule(rule, *days)));
-    if in_place {
+    if rules_in_place(existing) {
         return None;
     }
     let kept = existing.iter().filter(|rule| !is_aktar_rule(rule)).map(|rule| rule.raw.clone());
@@ -182,7 +208,7 @@ fn blocks<'a>(tag: &str, xml: &'a str) -> Vec<&'a str> {
     while let Some(start) = rest.find(&open) {
         let after_name = &rest[start + open.len()..];
         // `<Rules>` isn't a `<Rule>`.
-        if !after_name.starts_with(|c: char| c == '>' || c == '/' || c.is_ascii_whitespace()) {
+        if !is_tag_end(after_name) {
             rest = after_name;
             continue;
         }
@@ -271,7 +297,32 @@ pub enum FormRules {
     #[default]
     NotChecked,
     /// The last result there; None when auto-delete was turned off.
-    Checked { check: Option<RulesCheck> },
+    /// `connection` is the bucket it was about: the connection fields can
+    /// still change afterwards, and a result about another bucket must not
+    /// be saved for this one.
+    Checked {
+        check: Option<RulesCheck>,
+        #[serde(default)]
+        connection: Option<RulesConnection>,
+    },
+}
+
+/// The bucket a form's rules result was obtained for.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RulesConnection {
+    pub endpoint: String,
+    pub bucket: String,
+    pub region: String,
+}
+
+impl RulesConnection {
+    /// Whether it's the bucket `config` saves.
+    pub fn is_for(&self, config: &DestinationConfig) -> bool {
+        self.endpoint.trim() == config.endpoint.trim()
+            && self.bucket.trim() == config.bucket.trim()
+            && self.region.trim() == config.region.trim()
+    }
 }
 
 /// Sets the rules up. A network or credentials failure isn't a status of
@@ -297,9 +348,10 @@ pub async fn set_up(
 }
 
 /// Takes Aktar's rules back out of the bucket, keeping its other rules.
-/// Files already under `tmp/` then stay for good. With `record` set (the
-/// saved destination's bucket and keys), the destination is marked not
-/// active right away, since nothing deletes its uploads anymore.
+/// Files already under `tmp/` then stay for good, as the Turn Off dialog
+/// promises: with `record` set (the saved destination's bucket and keys),
+/// the destination is marked not active and its uploads stop expiring in
+/// history, so the sweep leaves them alone too.
 pub async fn remove(
     core: &SharedCore,
     destination: DestinationConfig,
@@ -313,18 +365,24 @@ pub async fn remove(
         .map_err(|error| error.to_string())?;
     if record_result {
         record(core, &id, None);
+        rules_removed(core, &id);
     }
     Ok(())
+}
+
+/// The bucket of `destination_id` no longer has Aktar's rules, so its
+/// uploads stay for good.
+pub fn rules_removed(core: &SharedCore, destination_id: &str) {
+    core.history.clear_expiry(destination_id);
+    core.notify(events::HISTORY_CHANGED);
 }
 
 // MARK: - Sweep
 
 /// On launch and every hour after: clears history entries of uploads past
 /// their expiry date. The bucket's lifecycle rules have normally deleted
-/// the file already; this goes through the same routine as "Delete Remote
-/// File", which succeeds for an object that's gone, so the entry goes and
-/// a file whose rule was removed since doesn't linger. A failure (offline)
-/// leaves the entry for the next sweep.
+/// the file already. See `sweep_one` for when Aktar deletes it itself. A
+/// failure (offline) leaves the entry for the next sweep.
 pub fn schedule_sweep(core: &SharedCore) {
     let core = core.clone();
     tauri::async_runtime::spawn(async move {
@@ -345,11 +403,53 @@ async fn sweep(core: &SharedCore) {
         if failures.get(&record.destination_id).is_some_and(|count| *count >= 3) {
             continue;
         }
-        if let Err(message) = crate::uploads::delete_remote(core, &record.id).await {
-            log::warn!("Could not delete expired upload {}: {message}", record.object_key);
+        if let Err(message) = sweep_one(core, &record).await {
+            log::warn!("Could not clear expired upload {}: {message}", record.object_key);
             *failures.entry(record.destination_id).or_default() += 1;
         }
     }
+}
+
+/// What the sweep does with one expired upload. Aktar deletes the file
+/// itself only as a stand-in for the bucket's own rule, so only where that
+/// rule is known to be in place, and only the upload it recorded:
+/// - The destination is gone: nothing to delete from; the entry goes.
+/// - Its rules aren't active (turned off, or the destination now points at
+///   another bucket): whatever the bucket does with the file is up to its
+///   rules; the entry goes, the file isn't touched.
+/// - The object at that key was written after this upload (the same name
+///   uploaded again): it's someone else's upload now, so it stays.
+/// - Otherwise the file is deleted like "Delete Remote File", which
+///   succeeds for one the rule already deleted.
+async fn sweep_one(core: &SharedCore, record: &crate::history::UploadRecord) -> Result<(), String> {
+    let destination = core.destinations.all().into_iter().find(|destination| destination.id == record.destination_id);
+    let credentials = destination.as_ref().and_then(|destination| crate::credentials::load(&destination.id).ok());
+    let (Some(destination), Some(credentials)) = (destination, credentials) else {
+        return drop_entry(core, record);
+    };
+    if !is_active(core, &destination.id) {
+        return drop_entry(core, record);
+    }
+    let storage = S3Provider::new(destination, credentials);
+    let written = storage.last_modified(&record.object_key).await.map_err(|error| error.to_string())?;
+    match written {
+        None => drop_entry(core, record),
+        Some(written) if uploaded_again(record, written) => drop_entry(core, record),
+        Some(_) => crate::uploads::delete_remote(core, &record.id).await,
+    }
+}
+
+/// Whether the object's last write is newer than this upload: S3 keeps
+/// whole seconds, so anything more than a minute after the record was
+/// created is a later upload to the same key.
+fn uploaded_again(record: &crate::history::UploadRecord, written_at: i64) -> bool {
+    written_at > record.created_at + 60_000
+}
+
+fn drop_entry(core: &SharedCore, record: &crate::history::UploadRecord) -> Result<(), String> {
+    core.history.delete(&record.id);
+    core.notify(events::HISTORY_CHANGED);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -378,6 +478,36 @@ mod tests {
     fn configuration(rules: &[&str]) -> String {
         let rules: String = rules.iter().map(|rule| format!("<Rule>{rule}</Rule>")).collect();
         format!(r#"<?xml version="1.0" encoding="UTF-8"?><LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">{rules}</LifecycleConfiguration>"#)
+    }
+
+    #[test]
+    fn refuses_what_it_cant_read_as_a_configuration() {
+        // A real one, with rules or without.
+        let rules = parse_configuration(&configuration(&[R2_RULE, USER_RULE])).unwrap();
+        assert_eq!(rules.len(), 2);
+        assert_eq!(parse_configuration("<LifecycleConfiguration/>"), Some(Vec::new()));
+        // A proxy's page, or another listing, answered with 200.
+        assert_eq!(parse_configuration("<html><body>Sign in to the Wi-Fi</body></html>"), None);
+        assert_eq!(parse_configuration("<ListBucketResult><Contents><Key>a</Key></Contents></ListBucketResult>"), None);
+        // Namespace-prefixed elements this parser doesn't follow.
+        assert_eq!(
+            parse_configuration("<s3:LifecycleConfiguration><s3:Rule><s3:ID>x</s3:ID></s3:Rule></s3:LifecycleConfiguration>"),
+            None
+        );
+        // A rule that doesn't close is one the rewrite would lose.
+        assert_eq!(parse_configuration("<LifecycleConfiguration><Rule><ID>x</ID></LifecycleConfiguration>"), None);
+    }
+
+    #[test]
+    fn reports_missing_rules() {
+        let rules = parse_rules(&configuration(&[&aktar_rule_xml(1), &aktar_rule_xml(7), R2_RULE]));
+        assert!(!rules_in_place(&rules));
+        assert_eq!(missing_durations(&rules), vec![14, 30]);
+        let all: Vec<String> = all_aktar_rules();
+        let all: Vec<&str> = all.iter().map(String::as_str).collect();
+        let rules = parse_rules(&configuration(&all));
+        assert!(rules_in_place(&rules));
+        assert!(missing_durations(&rules).is_empty());
     }
 
     fn all_aktar_rules() -> Vec<String> {

@@ -25,7 +25,7 @@ import {
 } from "@fluentui/react-icons";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { message, open } from "@tauri-apps/plugin-dialog";
+import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
@@ -144,6 +144,34 @@ export default function Panel() {
   const setUpExpiry = async () => {
     if (!currentDestination) return;
     setIsSettingUpExpiry(true);
+    // Files already in those folders would start expiring with the rules,
+    // so that's confirmed first.
+    const inUse = await api.expiryPrefixesInUse(currentDestination, null).catch(() => [] as string[]);
+    if (inUse.length > 0) {
+      await api.setPanelShowingDialog(true);
+      let confirmed = false;
+      try {
+        confirmed = await ask(
+          t(
+            "{0} already hold files. Once the rules are set up, the bucket deletes them too when they're older than the folder's number of days.",
+            inUse.join(", "),
+          ),
+          {
+            title: t("Files already in these folders will be deleted"),
+            kind: "warning",
+            okLabel: t("Set Up Anyway"),
+            cancelLabel: t("Cancel"),
+          },
+        );
+      } finally {
+        await api.setPanelShowingDialog(false);
+        getCurrentWindow().setFocus();
+      }
+      if (!confirmed) {
+        setIsSettingUpExpiry(false);
+        return;
+      }
+    }
     let failure: string | null = null;
     try {
       // Saved credentials; success updates the settings, which enables

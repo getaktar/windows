@@ -159,7 +159,7 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         for (offset, mut input) in inputs.into_iter().enumerate() {
-            input.expiry = settled_expiry(input.expiry, input.object_key.is_some(), rules_active, delete_after_days);
+            input.expiry = settled_expiry(input.expiry, input.object_key.as_deref(), rules_active, delete_after_days);
             let (sender, receiver) = watch::channel(JobState::Waiting);
             let id = crate::util::new_id();
             queued.push(Queued { job_id: id.clone(), receiver });
@@ -177,10 +177,15 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
 /// whose bucket isn't known to have the lifecycle rules, whatever "Delete
 /// after" is set to: the effective setting is `delete_after_days` once the
 /// rules are active, and 0 (keep) until then. An upload to an exact key
-/// (the bucket browser) is exactly where the user put it, and stays.
-fn settled_expiry(expiry: Expiry, exact_key: bool, rules_active: bool, delete_after_days: u32) -> Expiry {
-    if exact_key || !rules_active {
+/// (the bucket browser, the local API's prefix=) is exactly where the user
+/// put it: it stays, unless that's inside a `tmp/{N}d/` folder the bucket's
+/// rules empty, where it goes after N days like any other file there.
+fn settled_expiry(expiry: Expiry, exact_key: Option<&str>, rules_active: bool, delete_after_days: u32) -> Expiry {
+    if !rules_active {
         return Expiry::Never;
+    }
+    if let Some(key) = exact_key {
+        return crate::expiry::days_in_key(key).map_or(Expiry::Never, Expiry::Days);
     }
     match expiry {
         Expiry::FromSettings if crate::expiry::is_valid(delete_after_days) => Expiry::Days(delete_after_days),
@@ -457,17 +462,21 @@ mod tests {
     #[test]
     fn expires_only_on_destinations_with_rules() {
         // The sticky setting applies once the bucket has the rules.
-        assert_eq!(settled_expiry(Expiry::FromSettings, false, true, 7), Expiry::Days(7));
-        assert_eq!(settled_expiry(Expiry::FromSettings, false, true, 0), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::FromSettings, None, true, 7), Expiry::Days(7));
+        assert_eq!(settled_expiry(Expiry::FromSettings, None, true, 0), Expiry::Never);
         // Until then, nothing expires, whatever it says.
-        assert_eq!(settled_expiry(Expiry::FromSettings, false, false, 7), Expiry::Never);
-        assert_eq!(settled_expiry(Expiry::Days(30), false, false, 0), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::FromSettings, None, false, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(30), None, false, 0), Expiry::Never);
         // An explicit duration (the local API) wins over the setting.
-        assert_eq!(settled_expiry(Expiry::Days(1), false, true, 7), Expiry::Days(1));
-        assert_eq!(settled_expiry(Expiry::Never, false, true, 7), Expiry::Never);
-        assert_eq!(settled_expiry(Expiry::Days(3), false, true, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(1), None, true, 7), Expiry::Days(1));
+        assert_eq!(settled_expiry(Expiry::Never, None, true, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(3), None, true, 7), Expiry::Never);
         // Exact keys never expire.
-        assert_eq!(settled_expiry(Expiry::FromSettings, true, true, 7), Expiry::Never);
-        assert_eq!(settled_expiry(Expiry::Days(7), true, true, 0), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::FromSettings, Some("docs/a.pdf"), true, 7), Expiry::Never);
+        assert_eq!(settled_expiry(Expiry::Days(7), Some("docs/a.pdf"), true, 0), Expiry::Never);
+        // ...unless they're inside a folder the rules empty.
+        assert_eq!(settled_expiry(Expiry::FromSettings, Some("tmp/14d/a.pdf"), true, 7), Expiry::Days(14));
+        assert_eq!(settled_expiry(Expiry::Never, Some("tmp/1d/a.pdf"), true, 0), Expiry::Days(1));
+        assert_eq!(settled_expiry(Expiry::FromSettings, Some("tmp/14d/a.pdf"), false, 7), Expiry::Never);
     }
 }

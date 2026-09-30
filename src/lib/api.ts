@@ -142,8 +142,16 @@ export interface ExpiryRulesCheck {
 
 /** What the destination form found out about the lifecycle rules while it
  * was open, recorded when the destination is saved. `check` is null when
- * auto-delete was turned off there. */
-export type FormRules = { kind: "notChecked" } | { kind: "checked"; check: ExpiryRulesCheck | null };
+ * auto-delete was turned off there. `connection` is the bucket that was
+ * checked, so a result for a bucket the form no longer points at is ignored. */
+export interface RulesConnection {
+  endpoint: string;
+  bucket: string;
+  region: string;
+}
+export type FormRules =
+  | { kind: "notChecked" }
+  | { kind: "checked"; check: ExpiryRulesCheck | null; connection?: RulesConnection };
 
 /** Whether the destination's bucket is known to have Aktar's lifecycle
  * rules, which is what makes "Delete after" available for it. */
@@ -213,6 +221,10 @@ export const api = {
   expiryRulesStatus: (destinationId: string) => invoke<ExpiryRulesCheck | null>("expiry_rules_status", { destinationId }),
   setUpExpiryRules: (config: DestinationConfig, credentials: StorageCredentials | null) =>
     invoke<ExpiryRulesCheck>("set_up_expiry_rules", { config, credentials }),
+  /** The tmp/{N}d/ folders that already hold files and would start expiring
+   * once the missing rules are set up. */
+  expiryPrefixesInUse: (config: DestinationConfig, credentials: StorageCredentials | null) =>
+    invoke<string[]>("expiry_prefixes_in_use", { config, credentials }),
   removeExpiryRules: (config: DestinationConfig, credentials: StorageCredentials | null) =>
     invoke<void>("remove_expiry_rules", { config, credentials }),
 

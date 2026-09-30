@@ -78,6 +78,7 @@ pub fn run() {
             commands::test_connection,
             commands::expiry_rules_status,
             commands::set_up_expiry_rules,
+            commands::expiry_prefixes_in_use,
             commands::remove_expiry_rules,
             commands::upload_files,
             commands::upload_clipboard,

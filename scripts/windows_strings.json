@@ -611,5 +611,59 @@
     "pt-BR": "{0} dias",
     "ja": "{0}日",
     "zh-Hans": "{0} 天"
+  },
+  "Name the rules aktar-expire-1d, aktar-expire-7d, aktar-expire-14d, and aktar-expire-30d, or Aktar won't recognize them.": {
+    "tr": "Kuralları aktar-expire-1d, aktar-expire-7d, aktar-expire-14d ve aktar-expire-30d olarak adlandırın; aksi halde Aktar onları tanımaz.",
+    "de": "Benenne die Regeln aktar-expire-1d, aktar-expire-7d, aktar-expire-14d und aktar-expire-30d, sonst erkennt Aktar sie nicht.",
+    "fr": "Nommez les règles aktar-expire-1d, aktar-expire-7d, aktar-expire-14d et aktar-expire-30d, sinon Aktar ne les reconnaîtra pas.",
+    "es": "Nombra las reglas aktar-expire-1d, aktar-expire-7d, aktar-expire-14d y aktar-expire-30d, o Aktar no las reconocerá.",
+    "pt-BR": "Nomeie as regras aktar-expire-1d, aktar-expire-7d, aktar-expire-14d e aktar-expire-30d, ou o Aktar não as reconhecerá.",
+    "ja": "ルール名は aktar-expire-1d、aktar-expire-7d、aktar-expire-14d、aktar-expire-30d にしてください。それ以外の名前では Aktar が認識しません。",
+    "zh-Hans": "请将规则命名为 aktar-expire-1d、aktar-expire-7d、aktar-expire-14d 和 aktar-expire-30d，否则 Aktar 无法识别。"
+  },
+  "Files already in these folders will be deleted": {
+    "tr": "Bu klasörlerdeki mevcut dosyalar silinecek",
+    "de": "Dateien, die schon in diesen Ordnern liegen, werden gelöscht",
+    "fr": "Les fichiers déjà présents dans ces dossiers seront supprimés",
+    "es": "Se eliminarán los archivos que ya están en estas carpetas",
+    "pt-BR": "Os arquivos que já estão nessas pastas serão apagados",
+    "ja": "これらのフォルダにある既存のファイルは削除されます",
+    "zh-Hans": "这些文件夹中已有的文件将被删除"
+  },
+  "{0} already hold files. Once the rules are set up, the bucket deletes them too when they're older than the folder's number of days.": {
+    "tr": "{0} içinde zaten dosyalar var. Kurallar kurulunca bucket, klasörün gün sayısından eski olan bu dosyaları da siler.",
+    "de": "In {0} liegen schon Dateien. Sobald die Regeln eingerichtet sind, löscht der Bucket auch diese, wenn sie älter als die Tage des Ordners sind.",
+    "fr": "{0} contiennent déjà des fichiers. Une fois les règles en place, le bucket les supprime aussi lorsqu'ils dépassent le nombre de jours du dossier.",
+    "es": "{0} ya contienen archivos. Una vez configuradas las reglas, el bucket también los eliminará cuando superen los días de la carpeta.",
+    "pt-BR": "{0} já contêm arquivos. Depois que as regras forem configuradas, o bucket também os apagará quando passarem do número de dias da pasta.",
+    "ja": "{0} にはすでにファイルがあります。ルールを設定すると、フォルダの日数より古いファイルもバケットが削除します。",
+    "zh-Hans": "{0} 中已有文件。规则设置后，存储桶也会删除其中超过该文件夹天数的文件。"
+  },
+  "Set Up Anyway": {
+    "tr": "Yine de Kur",
+    "de": "Trotzdem einrichten",
+    "fr": "Configurer quand même",
+    "es": "Configurar de todos modos",
+    "pt-BR": "Configurar mesmo assim",
+    "ja": "このまま設定",
+    "zh-Hans": "仍然设置"
+  },
+  "The provider didn't keep the lifecycle rules.": {
+    "tr": "Sağlayıcı yaşam döngüsü kurallarını saklamadı.",
+    "de": "Der Anbieter hat die Lebenszyklusregeln nicht übernommen.",
+    "fr": "Le fournisseur n'a pas conservé les règles de cycle de vie.",
+    "es": "El proveedor no conservó las reglas de ciclo de vida.",
+    "pt-BR": "O provedor não manteve as regras de ciclo de vida.",
+    "ja": "プロバイダがライフサイクルルールを保持しませんでした。",
+    "zh-Hans": "服务商未保留生命周期规则。"
+  },
+  "The bucket's lifecycle rules couldn't be read, so nothing was changed.": {
+    "tr": "Bucket'ın yaşam döngüsü kuralları okunamadı, bu yüzden hiçbir şey değiştirilmedi.",
+    "de": "Die Lebenszyklusregeln des Buckets konnten nicht gelesen werden, daher wurde nichts geändert.",
+    "fr": "Les règles de cycle de vie du bucket n'ont pas pu être lues, donc rien n'a été modifié.",
+    "es": "No se pudieron leer las reglas de ciclo de vida del bucket, así que no se cambió nada.",
+    "pt-BR": "Não foi possível ler as regras de ciclo de vida do bucket, então nada foi alterado.",
+    "ja": "バケットのライフサイクルルールを読み取れなかったため、何も変更していません。",
+    "zh-Hans": "无法读取存储桶的生命周期规则，因此未做任何更改。"
   }
 }

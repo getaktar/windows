@@ -363,7 +363,64 @@ impl S3Provider {
 
     async fn write_expiry_rules(&self) -> Result<(), StorageError> {
         let existing = self.lifecycle_rules().await?.unwrap_or_default();
-        self.put_lifecycle(crate::expiry::merged_rules(&existing)).await
+        let Some(xml) = crate::expiry::merged_rules(&existing) else { return Ok(()) };
+        self.put_lifecycle(Some(xml)).await?;
+        // Read back: a provider can answer 200 to a configuration it
+        // ignored, and "active" means the bucket really deletes the files.
+        let written = self.lifecycle_rules().await?.unwrap_or_default();
+        if crate::expiry::rules_in_place(&written) {
+            Ok(())
+        } else {
+            Err(StorageError::Unknown(t!("The provider didn't keep the lifecycle rules.")))
+        }
+    }
+
+    /// Which of the `tmp/{N}d/` folders already hold files while their rule
+    /// isn't in place yet. Setting the rules up makes the bucket delete
+    /// those too, including ones older than N days, so the user is asked
+    /// first. Empty when the rules are all in place or can't be read (setting
+    /// up then reports why).
+    pub async fn expiry_prefixes_in_use(&self) -> Result<Vec<String>, StorageError> {
+        let existing = match self.lifecycle_rules().await {
+            Ok(rules) => rules.unwrap_or_default(),
+            Err(_) => return Ok(Vec::new()),
+        };
+        let mut in_use = Vec::new();
+        for days in crate::expiry::missing_durations(&existing) {
+            let prefix = crate::expiry::prefix(days);
+            let listing = self
+                .client
+                .list_objects_v2()
+                .bucket(self.bucket())
+                .prefix(&prefix)
+                .max_keys(1)
+                .send()
+                .await
+                .map_err(|error| map_error(error, self.bucket()))?;
+            if !listing.contents().is_empty() {
+                in_use.push(prefix);
+            }
+        }
+        Ok(in_use)
+    }
+
+    /// When the object at exactly `key` was last written (Unix
+    /// milliseconds), or None when there's no such object.
+    pub async fn last_modified(&self, key: &str) -> Result<Option<i64>, StorageError> {
+        let output = self
+            .client
+            .list_objects_v2()
+            .bucket(self.bucket())
+            .max_keys(1)
+            .prefix(key)
+            .send()
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(output
+            .contents()
+            .first()
+            .filter(|object| object.key() == Some(key))
+            .map(|object| object.last_modified().map(|date| date.secs() * 1000).unwrap_or_default()))
     }
 
     async fn put_lifecycle(&self, xml: Option<String>) -> Result<(), StorageError> {
@@ -393,7 +450,12 @@ impl S3Provider {
     async fn lifecycle_rules(&self) -> Result<Option<Vec<crate::expiry::XmlRule>>, StorageError> {
         let response = self.lifecycle_request(reqwest::Method::GET, None).await?;
         if response.is_success() {
-            return Ok(Some(crate::expiry::parse_rules(&response.body)));
+            // Anything that doesn't read as a complete lifecycle
+            // configuration stops here, before a write could replace the
+            // bucket's own rules.
+            return crate::expiry::parse_configuration(&response.body)
+                .map(Some)
+                .ok_or_else(|| StorageError::Unknown(t!("The bucket's lifecycle rules couldn't be read, so nothing was changed.")));
         }
         if crate::expiry::error_code(&response.body).0.as_deref() == Some("NoSuchLifecycleConfiguration") {
             return Ok(None);
@@ -847,6 +909,20 @@ mod live_tests {
         assert_eq!(crate::expiry::parse_rules(&lifecycle_xml(&storage).await.unwrap()).len(), 4);
 
         // With only Aktar's rules left, the configuration goes entirely.
+        storage.remove_expiry_rules().await.unwrap();
+        assert_eq!(lifecycle_xml(&storage).await, None);
+
+        // Files already in a tmp/{N}d/ folder are reported before setting
+        // the rules up, since the bucket would delete them too...
+        storage.create_folder("tmp/7d/existing/").await.unwrap();
+        assert_eq!(storage.expiry_prefixes_in_use().await.unwrap(), ["tmp/7d/"]);
+        let written = storage.last_modified("tmp/7d/existing/").await.unwrap().unwrap();
+        assert!((written - crate::util::now_millis()).abs() < 10 * 60_000);
+        assert_eq!(storage.last_modified("tmp/7d/existing").await.unwrap(), None);
+        // ...and not once the rules are in place.
+        assert_eq!(storage.ensure_expiry_rules().await.unwrap(), RulesStatus::Active);
+        assert!(storage.expiry_prefixes_in_use().await.unwrap().is_empty());
+        storage.delete("tmp/7d/existing/").await.unwrap();
         storage.remove_expiry_rules().await.unwrap();
         assert_eq!(lifecycle_xml(&storage).await, None);
     }

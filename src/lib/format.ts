@@ -157,9 +157,14 @@ export function rulesStatusMessage(kind: "denied" | "unsupported", t: Translate)
 /** Why "Delete after" is off for a destination and how to turn it on, when
  * the key can't add the lifecycle rules itself. */
 export function expiryRulesExplanation(t: Translate) {
-  return t(
-    "“Delete after” stays off until the bucket has Aktar's lifecycle rules. This key can't add them: use a key with admin access to the bucket, or add these rules in your provider's dashboard and check again: tmp/1d/ after 1 day, tmp/7d/ after 7 days, tmp/14d/ after 14 days, tmp/30d/ after 30 days.",
-  );
+  // Aktar recognizes the rules by their IDs, so ones added by hand under
+  // other names would leave "Delete after" off.
+  return [
+    t(
+      "“Delete after” stays off until the bucket has Aktar's lifecycle rules. This key can't add them: use a key with admin access to the bucket, or add these rules in your provider's dashboard and check again: tmp/1d/ after 1 day, tmp/7d/ after 7 days, tmp/14d/ after 14 days, tmp/30d/ after 30 days.",
+    ),
+    t("Name the rules aktar-expire-1d, aktar-expire-7d, aktar-expire-14d, and aktar-expire-30d, or Aktar won't recognize them."),
+  ].join(" ");
 }
 
 /** The badge on an expiring upload: "Deletes in 5 days", rounded to the

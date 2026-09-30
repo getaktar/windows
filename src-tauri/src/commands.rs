@@ -83,7 +83,12 @@ pub fn save_destination(
 ) -> Result<DestinationConfig, String> {
     let is_new = config.id.is_empty();
     let credentials = filled(credentials);
-    let rules = rules.unwrap_or_default();
+    // A result about another bucket (the connection fields were edited
+    // after the check) says nothing about this one.
+    let rules = match rules.unwrap_or_default() {
+        FormRules::Checked { connection: Some(connection), .. } if !connection.is_for(&config) => FormRules::NotChecked,
+        rules => rules,
+    };
     let reconnected = !is_new && !is_saved_connection(&core, &config, credentials.as_ref());
     if is_new {
         config.id = crate::util::new_id();
@@ -99,7 +104,8 @@ pub fn save_destination(
         core.destinations.update(config.clone());
     }
     match rules {
-        FormRules::Checked { check } => expiry::record(&core, &config.id, check),
+        FormRules::Checked { check, .. } => expiry::record(&core, &config.id, check),
+        // Rows from the old bucket shouldn't expire against the new one.
         FormRules::NotChecked if reconnected => expiry::record(&core, &config.id, None),
         FormRules::NotChecked => {}
     }
@@ -183,6 +189,18 @@ pub async fn set_up_expiry_rules(
     let record = is_saved_connection(&core, &config, filled(credentials.clone()).as_ref());
     let credentials = credentials_for(&config, credentials)?;
     expiry::set_up(&core, config, credentials, record).await
+}
+
+/// The `tmp/{N}d/` folders that already hold files while their rule isn't
+/// in place: setting the rules up would have the bucket delete those too,
+/// so the windows ask first.
+#[tauri::command]
+pub async fn expiry_prefixes_in_use(
+    config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+) -> Result<Vec<String>, String> {
+    let credentials = credentials_for(&config, credentials)?;
+    S3Provider::new(config, credentials).expiry_prefixes_in_use().await.map_err(|error| error.to_string())
 }
 
 /// "Turn Off and Remove Rules" in the destination form: takes Aktar's
@@ -328,7 +346,7 @@ pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, t
     let (destination, storage) = storage_for(&core, &destination_id)?;
     match bucket::move_object(&storage, &from, &new_key).await {
         Ok(()) => {
-            core.history.object_moved(&from, &new_key, &destination);
+            core.history.object_moved(&from, &new_key, &destination, expiry::is_active(&core, &destination.id));
             core.notify(events::HISTORY_CHANGED);
             Ok(new_key)
         }

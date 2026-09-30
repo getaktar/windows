@@ -167,8 +167,10 @@ impl History {
     /// ...and one renamed or moved there gets its new key and link. Moved
     /// out of its `tmp/{N}d/` folder, lifecycle no longer deletes it, so it
     /// stops expiring; moved into another one, the copy expires N days from
-    /// now.
-    pub fn object_moved(&self, old_key: &str, new_key: &str, destination: &DestinationConfig) {
+    /// now, but only when `rules_active`: without Aktar's rules in the
+    /// bucket, nothing deletes it, and a folder that happens to be called
+    /// `tmp/7d/` is just a folder.
+    pub fn object_moved(&self, old_key: &str, new_key: &str, destination: &DestinationConfig, rules_active: bool) {
         let url = resolve_public_url(&destination.public_base_url, new_key);
         let connection = self.connection.lock().unwrap();
         let old_days = crate::expiry::days_in_key(old_key);
@@ -179,13 +181,28 @@ impl History {
                 params![new_key, url, old_key, destination.id],
             )
         } else {
-            let expires_at = new_days.map(|days| crate::expiry::expires_at(crate::util::now_millis(), days));
+            let expires_at = new_days
+                .filter(|_| rules_active)
+                .map(|days| crate::expiry::expires_at(crate::util::now_millis(), days));
             connection.execute(
                 "UPDATE uploads SET object_key = ?1, public_url = ?2, expires_at = ?5 WHERE object_key = ?3 AND destination_id = ?4",
                 params![new_key, url, old_key, destination.id, expires_at],
             )
         };
         if let Err(error) = result {
+            log::error!("Could not update upload history: {error}");
+        }
+    }
+
+    /// Uploads to `destination_id` stop expiring: its bucket no longer has
+    /// Aktar's rules, so those files stay for good, and neither the history
+    /// nor Aktar's own sweep may treat them as due.
+    pub fn clear_expiry(&self, destination_id: &str) {
+        let connection = self.connection.lock().unwrap();
+        if let Err(error) = connection.execute(
+            "UPDATE uploads SET expires_at = NULL WHERE destination_id = ?1 AND expires_at IS NOT NULL",
+            [destination_id],
+        ) {
             log::error!("Could not update upload history: {error}");
         }
     }
@@ -307,12 +324,39 @@ mod tests {
         assert_eq!(history.expired(expires_at).len(), 1);
 
         // Renamed inside its folder: still expires on the same day.
-        history.object_moved("tmp/7d/a.png", "tmp/7d/b.png", &destination);
+        history.object_moved("tmp/7d/a.png", "tmp/7d/b.png", &destination, true);
         assert_eq!(history.get(&record.id).unwrap().expires_at, Some(expires_at));
         // Moved out of it: kept for good.
-        history.object_moved("tmp/7d/b.png", "keep/b.png", &destination);
+        history.object_moved("tmp/7d/b.png", "keep/b.png", &destination, true);
         let moved = history.get(&record.id).unwrap();
         assert_eq!(moved.expires_at, None);
         assert_eq!(moved.public_url, "https://img.example.com/keep/b.png");
+        // Moved into a tmp/ folder: expires only if the bucket has the rules.
+        history.object_moved("keep/b.png", "tmp/1d/b.png", &destination, false);
+        assert_eq!(history.get(&record.id).unwrap().expires_at, None);
+        history.object_moved("tmp/1d/b.png", "tmp/14d/b.png", &destination, true);
+        assert!(history.get(&record.id).unwrap().expires_at.is_some());
+    }
+
+    #[test]
+    fn clears_expiry_when_the_rules_go() {
+        let connection = Connection::open_in_memory().unwrap();
+        prepare(&connection).unwrap();
+        let history = History { connection: Mutex::new(connection), thumbnails: std::env::temp_dir().join("aktar-history-test") };
+        let destination = destination();
+        let record = history.insert(NewRecord {
+            local_filename: "a.png",
+            object_key: "tmp/1d/a.png",
+            public_url: "https://img.example.com/tmp/1d/a.png",
+            destination: &destination,
+            mime_type: "image/png",
+            byte_size: 5,
+            expire_after_days: Some(1),
+        });
+        history.clear_expiry("other");
+        assert!(history.get(&record.id).unwrap().expires_at.is_some());
+        history.clear_expiry(&destination.id);
+        assert_eq!(history.get(&record.id).unwrap().expires_at, None);
+        assert!(history.expired(i64::MAX).is_empty());
     }
 }

@@ -197,6 +197,8 @@ export function installMockBackend(route: string) {
             status: { kind: "denied", message: "Access Denied" },
             checkedAt: Date.now(),
           };
+        case "expiry_prefixes_in_use":
+          return [];
         case "remove_expiry_rules":
           return null;
         case "test_connection":
