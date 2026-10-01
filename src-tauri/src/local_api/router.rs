@@ -17,7 +17,7 @@
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
 //! ```
 //!
-//! An upload's response is `{"upload": {...}, "reused": false}`; `reused`
+//! An upload's response is `{"upload": {..., "reused": false}, "reused": false}`; `reused`
 //! is true when the same file was already uploaded there and that upload's
 //! link was used instead (Settings > General > Reuse links for duplicate
 //! files). Uploads with `prefix` are never reused.
@@ -247,7 +247,15 @@ async fn run(core: &SharedCore, input: UploadInput, destination: DestinationConf
                 // `reused`: the file was already in the bucket, and that
                 // upload's entry is what's returned.
                 return match core.history.get(&record_id) {
-                    Some(record) => Response::json(201, serde_json::json!({ "upload": upload_dto(core, &record), "reused": reused })),
+                    Some(record) => {
+                        // In the upload too, where the Mac puts it; the
+                        // top-level copy stays for clients written against 0.3.0.
+                        let mut upload = serde_json::to_value(upload_dto(core, &record)).unwrap_or_default();
+                        if let Some(fields) = upload.as_object_mut() {
+                            fields.insert("reused".into(), reused.into());
+                        }
+                        Response::json(201, serde_json::json!({ "upload": upload, "reused": reused }))
+                    }
                     None => Response::error(500, "The upload finished but its history entry is missing."),
                 };
             }
