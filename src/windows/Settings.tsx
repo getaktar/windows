@@ -107,6 +107,7 @@ function GeneralSettings() {
   const [updateStatus] = useUpdateStatus();
   const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
+  const [renameShortcutError, setRenameShortcutError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -208,6 +209,23 @@ function GeneralSettings() {
               }}
             />
           </CardRow>
+          <CardRow
+            title={t("Rename and upload clipboard")}
+            subtitle={t("Asks for the upload’s name first. The extension stays.")}
+          >
+            <ShortcutRecorder
+              value={settings.renameShortcut}
+              error={renameShortcutError}
+              onChange={async (accelerator) => {
+                try {
+                  await api.setRenameShortcut(accelerator);
+                  setRenameShortcutError(null);
+                } catch (error) {
+                  setRenameShortcutError(errorMessage(error));
+                }
+              }}
+            />
+          </CardRow>
         </Card>
       </SettingsSection>
 
@@ -224,6 +242,14 @@ function GeneralSettings() {
             subtitle={t("Automatically close after a successful upload")}
             checked={settings.closePanelAfterUpload}
             onChange={(value) => api.updateSettings({ closePanelAfterUpload: value })}
+          />
+          <ToggleRow
+            title={t("Reuse links for duplicate files")}
+            subtitle={t(
+              "When a file you already uploaded to the same destination comes up again, Aktar copies its existing link instead of uploading it again.",
+            )}
+            checked={settings.reuseDuplicateLinks}
+            onChange={(value) => api.updateSettings({ reuseDuplicateLinks: value })}
           />
         </Card>
       </SettingsSection>

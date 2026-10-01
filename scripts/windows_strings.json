@@ -674,5 +674,248 @@
     "pt-BR": "Não foi possível ler as regras de ciclo de vida do bucket, então nada foi alterado.",
     "ja": "バケットのライフサイクルルールを読み取れなかったため、何も変更していません。",
     "zh-Hans": "无法读取存储桶的生命周期规则，因此未做任何更改。"
+  },
+  "Show QR Code": {
+    "tr": "QR Kodunu Göster",
+    "de": "QR-Code zeigen",
+    "fr": "Afficher le code QR",
+    "es": "Mostrar código QR",
+    "pt-BR": "Mostrar código QR",
+    "ja": "QRコードを表示",
+    "zh-Hans": "显示二维码"
+  },
+  "QR Code": {
+    "tr": "QR Kodu",
+    "de": "QR-Code",
+    "fr": "Code QR",
+    "es": "Código QR",
+    "pt-BR": "Código QR",
+    "ja": "QRコード",
+    "zh-Hans": "二维码"
+  },
+  "Copy Image": {
+    "tr": "Görseli Kopyala",
+    "de": "Bild kopieren",
+    "fr": "Copier l’image",
+    "es": "Copiar imagen",
+    "pt-BR": "Copiar imagem",
+    "ja": "画像をコピー",
+    "zh-Hans": "复制图片"
+  },
+  "Save Image…": {
+    "tr": "Görseli Kaydet…",
+    "de": "Bild sichern …",
+    "fr": "Enregistrer l’image…",
+    "es": "Guardar imagen…",
+    "pt-BR": "Salvar imagem…",
+    "ja": "画像を保存…",
+    "zh-Hans": "保存图片…"
+  },
+  "Scan to open the link": {
+    "tr": "Bağlantıyı açmak için tara",
+    "de": "Scannen, um den Link zu öffnen",
+    "fr": "Scannez pour ouvrir le lien",
+    "es": "Escanea para abrir el enlace",
+    "pt-BR": "Escaneie para abrir o link",
+    "ja": "スキャンしてリンクを開く",
+    "zh-Hans": "扫描以打开链接"
+  },
+  "Reuse links for duplicate files": {
+    "tr": "Aynı dosyalarda bağlantıyı yeniden kullan",
+    "de": "Links für doppelte Dateien wiederverwenden",
+    "fr": "Réutiliser les liens des fichiers en double",
+    "es": "Reutilizar enlaces de archivos duplicados",
+    "pt-BR": "Reutilizar links de arquivos duplicados",
+    "ja": "重複ファイルのリンクを再利用",
+    "zh-Hans": "重复文件复用链接"
+  },
+  "When a file you already uploaded to the same destination comes up again, Aktar copies its existing link instead of uploading it again.": {
+    "tr": "Aynı hedefe daha önce yüklediğin bir dosya tekrar gelirse Aktar onu yeniden yüklemek yerine mevcut bağlantısını kopyalar.",
+    "de": "Wenn eine Datei, die du schon zum selben Ziel hochgeladen hast, erneut kommt, kopiert Aktar den vorhandenen Link, statt sie noch einmal hochzuladen.",
+    "fr": "Lorsqu’un fichier que vous avez déjà envoyé vers la même destination revient, Aktar copie son lien existant au lieu de l’envoyer à nouveau.",
+    "es": "Cuando vuelve a aparecer un archivo que ya subiste al mismo destino, Aktar copia su enlace existente en lugar de subirlo otra vez.",
+    "pt-BR": "Quando um arquivo que você já enviou para o mesmo destino aparece de novo, o Aktar copia o link existente em vez de enviá-lo outra vez.",
+    "ja": "同じアップロード先にアップロード済みのファイルがもう一度来たときは、再アップロードせずに既存のリンクをコピーします。",
+    "zh-Hans": "当你已上传到同一上传目标的文件再次出现时，Aktar 会复制现有链接，而不是再次上传。"
+  },
+  "Already uploaded - copied the existing link": {
+    "tr": "Zaten yüklenmiş, mevcut bağlantı kopyalandı",
+    "de": "Schon hochgeladen, vorhandener Link kopiert",
+    "fr": "Déjà envoyé : lien existant copié",
+    "es": "Ya estaba subido: se copió el enlace existente",
+    "pt-BR": "Já enviado: o link existente foi copiado",
+    "ja": "アップロード済みです。既存のリンクをコピーしました",
+    "zh-Hans": "已上传过，已复制现有链接"
+  },
+  "Rename and upload clipboard": {
+    "tr": "Panoyu yeniden adlandırıp yükle",
+    "de": "Zwischenablage umbenennen und hochladen",
+    "fr": "Renommer et envoyer le presse-papiers",
+    "es": "Renombrar y subir el portapapeles",
+    "pt-BR": "Renomear e enviar a área de transferência",
+    "ja": "名前を付けてクリップボードをアップロード",
+    "zh-Hans": "重命名并上传剪贴板"
+  },
+  "Asks for the upload’s name first. The extension stays.": {
+    "tr": "Önce yüklemenin adını sorar. Uzantı aynı kalır.",
+    "de": "Fragt zuerst nach dem Namen des Uploads. Die Dateiendung bleibt.",
+    "fr": "Demande d’abord le nom de l’envoi. L’extension est conservée.",
+    "es": "Primero pide el nombre de la subida. La extensión se mantiene.",
+    "pt-BR": "Pergunta primeiro o nome do envio. A extensão é mantida.",
+    "ja": "先にアップロードの名前を尋ねます。拡張子はそのままです。",
+    "zh-Hans": "先询问上传的名称，扩展名保持不变。"
+  },
+  "Name This Upload": {
+    "tr": "Bu Yüklemeye Ad Ver",
+    "de": "Upload benennen",
+    "fr": "Nommer cet envoi",
+    "es": "Nombrar esta subida",
+    "pt-BR": "Nomear este envio",
+    "ja": "アップロードに名前を付ける",
+    "zh-Hans": "为此上传命名"
+  },
+  "Hold Alt to rename files before they upload": {
+    "tr": "Dosyaları yüklenmeden önce yeniden adlandırmak için Alt tuşunu basılı tut",
+    "de": "Halte Alt gedrückt, um Dateien vor dem Hochladen umzubenennen",
+    "fr": "Maintenez Alt pour renommer les fichiers avant leur envoi",
+    "es": "Mantén pulsada Alt para renombrar los archivos antes de subirlos",
+    "pt-BR": "Segure Alt para renomear os arquivos antes do envio",
+    "ja": "Altキーを押したままにすると、アップロード前にファイル名を変更できます",
+    "zh-Hans": "按住 Alt 键可在上传前重命名文件"
+  },
+  "Image Processing": {
+    "tr": "Görsel İşleme",
+    "de": "Bildbearbeitung",
+    "fr": "Traitement des images",
+    "es": "Procesamiento de imágenes",
+    "pt-BR": "Processamento de imagens",
+    "ja": "画像の処理",
+    "zh-Hans": "图片处理"
+  },
+  "Format": {
+    "tr": "Biçim",
+    "de": "Format",
+    "fr": "Format",
+    "es": "Formato",
+    "pt-BR": "Formato",
+    "ja": "フォーマット",
+    "zh-Hans": "格式"
+  },
+  "Keep Original": {
+    "tr": "Orijinali Koru",
+    "de": "Original behalten",
+    "fr": "Conserver l’original",
+    "es": "Mantener original",
+    "pt-BR": "Manter original",
+    "ja": "元のまま",
+    "zh-Hans": "保持原格式"
+  },
+  "Compression": {
+    "tr": "Sıkıştırma",
+    "de": "Komprimierung",
+    "fr": "Compression",
+    "es": "Compresión",
+    "pt-BR": "Compressão",
+    "ja": "圧縮",
+    "zh-Hans": "压缩"
+  },
+  "Light (90%)": {
+    "tr": "Hafif (%90)",
+    "de": "Leicht (90 %)",
+    "fr": "Légère (90 %)",
+    "es": "Ligera (90 %)",
+    "pt-BR": "Leve (90%)",
+    "ja": "弱（90%）",
+    "zh-Hans": "轻度 (90%)"
+  },
+  "Medium (80%)": {
+    "tr": "Orta (%80)",
+    "de": "Mittel (80 %)",
+    "fr": "Moyenne (80 %)",
+    "es": "Media (80 %)",
+    "pt-BR": "Média (80%)",
+    "ja": "中（80%）",
+    "zh-Hans": "中度 (80%)"
+  },
+  "Strong (65%)": {
+    "tr": "Güçlü (%65)",
+    "de": "Stark (65 %)",
+    "fr": "Forte (65 %)",
+    "es": "Fuerte (65 %)",
+    "pt-BR": "Forte (65%)",
+    "ja": "強（65%）",
+    "zh-Hans": "高度 (65%)"
+  },
+  "Resize": {
+    "tr": "Yeniden Boyutlandır",
+    "de": "Größe ändern",
+    "fr": "Redimensionner",
+    "es": "Cambiar tamaño",
+    "pt-BR": "Redimensionar",
+    "ja": "サイズ変更",
+    "zh-Hans": "调整大小"
+  },
+  "Longest side {0} px": {
+    "tr": "En uzun kenar {0} px",
+    "de": "Längste Seite {0} px",
+    "fr": "Côté le plus long : {0} px",
+    "es": "Lado más largo: {0} px",
+    "pt-BR": "Lado maior: {0} px",
+    "ja": "長辺 {0} px",
+    "zh-Hans": "最长边 {0} 像素"
+  },
+  "Applies to JPEG, PNG, HEIC, WebP, TIFF and BMP photos and screenshots. GIFs, SVGs and files inside ZIPs are left as they are.": {
+    "tr": "JPEG, PNG, HEIC, WebP, TIFF ve BMP fotoğraflara ve ekran görüntülerine uygulanır. GIF'ler, SVG'ler ve ZIP içindeki dosyalar olduğu gibi kalır.",
+    "de": "Gilt für Fotos und Bildschirmfotos im Format JPEG, PNG, HEIC, WebP, TIFF und BMP. GIFs, SVGs und Dateien in ZIPs bleiben unverändert.",
+    "fr": "S’applique aux photos et captures d’écran JPEG, PNG, HEIC, WebP, TIFF et BMP. Les GIF, les SVG et les fichiers dans des ZIP restent tels quels.",
+    "es": "Se aplica a fotos y capturas de pantalla JPEG, PNG, HEIC, WebP, TIFF y BMP. Los GIF, los SVG y los archivos dentro de ZIP no se modifican.",
+    "pt-BR": "Vale para fotos e capturas de tela JPEG, PNG, HEIC, WebP, TIFF e BMP. GIFs, SVGs e arquivos dentro de ZIPs ficam como estão.",
+    "ja": "JPEG、PNG、HEIC、WebP、TIFF、BMP の写真とスクリーンショットに適用されます。GIF、SVG、ZIP 内のファイルはそのままです。",
+    "zh-Hans": "适用于 JPEG、PNG、HEIC、WebP、TIFF 和 BMP 格式的照片与截图。GIF、SVG 以及 ZIP 中的文件保持不变。"
+  },
+  "MD5 of the file’s contents": {
+    "tr": "Dosya içeriğinin MD5 değeri",
+    "de": "MD5 des Dateiinhalts",
+    "fr": "MD5 du contenu du fichier",
+    "es": "MD5 del contenido del archivo",
+    "pt-BR": "MD5 do conteúdo do arquivo",
+    "ja": "ファイル内容の MD5",
+    "zh-Hans": "文件内容的 MD5"
+  },
+  "SHA-256 of the file’s contents": {
+    "tr": "Dosya içeriğinin SHA-256 değeri",
+    "de": "SHA-256 des Dateiinhalts",
+    "fr": "SHA-256 du contenu du fichier",
+    "es": "SHA-256 del contenido del archivo",
+    "pt-BR": "SHA-256 do conteúdo do arquivo",
+    "ja": "ファイル内容の SHA-256",
+    "zh-Hans": "文件内容的 SHA-256"
+  },
+  "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}": {
+    "tr": "Değişkenler: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "de": "Variablen: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "fr": "Variables : {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "es": "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "pt-BR": "Variáveis: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "ja": "変数: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "zh-Hans": "变量：{year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}"
+  },
+  "Resuming upload…": {
+    "tr": "Yükleme sürdürülüyor…",
+    "de": "Upload wird fortgesetzt …",
+    "fr": "Reprise de l’envoi…",
+    "es": "Reanudando la subida…",
+    "pt-BR": "Retomando o envio…",
+    "ja": "アップロードを再開中…",
+    "zh-Hans": "正在继续上传…"
+  },
+  "This shortcut is already in use. Try a different one.": {
+    "tr": "Bu kısayol zaten kullanılıyor. Farklı bir tane dene.",
+    "de": "Dieses Tastenkürzel wird schon verwendet. Probier ein anderes.",
+    "fr": "Ce raccourci est déjà utilisé. Essayez-en un autre.",
+    "es": "Este atajo ya está en uso. Prueba con otro.",
+    "pt-BR": "Este atalho já está em uso. Tente um diferente.",
+    "ja": "このショートカットはすでに使用されています。別のショートカットを試してください。",
+    "zh-Hans": "此快捷键已在使用中，请换一个。"
   }
 }

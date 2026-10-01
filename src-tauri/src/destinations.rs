@@ -89,6 +89,10 @@ pub struct DestinationConfig {
     /// (as a ZIP).
     #[serde(default)]
     pub folder_upload: Option<FolderUploadMode>,
+    /// Converting, recompressing and resizing photos before they're
+    /// uploaded here; none leaves them as they are.
+    #[serde(default)]
+    pub image_processing: Option<ImageProcessing>,
 }
 
 /// How long a temporary (presigned) link can stay valid, in seconds: 5 and
@@ -125,6 +129,43 @@ pub enum FolderUploadMode {
     KeepStructure,
 }
 
+/// What happens to a photo's pixels before it's uploaded (the destination's
+/// "Image Processing" settings), see `image_processing`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageProcessing {
+    #[serde(default)]
+    pub format: ImageFormat,
+    /// Lossy quality, one of `IMAGE_QUALITIES`; none doesn't recompress.
+    #[serde(default)]
+    pub quality: Option<u8>,
+    /// The longest side photos are scaled down to, one of `IMAGE_SIZES`;
+    /// none keeps their size.
+    #[serde(default)]
+    pub max_long_edge: Option<u32>,
+}
+
+/// The format photos are uploaded in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImageFormat {
+    #[default]
+    Original,
+    Webp,
+    Avif,
+}
+
+/// "Light", "Medium" and "Strong" compression.
+pub const IMAGE_QUALITIES: [u8; 3] = [90, 80, 65];
+pub const IMAGE_SIZES: [u32; 5] = [3840, 2560, 1920, 1280, 1024];
+
+impl ImageProcessing {
+    /// Whether it changes anything at all.
+    pub fn is_active(&self) -> bool {
+        self.format != ImageFormat::Original || self.quality.is_some() || self.max_long_edge.is_some()
+    }
+}
+
 impl DestinationConfig {
     pub fn image_metadata(&self) -> ImageMetadataPolicy {
         self.image_metadata.unwrap_or_default()
@@ -132,6 +173,11 @@ impl DestinationConfig {
 
     pub fn folder_upload(&self) -> FolderUploadMode {
         self.folder_upload.unwrap_or_default()
+    }
+
+    /// The image processing to apply, or none when it's all off.
+    pub fn image_processing(&self) -> Option<ImageProcessing> {
+        self.image_processing.filter(ImageProcessing::is_active)
     }
 
     /// Settings that can't be right (edited by hand, or from a newer
@@ -142,6 +188,17 @@ impl DestinationConfig {
         }
         if self.temporary_link.is_some_and(|seconds| !TEMPORARY_LINK_SECONDS.contains(&seconds)) {
             self.temporary_link = None;
+        }
+        if let Some(processing) = &mut self.image_processing {
+            if processing.quality.is_some_and(|quality| !IMAGE_QUALITIES.contains(&quality)) {
+                processing.quality = None;
+            }
+            if processing.max_long_edge.is_some_and(|size| !IMAGE_SIZES.contains(&size)) {
+                processing.max_long_edge = None;
+            }
+            if !processing.is_active() {
+                self.image_processing = None;
+            }
         }
     }
 }
@@ -274,5 +331,32 @@ fn sync_default_flags(wrapper: &mut Wrapper) {
     }
     for destination in &mut wrapper.destinations {
         destination.is_default = Some(&destination.id) == wrapper.default_id.as_ref();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_image_processing() {
+        let old = r#"{"id":"A","name":"N","preset":"minIO","endpoint":"e","region":"r","bucket":"b","publicBaseURL":"p","objectPathTemplate":"{uuid}.{ext}","forcePathStyle":true}"#;
+        let decoded: DestinationConfig = serde_json::from_str(old).unwrap();
+        assert_eq!(decoded.image_processing, None);
+        assert_eq!(decoded.image_processing(), None);
+
+        let mut config = decoded.clone();
+        config.image_processing = Some(ImageProcessing { format: ImageFormat::Webp, quality: Some(80), max_long_edge: Some(1920) });
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains(r#""imageProcessing":{"format":"webp","quality":80,"maxLongEdge":1920}"#), "{json}");
+        let round_trip: DestinationConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip, config);
+
+        // Values no version offers are dropped, and nothing left is off.
+        config.image_processing = Some(ImageProcessing { format: ImageFormat::Original, quality: Some(42), max_long_edge: Some(999) });
+        config.sanitize();
+        assert_eq!(config.image_processing, None);
+        let partial: ImageProcessing = serde_json::from_str(r#"{"format":"avif"}"#).unwrap();
+        assert_eq!(partial, ImageProcessing { format: ImageFormat::Avif, quality: None, max_long_edge: None });
     }
 }

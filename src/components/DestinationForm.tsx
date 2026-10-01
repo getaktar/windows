@@ -20,14 +20,19 @@ import {
   errorMessage,
   expiryDurations,
   folderUploadModes,
+  imageFormats,
   imageMetadataPolicies,
+  imageQualities,
+  imageSizes,
   temporaryLinkDurations,
   type ConnectionResult,
   type DestinationConfig,
   type ExpiryRulesCheck,
   type FolderUploadMode,
   type FormRules,
+  type ImageFormat,
   type ImageMetadataPolicy,
+  type ImageProcessing,
   type OutputMode,
   type ProviderPreset,
   type PublicLinkCheck,
@@ -81,6 +86,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [expiryDays, setExpiryDays] = useState(0);
   const [imageMetadata, setImageMetadata] = useState<ImageMetadataPolicy>("removeLocation");
   const [folderUpload, setFolderUpload] = useState<FolderUploadMode>("zip");
+  const [imageFormat, setImageFormat] = useState<ImageFormat>("original");
+  const [imageQuality, setImageQuality] = useState<number | null>(null);
+  const [imageMaxLongEdge, setImageMaxLongEdge] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<ConnectionResult | null>(null);
   /** Why the test couldn't reach the bucket at all. */
   const [testError, setTestError] = useState<string | null>(null);
@@ -128,6 +136,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setExpiryDays(existing?.expiryDays ?? settings?.deleteAfterDays ?? 0);
     setImageMetadata(existing?.imageMetadata ?? "removeLocation");
     setFolderUpload(existing?.folderUpload ?? "zip");
+    setImageFormat(existing?.imageProcessing?.format ?? "original");
+    setImageQuality(existing?.imageProcessing?.quality ?? null);
+    setImageMaxLongEdge(existing?.imageProcessing?.maxLongEdge ?? null);
     setTestResult(null);
     setTestError(null);
     setSaveError(null);
@@ -160,7 +171,14 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     temporaryLink,
     imageMetadata,
     folderUpload,
+    imageProcessing: imageProcessingConfig(),
   });
+
+  /** None when it's all off, so photos go up untouched. */
+  const imageProcessingConfig = (): ImageProcessing | null =>
+    imageFormat === "original" && imageQuality === null && imageMaxLongEdge === null
+      ? null
+      : { format: imageFormat, quality: imageQuality, maxLongEdge: imageMaxLongEdge };
 
   const credentials = () => (hasNewCredentials ? { accessKeyId, secretAccessKey, sessionToken: null } : null);
 
@@ -411,7 +429,13 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
               <div className="form-group">
                 <Field
                   label={t("Object Path")}
-                  hint={t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext}")}
+                  hint={
+                    <>
+                      {t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}")}
+                      <br />
+                      {"{md5}"}: {t("MD5 of the file’s contents")} · {"{sha256}"}: {t("SHA-256 of the file’s contents")}
+                    </>
+                  }
                 >
                   <Input
                     value={objectPathTemplate}
@@ -524,6 +548,52 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 </Text>
               </div>
 
+              <Text weight="semibold" className="form-heading">
+                {t("Image Processing")}
+              </Text>
+              <div className="form-group">
+                <Field label={t("Format")}>
+                  <Select value={imageFormat} onChange={(_, data) => setImageFormat(data.value as ImageFormat)}>
+                    {imageFormats.map((format) => (
+                      <option key={format} value={format}>
+                        {format === "original" ? t("Keep Original") : format === "webp" ? "WebP" : "AVIF"}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t("Compression")}>
+                  <Select
+                    value={String(imageQuality ?? "")}
+                    onChange={(_, data) => setImageQuality(data.value ? Number(data.value) : null)}
+                  >
+                    <option value="">{t("Off")}</option>
+                    {imageQualities.map((quality) => (
+                      <option key={quality} value={quality}>
+                        {compressionLabel(quality, t)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t("Resize")}>
+                  <Select
+                    value={String(imageMaxLongEdge ?? "")}
+                    onChange={(_, data) => setImageMaxLongEdge(data.value ? Number(data.value) : null)}
+                  >
+                    <option value="">{t("Off")}</option>
+                    {imageSizes.map((size) => (
+                      <option key={size} value={size}>
+                        {t("Longest side {0} px", size)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Text size={200} className="secondary">
+                  {t(
+                    "Applies to JPEG, PNG, HEIC, WebP, TIFF and BMP photos and screenshots. GIFs, SVGs and files inside ZIPs are left as they are.",
+                  )}
+                </Text>
+              </div>
+
               <div ref={testOutcome}>
                 {testError && (
                   <Text size={200} className="text-error">
@@ -585,6 +655,17 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       </DialogSurface>
     </Dialog>
   );
+}
+
+function compressionLabel(quality: number, t: Translate) {
+  switch (quality) {
+    case 90:
+      return t("Light (90%)");
+    case 80:
+      return t("Medium (80%)");
+    default:
+      return t("Strong (65%)");
+  }
 }
 
 function imageMetadataLabel(policy: ImageMetadataPolicy, t: Translate) {

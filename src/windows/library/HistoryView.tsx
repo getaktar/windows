@@ -27,6 +27,7 @@ import {
   CopyRegular,
   DismissRegular,
   MoreHorizontalRegular,
+  QrCodeRegular,
   TrayItemAddRegular,
 } from "@fluentui/react-icons";
 import { message, open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -35,10 +36,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, ContextMenu, MenuEntries, type ContextMenuState, type MenuEntry } from "../../components/Dialogs";
 import { ExpiryBadge, FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
+import { QrCodeDialog } from "../../components/QrCodeDialog";
 import { temporaryLinkMenu } from "../../components/temporaryLinkMenu";
 import { api, errorMessage, type Job, type UploadRecord } from "../../lib/api";
 import { dayBucket, formatBytes, formatDateTime, formatOutput, formatTime, shortDay } from "../../lib/format";
-import { hasTextSelection, useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
+import { hasTextSelection, useDestinations, useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
 import { useI18n } from "../../lib/i18n";
 import { DetailRow, LinkSection } from "./BucketView";
 
@@ -53,6 +55,8 @@ export function HistoryView({ active }: { active: boolean }) {
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [deletionErrors, setDeletionErrors] = useState<Record<string, string>>({});
   const [zoomed, setZoomed] = useState<UploadRecord | null>(null);
+  const [destinations] = useDestinations();
+  const [qrRecord, setQrRecord] = useState<UploadRecord | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const searchBox = useRef<HTMLInputElement>(null);
 
@@ -151,6 +155,7 @@ export function HistoryView({ active }: { active: boolean }) {
       { label: t("Copy Markdown"), onClick: () => copyAll([record], "markdown") },
       { label: t("Copy HTML"), onClick: () => copyAll([record], "html") },
       temporaryLinkMenu(record, t, showLinkError),
+      { label: t("Show QR Code"), onClick: () => setQrRecord(record) },
       "divider",
       { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
       { label: t("Reveal Details"), onClick: () => selection.set([record.id]) },
@@ -313,6 +318,7 @@ export function HistoryView({ active }: { active: boolean }) {
             deleting={deleting.has(selectedRecords[0].id)}
             deletionError={deletionErrors[selectedRecords[0].id] ?? null}
             onZoom={() => setZoomed(selectedRecords[0])}
+            onShowQr={() => setQrRecord(selectedRecords[0])}
             onDelete={() => setPendingDeletion([selectedRecords[0]])}
             onRetryDeletion={() => deleteRemote([selectedRecords[0]])}
             onRemove={() => removeFromHistory([selectedRecords[0]])}
@@ -345,6 +351,7 @@ export function HistoryView({ active }: { active: boolean }) {
         }}
       />
       <ZoomedPreview record={zoomed} onClose={() => setZoomed(null)} />
+      <QrCodeDialog record={qrRecord} destinations={destinations} onClose={() => setQrRecord(null)} />
     </div>
   );
 }
@@ -409,7 +416,14 @@ function ActiveUploadRow({ job }: { job: Job }) {
       <span className="row-text">
         <Text className="ellipsis">{job.filename}</Text>
         {job.state.kind === "uploading" ? (
-          <ProgressBar value={job.state.progress > 0 ? job.state.progress : undefined} />
+          <>
+            <ProgressBar value={job.state.progress > 0 ? job.state.progress : undefined} />
+            {job.state.resuming && (
+              <Text size={200} className="secondary">
+                {t("Resuming upload…")}
+              </Text>
+            )}
+          </>
         ) : job.state.kind === "waiting" ? (
           <Text size={200} className="secondary">
             {t("Waiting…")}
@@ -441,6 +455,7 @@ function UploadDetail(props: {
   deleting: boolean;
   deletionError: string | null;
   onZoom: () => void;
+  onShowQr: () => void;
   onDelete: () => void;
   onRetryDeletion: () => void;
   onRemove: () => void;
@@ -467,6 +482,7 @@ function UploadDetail(props: {
     },
     { label: t("Copy Object Key"), onClick: () => api.copyText(record.objectKey) },
     temporaryLinkMenu(record, t, showLinkError),
+    { label: t("Show QR Code"), onClick: props.onShowQr },
     "divider",
     { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
     "divider",
@@ -482,6 +498,7 @@ function UploadDetail(props: {
         <Button icon={copied ? <CheckmarkRegular /> : <CopyRegular />} onClick={copyURL}>
           {copied ? t("Copied") : t("Copy URL")}
         </Button>
+        <Button appearance="subtle" icon={<QrCodeRegular />} aria-label={t("Show QR Code")} title={t("Show QR Code")} onClick={props.onShowQr} />
         <Menu>
           <MenuTrigger disableButtonEnhancement>
             <Button appearance="subtle" icon={<MoreHorizontalRegular />} aria-label={t("More")} />

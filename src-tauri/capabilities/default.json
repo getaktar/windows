@@ -11,6 +11,7 @@
     "core:window:allow-hide",
     "dialog:allow-open",
     "dialog:allow-ask",
-    "dialog:allow-message"
+    "dialog:allow-message",
+    "dialog:allow-save"
   ]
 }

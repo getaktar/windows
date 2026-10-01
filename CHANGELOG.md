@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Show QR Code for an upload, in the Library (a row's right-click menu,
+  the details pane) and in the panel's recent uploads: a sharp QR code of
+  the link that would be copied (a fresh temporary link when the
+  destination copies those), with Copy Image and Save Image as PNG
+- Reuse links for duplicate files (Settings > General, on by default):
+  uploading a file that's already in the same destination, with the same
+  "Delete after", copies the existing link instead of uploading it again.
+  Not for folders keeping their structure, ZIPs made from folders, or
+  uploads to a chosen name (the bucket browser, the local API's prefix). The
+  local API's upload response says `"reused": true` when that happened
+- `{md5}` and `{sha256}` in the object path: the file's checksum, for
+  names that only change when the contents do
+- Rename before upload: hold Alt while dropping files on the panel (or
+  clicking Browse), or set the new "Rename and upload clipboard" shortcut
+  in Settings, and name each upload before it goes up. The extension stays
+- Image Processing for each destination: convert photos and screenshots to
+  WebP or AVIF, recompress them (90%, 80% or 65%), and scale them down to a
+  longest side of 3840 to 1024 px. Off by default. Covers JPEG, PNG, HEIC
+  (with Windows' HEIF Image Extensions), WebP, TIFF and BMP; GIFs, SVGs
+  and files inside ZIPs are left alone. The image metadata setting still
+  decides what EXIF the new file keeps, and the color profile is kept
+- Big files go up in parts, up to 4 at a time, so there's no 5 GB limit
+  any more. A part that fails on a bad connection is tried again, Retry
+  continues from the parts already sent, and so does uploading the same
+  file again after Aktar was closed ("Resuming upload…"). Cancel throws the
+  sent parts away; unfinished uploads are cleaned up after 7 days
+
 ## [0.2.0] - 2026-10-01
 
 Catches up with Aktar for Mac 0.9.1.

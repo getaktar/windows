@@ -1,6 +1,7 @@
-//! The user-customizable, system-wide shortcut that pastes and uploads the
-//! clipboard without opening the panel. Registered with RegisterHotKey (via
-//! the global-shortcut plugin), which needs no special permission and only
+//! The user-customizable, system-wide shortcuts: one pastes and uploads the
+//! clipboard without opening the panel, the other (unset by default) asks
+//! for the upload's name first. Registered with RegisterHotKey (via the
+//! global-shortcut plugin), which needs no special permission and only
 //! fires on a real key press.
 
 use std::str::FromStr;
@@ -12,25 +13,51 @@ use crate::t;
 
 pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri_plugin_global_shortcut::Builder::new()
-        .with_handler(|app, _shortcut, event| {
+        .with_handler(|app, shortcut, event| {
             if event.state() == ShortcutState::Pressed {
+                let core = crate::core::core(app);
+                let rename = core.settings.get().rename_shortcut.and_then(|accelerator| parse(&accelerator).ok());
                 // Reading and encoding a large screenshot takes a while; this
                 // handler runs on the UI thread.
-                crate::uploads::upload_clipboard_in_background(&crate::core::core(app));
+                crate::uploads::upload_clipboard_in_background(&core, rename.as_ref() == Some(shortcut));
             }
         })
         .build()
 }
 
-/// Replaces the registered shortcut. `None` just clears it.
-pub fn register(app: &AppHandle, accelerator: Option<&str>) -> Result<(), String> {
+/// Replaces the registered shortcuts: "paste & upload" and "rename and
+/// upload". `None` leaves that one unset. When one can't be registered, the
+/// other still is, and the error is returned.
+pub fn register(app: &AppHandle, upload: Option<&str>, rename: Option<&str>) -> Result<(), String> {
     let shortcuts = app.global_shortcut();
     let _ = shortcuts.unregister_all();
-    let Some(accelerator) = accelerator else { return Ok(()) };
-    let shortcut = parse(accelerator)?;
-    shortcuts
-        .register(shortcut)
-        .map_err(|_| t!("This shortcut is already used by another app. Try a different one."))
+    let taken = || t!("This shortcut is already used by another app. Try a different one.");
+    let mut result = Ok(());
+    let upload = match upload.map(parse).transpose() {
+        Ok(shortcut) => shortcut,
+        Err(message) => {
+            result = Err(message);
+            None
+        }
+    };
+    if let Some(shortcut) = upload {
+        if shortcuts.register(shortcut).is_err() {
+            result = Err(taken());
+        }
+    }
+    match rename.map(parse).transpose() {
+        Ok(Some(shortcut)) if Some(shortcut) == upload => {
+            result = result.and(Err(t!("This shortcut is already in use. Try a different one.")));
+        }
+        Ok(Some(shortcut)) => {
+            if shortcuts.register(shortcut).is_err() {
+                result = result.and(Err(taken()));
+            }
+        }
+        Ok(None) => {}
+        Err(message) => result = result.and(Err(message)),
+    }
+    result
 }
 
 /// Switched off while the Settings window records a new shortcut, so the
@@ -39,8 +66,8 @@ pub fn set_paused(app: &AppHandle, paused: bool) {
     if paused {
         let _ = app.global_shortcut().unregister_all();
     } else {
-        let saved = crate::core::core(app).settings.get().shortcut;
-        let _ = register(app, saved.as_deref());
+        let saved = crate::core::core(app).settings.get();
+        let _ = register(app, saved.shortcut.as_deref(), saved.rename_shortcut.as_deref());
     }
 }
 

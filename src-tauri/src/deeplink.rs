@@ -40,7 +40,7 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
     }
     let action = url.host_str().unwrap_or_default().to_ascii_lowercase();
     match action.as_str() {
-        "upload-clipboard" if !launched_app => crate::uploads::upload_clipboard_in_background(core),
+        "upload-clipboard" if !launched_app => crate::uploads::upload_clipboard_in_background(core, false),
         "library" => crate::windows::open(&core.app, AppWindow::Library),
         "settings" => crate::windows::open(&core.app, AppWindow::Settings),
         "connect" => {

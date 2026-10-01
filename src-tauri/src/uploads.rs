@@ -1,7 +1,8 @@
-//! Coordinates the upload pipeline: expand folders -> generate object key ->
-//! zip a folder / clean a photo's metadata -> upload -> resolve the link ->
-//! store history -> format output -> copy to clipboard -> notify. Runs up
-//! to `MAX_CONCURRENT` jobs at once.
+//! Coordinates the upload pipeline: expand folders -> zip a folder / process
+//! a photo or clean its metadata -> hash it -> reuse an earlier upload of
+//! the same bytes, or generate the object key and upload (in one request,
+//! or in parts) -> resolve the link -> store history -> format output ->
+//! copy to clipboard -> notify. Runs up to `MAX_CONCURRENT` jobs at once.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -18,9 +19,10 @@ use crate::credentials;
 use crate::destinations::{DestinationConfig, FolderUploadMode};
 use crate::folder_upload;
 use crate::history::{NewRecord, UploadRecord};
-use crate::image_metadata;
-use crate::output;
-use crate::storage::{Progress, S3Provider, StorageError, UploadResult};
+use crate::multipart::{self, Candidate, Session, SourceFile};
+use crate::output::{self, ContentHashes};
+use crate::storage::{Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
+use crate::{image_metadata, image_processing};
 use crate::t;
 use crate::windows::AppWindow;
 
@@ -105,8 +107,11 @@ impl UploadInput {
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum JobState {
     Waiting,
-    Uploading { progress: f64 },
-    Succeeded { public_url: String, record_id: String },
+    /// `resuming` while it continues an upload left unfinished before.
+    Uploading { progress: f64, resuming: bool },
+    /// `reused` when an earlier upload of the same file was found, and its
+    /// link copied instead.
+    Succeeded { public_url: String, record_id: String, reused: bool },
     Failed { message: String },
     Cancelled,
 }
@@ -146,6 +151,29 @@ pub struct UploadManager {
     /// Folders uploaded with their structure that still have files going,
     /// with the destination whose copy format their links get.
     open_groups: Mutex<HashMap<String, (DestinationConfig, GroupLinks)>>,
+    /// The multipart upload (`multipart::Session` ID) each job is sending,
+    /// or left unfinished, by job ID.
+    job_sessions: Mutex<HashMap<String, String>>,
+    /// Files waiting for their name ("Rename and upload").
+    pending_names: Mutex<Vec<PendingName>>,
+}
+
+/// A file to upload once it has a name.
+struct PendingName {
+    id: String,
+    input: UploadInput,
+    destination: Option<DestinationConfig>,
+}
+
+/// What the name dialog shows for a file waiting for its name.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NameRequest {
+    pub id: String,
+    /// The name without its extension, to start from.
+    pub name: String,
+    /// The extension, which stays; empty when there's none.
+    pub extension: String,
 }
 
 impl UploadManager {
@@ -262,28 +290,99 @@ fn settled_expiry(expiry: Expiry, exact_key: Option<&str>, rules_active: bool, d
     }
 }
 
-/// Uploads whatever is on the clipboard. Returns false when there's
-/// nothing uploadable on it. Reading and PNG-encoding a large screenshot
-/// takes a moment, so it's done off the async runtime's workers.
-pub async fn upload_clipboard(core: &SharedCore) -> bool {
+/// Uploads whatever is on the clipboard, after asking for its name when
+/// `rename` is set. Returns false when there's nothing uploadable on it.
+/// Reading and PNG-encoding a large screenshot takes a moment, so it's done
+/// off the async runtime's workers.
+pub async fn upload_clipboard(core: &SharedCore, rename: bool) -> bool {
     let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
     if inputs.is_empty() {
         return false;
     }
-    enqueue(core, inputs, None);
+    if rename {
+        ask_for_names(core, inputs, None);
+    } else {
+        enqueue(core, inputs, None);
+    }
     true
 }
 
-/// For the shortcut, the tray menu, and aktar:// links, whose handlers run
+/// For the shortcuts, the tray menu, and aktar:// links, whose handlers run
 /// on the UI thread: uploads the clipboard in the background, and says so
 /// when there's nothing on it to upload.
-pub fn upload_clipboard_in_background(core: &SharedCore) {
+pub fn upload_clipboard_in_background(core: &SharedCore, rename: bool) {
     let core = core.clone();
     tauri::async_runtime::spawn(async move {
-        if !upload_clipboard(&core).await {
+        if !upload_clipboard(&core, rename).await {
             show_notification(&core, "Aktar", &t!("The clipboard has no file or image to upload."));
         }
     });
+}
+
+/// "Rename before upload": each file waits in the panel's name dialog,
+/// one at a time, and goes up once it has a name. Folders go up right away.
+pub fn ask_for_names(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>) {
+    let (folders, files): (Vec<UploadInput>, Vec<UploadInput>) = inputs.into_iter().partition(|input| input.path.is_dir());
+    if !folders.is_empty() {
+        enqueue(core, folders, destination.clone());
+    }
+    if files.is_empty() {
+        return;
+    }
+    core.uploads.pending_names.lock().unwrap().extend(files.into_iter().map(|input| PendingName {
+        id: crate::util::new_id(),
+        input,
+        destination: destination.clone(),
+    }));
+    core.notify(events::NAMES_CHANGED);
+    crate::panel::show(&core.app);
+}
+
+/// The files waiting for a name, first in line first.
+pub fn pending_names(core: &SharedCore) -> Vec<NameRequest> {
+    core.uploads
+        .pending_names
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|pending| {
+            let (name, extension) = crate::util::split_extension(&pending.input.original_filename);
+            NameRequest { id: pending.id.clone(), name: name.to_string(), extension: extension.to_string() }
+        })
+        .collect()
+}
+
+/// Uploads a file waiting for its name under `name`, or drops it (Cancel)
+/// when there's none.
+pub fn resolve_name(core: &SharedCore, id: &str, name: Option<String>) {
+    let pending = {
+        let mut names = core.uploads.pending_names.lock().unwrap();
+        names.iter().position(|pending| pending.id == id).map(|index| names.remove(index))
+    };
+    core.notify(events::NAMES_CHANGED);
+    let Some(PendingName { mut input, destination, .. }) = pending else { return };
+    match name {
+        Some(name) => {
+            input.original_filename = named(&input.original_filename, &name);
+            enqueue(core, vec![input], destination);
+        }
+        None => input.remove_if_temporary(),
+    }
+}
+
+/// The file name for an upload named `typed`: it replaces the name and
+/// keeps the extension. Slashes and backslashes are taken out, and a name
+/// that's left empty keeps the original.
+fn named(original: &str, typed: &str) -> String {
+    let typed: String = typed.chars().filter(|c| *c != '/' && *c != '\\').collect();
+    let typed = typed.trim();
+    if typed.is_empty() {
+        return original.to_string();
+    }
+    match crate::util::split_extension(original).1 {
+        "" => typed.to_string(),
+        extension => format!("{typed}.{extension}"),
+    }
 }
 
 pub fn retry(core: &SharedCore, job_id: &str) {
@@ -313,6 +412,11 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
             cancelled = job.input.group.clone();
         }
     }
+    // Its parts are thrown away; quitting, unlike this, keeps them.
+    let session = core.uploads.job_sessions.lock().unwrap().remove(job_id);
+    if let Some(session) = session.and_then(|id| core.upload_sessions.get(&id)) {
+        multipart::abort_in_background(core, session);
+    }
     if let Some(group) = cancelled {
         finish_group_if_done(core, &group);
     }
@@ -332,6 +436,9 @@ pub fn dismiss(core: &SharedCore, job_id: &str) {
             job.input.remove_if_temporary();
         }
     }
+    // An unfinished multipart upload stays, so the same file uploaded again
+    // continues it.
+    core.uploads.job_sessions.lock().unwrap().remove(job_id);
     core.notify(events::JOBS_CHANGED);
 }
 
@@ -347,7 +454,7 @@ fn drain(core: &SharedCore) {
                 continue;
             }
             active += 1;
-            job.state = JobState::Uploading { progress: 0.0 };
+            job.state = JobState::Uploading { progress: 0.0, resuming: false };
             job.sender.send_replace(job.state.clone());
             let task_core = core.clone();
             let job_id = job.id.clone();
@@ -355,7 +462,7 @@ fn drain(core: &SharedCore) {
             let destination = job.destination.clone();
             job.task = Some(tauri::async_runtime::spawn(async move {
                 match run(&task_core, &job_id, &input, &destination).await {
-                    Ok((result, link)) => finish(&task_core, &job_id, &input, &destination, result, link).await,
+                    Ok(outcome) => finish(&task_core, &job_id, &input, &destination, outcome).await,
                     Err(message) => fail(&task_core, &job_id, &input, message),
                 }
             }));
@@ -364,8 +471,8 @@ fn drain(core: &SharedCore) {
     core.notify(events::JOBS_CHANGED);
 }
 
-/// Files made for one upload (a folder's ZIP, a photo without its
-/// location), deleted once it's over, however it ends.
+/// Files made for one upload (a folder's ZIP, a converted photo, a photo
+/// without its location), deleted once it's over, however it ends.
 #[derive(Default)]
 struct Scratch {
     zip: Option<PathBuf>,
@@ -383,35 +490,38 @@ impl Drop for Scratch {
     }
 }
 
-/// Uploads the file and returns the result, with the link to copy: the
-/// public URL, or a temporary link when the destination is set to one.
-async fn run(
-    core: &SharedCore,
-    job_id: &str,
-    input: &UploadInput,
-    destination: &DestinationConfig,
-) -> Result<(UploadResult, String), String> {
+/// A finished upload.
+struct Outcome {
+    result: UploadResult,
+    /// What's copied: the public URL, or a temporary link.
+    link: String,
+    /// The name it goes by: the original's, with a converted photo's new
+    /// extension.
+    filename: String,
+    /// SHA-256 of what was uploaded, when it was worked out.
+    content_hash: Option<String>,
+    /// The earlier upload of the same file whose link was used instead.
+    reused: Option<UploadRecord>,
+    /// The file that went up, for the thumbnail.
+    uploaded: PathBuf,
+    _scratch: Scratch,
+}
+
+/// Uploads the file, or finds it already uploaded.
+async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<Outcome, String> {
     let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
     let provider = S3Provider::new(destination.clone(), credentials);
-    let object_key = input.object_key.clone().unwrap_or_else(|| {
-        let key = input
-            .folder_key
-            .clone()
-            .unwrap_or_else(|| output::generate_key(&destination.object_path_template, &input.original_filename));
-        match input.expire_after_days() {
-            Some(days) => crate::expiry::expiring_key(&key, days),
-            None => key,
-        }
-    });
-    let content_type = output::content_type(&input.original_filename);
 
-    // A folder goes up as a ZIP made on the spot, and a photo without the
-    // metadata the destination removes; both are made off the async
-    // runtime's workers.
+    // A folder goes up as a ZIP made on the spot, and a photo converted,
+    // or without the metadata the destination removes; all made off the
+    // async runtime's workers.
     let policy = destination.image_metadata();
     let mut scratch = Scratch::default();
     let mut path = input.path.clone();
-    if path.is_dir() {
+    let mut filename = input.original_filename.clone();
+    let mut new_extension = None;
+    let zipped = path.is_dir();
+    if zipped {
         let folder = path.clone();
         let zipped = tauri::async_runtime::spawn_blocking(move || folder_upload::zip(&folder, policy))
             .await
@@ -420,19 +530,155 @@ async fn run(
         scratch.zip = Some(zipped.clone());
         path = zipped;
     } else {
-        let original = path.clone();
-        let cleaned = tauri::async_runtime::spawn_blocking(move || image_metadata::stripped_copy(&original, policy))
+        let mut processed = None;
+        if let Some(settings) = destination.image_processing() {
+            let original = path.clone();
+            match tauri::async_runtime::spawn_blocking(move || image_processing::process(&original, settings, policy))
+                .await
+                .map_err(|error| error.to_string())?
+            {
+                Ok(result) => processed = result,
+                // Uploaded as it is, as if processing were off.
+                Err(error) => log::warn!("Could not process {}: {error}", input.original_filename),
+            }
+        }
+        if let Some(processed) = processed {
+            if let Some(extension) = processed.new_extension {
+                filename = image_processing::renamed(&filename, extension);
+                new_extension = Some(extension);
+            }
+            scratch.cleaned = Some(processed.path.clone());
+            path = processed.path;
+        } else {
+            let original = path.clone();
+            let cleaned = tauri::async_runtime::spawn_blocking(move || image_metadata::stripped_copy(&original, policy))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error.to_string())?;
+            if let Some(cleaned) = cleaned {
+                scratch.cleaned = Some(cleaned.clone());
+                path = cleaned;
+            }
+        }
+    }
+    let file_size = std::fs::metadata(&path).map_err(|error| error.to_string())?.len();
+
+    // The bytes that go up are hashed (as they're read, never loaded whole)
+    // for the {md5} and {sha256} tokens and for finding an earlier upload
+    // of the same file. A ZIP made on the spot is never quite the same.
+    let generated_key = input.object_key.is_none() && input.folder_key.is_none();
+    let reuse_links = core.settings.get().reuse_duplicate_links && !zipped;
+    let hashes = if reuse_links || (generated_key && output::uses_hashes(&destination.object_path_template)) {
+        let hashed = path.clone();
+        let hashes = tauri::async_runtime::spawn_blocking(move || crate::util::content_hashes(&hashed))
             .await
             .map_err(|error| error.to_string())?
             .map_err(|error| error.to_string())?;
-        if let Some(cleaned) = cleaned {
-            scratch.cleaned = Some(cleaned.clone());
-            path = cleaned;
+        Some(hashes)
+    } else {
+        None
+    };
+    let content_hash = hashes.as_ref().filter(|_| reuse_links).map(|hashes| hashes.sha256.clone());
+
+    // Never for a file going to an exact key, or one of a folder keeping
+    // its structure: its key is where it has to be.
+    if let Some(sha256) = content_hash.as_deref().filter(|_| generated_key && input.group.is_none()) {
+        if let Some(record) = earlier_upload(core, &provider, destination, input, sha256).await {
+            let link = link_for(&provider, destination, &record.object_key, &record.public_url).await;
+            return Ok(Outcome {
+                result: UploadResult {
+                    object_key: record.object_key.clone(),
+                    public_url: record.public_url.clone(),
+                    byte_size: record.byte_size,
+                },
+                link,
+                filename,
+                content_hash,
+                reused: Some(record),
+                uploaded: path,
+                _scratch: scratch,
+            });
         }
     }
 
+    // A big file continues an upload of it left unfinished, under its key.
+    let source = (!zipped).then(|| SourceFile::of(&input.path)).flatten();
+    let mut resumed = None;
+    if file_size > SINGLE_UPLOAD_LIMIT {
+        if let Some(source) = &source {
+            for outdated in core.upload_sessions.outdated_for(&destination.id, source) {
+                multipart::abort(&provider, &core.upload_sessions, &outdated).await;
+            }
+        }
+        let busy: Vec<String> = core.uploads.job_sessions.lock().unwrap().iter().filter(|(job, _)| *job != job_id).map(|(_, id)| id.clone()).collect();
+        let candidate = Candidate {
+            destination_id: &destination.id,
+            bucket: &destination.bucket,
+            file_size,
+            source: source.as_ref(),
+            sha256: hashes.as_ref().map(|hashes| hashes.sha256.as_str()),
+        };
+        let exact_key = (!generated_key).then(|| object_key_for(input, destination, &filename, hashes.as_ref(), new_extension));
+        resumed = core.upload_sessions.matching(&candidate, &busy).into_iter().find(|session| match &exact_key {
+            Some(key) => session.object_key == *key,
+            None => crate::expiry::days_in_key(&session.object_key) == input.expire_after_days(),
+        });
+    }
+    // An unfinished upload of this job that isn't the one continued now
+    // (a folder's ZIP, made again) is thrown away.
+    let previous = core.uploads.job_sessions.lock().unwrap().get(job_id).cloned();
+    if let Some(previous) = previous.filter(|id| resumed.as_ref().is_none_or(|session| session.id != *id)) {
+        core.uploads.job_sessions.lock().unwrap().remove(job_id);
+        if let Some(session) = core.upload_sessions.get(&previous) {
+            multipart::abort(&provider, &core.upload_sessions, &session).await;
+        }
+    }
+
+    let mut object_key = match &resumed {
+        Some(session) => session.object_key.clone(),
+        None => object_key_for(input, destination, &filename, hashes.as_ref(), new_extension),
+    };
+    // A converted photo going to a name picked in the bucket browser must
+    // not land on another file that has its new name.
+    if let (Some(original), true, None) = (&input.object_key, new_extension.is_some(), &resumed) {
+        if *original != object_key && provider.object_exists(&object_key).await.unwrap_or(false) {
+            let (folder, name) = object_key.rsplit_once('/').map_or(("", object_key.as_str()), |(folder, name)| (folder, name));
+            let folder = if folder.is_empty() { String::new() } else { format!("{folder}/") };
+            object_key = crate::bucket::available_key(&provider, name, &folder, &[]).await.map_err(|error| error.to_string())?;
+        }
+    }
+    let content_type = output::content_type(&filename);
     let progress = Arc::new(Progress::default());
-    let upload = provider.upload(&path, &object_key, &content_type, progress.clone());
+    let upload = async {
+        if file_size <= SINGLE_UPLOAD_LIMIT {
+            return provider.upload(&path, &object_key, &content_type, progress.clone()).await.map(|_| ());
+        }
+        let resuming = resumed.is_some();
+        let session: Session = match resumed {
+            Some(session) => session,
+            None => {
+                multipart::start(
+                    &provider,
+                    &core.upload_sessions,
+                    &destination.id,
+                    &destination.bucket,
+                    &object_key,
+                    &content_type,
+                    file_size,
+                    source.clone(),
+                    hashes.as_ref().map(|hashes| hashes.sha256.clone()),
+                )
+                .await?
+            }
+        };
+        core.uploads.job_sessions.lock().unwrap().insert(job_id.to_string(), session.id.clone());
+        if resuming {
+            set_resuming(core, job_id);
+        }
+        multipart::upload(&provider, &core.upload_sessions, session, &path, &content_type, resuming, progress.clone()).await?;
+        core.uploads.job_sessions.lock().unwrap().remove(job_id);
+        Ok(())
+    };
     tokio::pin!(upload);
     let mut ticker = tokio::time::interval(Duration::from_millis(250));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -440,16 +686,18 @@ async fn run(
     loop {
         tokio::select! {
             result = &mut upload => {
-                let result = result.map_err(|error| error.to_string())?;
-                // Signing happens locally, so this only fails on a broken
-                // endpoint, where the public URL is the better fallback.
-                let mut link = result.public_url.clone();
-                if let Some(seconds) = destination.temporary_link {
-                    if let Ok(signed) = provider.temporary_url(&result.object_key, seconds).await {
-                        link = signed;
-                    }
-                }
-                return Ok((result, link));
+                result.map_err(|error: StorageError| error.to_string())?;
+                let public_url = output::resolve_public_url(&destination.public_base_url, &object_key);
+                let link = link_for(&provider, destination, &object_key, &public_url).await;
+                return Ok(Outcome {
+                    result: UploadResult { object_key: object_key.clone(), public_url, byte_size: file_size as i64 },
+                    link,
+                    filename,
+                    content_hash,
+                    reused: None,
+                    uploaded: path.clone(),
+                    _scratch: scratch,
+                });
             }
             _ = ticker.tick() => {
                 if let Some(fraction) = progress.fraction() {
@@ -468,14 +716,102 @@ async fn run(
     }
 }
 
+/// Where the file goes: the exact key it was given (a folder's file, the
+/// bucket browser), or one from the destination's path template, in its
+/// `tmp/{N}d/` folder when it expires. A converted photo's key gets the
+/// new extension.
+fn object_key_for(
+    input: &UploadInput,
+    destination: &DestinationConfig,
+    filename: &str,
+    hashes: Option<&ContentHashes>,
+    new_extension: Option<&str>,
+) -> String {
+    if let Some(key) = &input.object_key {
+        return with_extension(key, new_extension);
+    }
+    let key = match &input.folder_key {
+        Some(key) => with_extension(key, new_extension),
+        None => output::generate_key(&destination.object_path_template, filename, hashes),
+    };
+    match input.expire_after_days() {
+        Some(days) => crate::expiry::expiring_key(&key, days),
+        None => key,
+    }
+}
+
+/// `key` with its last component's extension swapped for `extension`.
+fn with_extension(key: &str, extension: Option<&str>) -> String {
+    let Some(extension) = extension else { return key.to_string() };
+    let (folder, name) = match key.rfind('/') {
+        Some(slash) => key.split_at(slash + 1),
+        None => ("", key),
+    };
+    format!("{folder}{}", image_processing::renamed(name, extension))
+}
+
+/// The link to copy: the public URL, or a fresh temporary link when the
+/// destination is set to one. Signing happens locally, so it only fails on
+/// a broken endpoint, where the public URL is the better fallback.
+async fn link_for(provider: &S3Provider, destination: &DestinationConfig, object_key: &str, public_url: &str) -> String {
+    if let Some(seconds) = destination.temporary_link {
+        if let Ok(signed) = provider.temporary_url(object_key, seconds).await {
+            return signed;
+        }
+    }
+    public_url.to_string()
+}
+
+/// An earlier upload of the same bytes to this destination that's still
+/// in the bucket and expires like this one would: neither ever does, or
+/// both are in the same `tmp/{N}d/` folder and it hasn't yet. None when the
+/// bucket can't be asked: then the file is just uploaded.
+async fn earlier_upload(
+    core: &SharedCore,
+    provider: &S3Provider,
+    destination: &DestinationConfig,
+    input: &UploadInput,
+    sha256: &str,
+) -> Option<UploadRecord> {
+    let now = crate::util::now_millis();
+    for record in core.history.with_content(&destination.id, sha256) {
+        if !expires_alike(&record, input.expire_after_days(), now) {
+            continue;
+        }
+        match provider.object_exists(&record.object_key).await {
+            Ok(true) => return Some(record),
+            Ok(false) => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+fn expires_alike(record: &UploadRecord, days: Option<u32>, now: i64) -> bool {
+    let record_days = crate::expiry::days_in_key(&record.object_key);
+    match days {
+        None => record.expires_at.is_none() && record_days.is_none(),
+        Some(days) => record_days == Some(days) && record.expires_at.is_some_and(|at| at > now),
+    }
+}
+
+fn set_resuming(core: &SharedCore, job_id: &str) {
+    {
+        let mut jobs = core.uploads.jobs.lock().unwrap();
+        let Some(job) = jobs.iter_mut().find(|job| job.id == job_id) else { return };
+        let JobState::Uploading { progress, .. } = job.state else { return };
+        job.state = JobState::Uploading { progress, resuming: true };
+        job.sender.send_replace(job.state.clone());
+    }
+    core.notify(events::JOBS_CHANGED);
+}
+
 fn report_progress(core: &SharedCore, job_id: &str, fraction: f64) {
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         let Some(job) = jobs.iter_mut().find(|job| job.id == job_id) else { return };
-        if !matches!(job.state, JobState::Uploading { .. }) {
-            return;
-        }
-        job.state = JobState::Uploading { progress: fraction };
+        let JobState::Uploading { resuming, .. } = job.state else { return };
+        job.state = JobState::Uploading { progress: fraction, resuming };
         job.sender.send_replace(job.state.clone());
     }
     core.notify(events::JOBS_CHANGED);
@@ -494,43 +830,65 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
     }
 }
 
-/// `link` is what's copied: the public URL, or a temporary link. History
-/// keeps the public URL.
-async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, result: UploadResult, link: String) {
-    let mime_type = output::content_type(&input.original_filename);
-    let record = core.history.insert(NewRecord {
-        local_filename: &input.original_filename,
-        object_key: &result.object_key,
-        public_url: &result.public_url,
-        destination,
-        mime_type: &mime_type,
-        byte_size: result.byte_size,
-        expire_after_days: input.expire_after_days(),
-    });
-    // Before the job counts as finished: whoever started it (the local API)
-    // may delete the file as soon as it has.
-    if mime_type.starts_with("image/") {
-        let source = input.path.clone();
-        let target = core.history.thumbnail_path(&record.id);
-        let _ = tauri::async_runtime::spawn_blocking(move || crate::thumbnails::store(&source, &target)).await;
-    }
+/// History keeps the public URL; `outcome.link` is what's copied. An
+/// earlier upload whose link is reused stays the one history entry.
+async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, outcome: Outcome) {
+    let Outcome { result, link, filename, content_hash, reused, uploaded, _scratch } = outcome;
+    let was_reused = reused.is_some();
+    let record = match reused {
+        Some(record) => record,
+        None => {
+            let mime_type = output::content_type(&filename);
+            let record = core.history.insert(NewRecord {
+                local_filename: &filename,
+                object_key: &result.object_key,
+                public_url: &result.public_url,
+                destination,
+                mime_type: &mime_type,
+                byte_size: result.byte_size,
+                expire_after_days: input.expire_after_days(),
+                content_hash: content_hash.as_deref(),
+            });
+            // Before the job counts as finished: whoever started it (the
+            // local API) may delete the file as soon as it has. A photo
+            // Windows can't read (HEIC) gets its thumbnail from the copy
+            // that went up.
+            if mime_type.starts_with("image/") {
+                let target = core.history.thumbnail_path(&record.id);
+                let sources = [input.path.clone(), uploaded];
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    for source in sources {
+                        crate::thumbnails::store(&source, &target);
+                        if target.exists() {
+                            break;
+                        }
+                    }
+                })
+                .await;
+            }
+            record
+        }
+    };
+    drop(_scratch);
     input.remove_if_temporary();
 
     set_state(
         core,
         job_id,
-        JobState::Succeeded { public_url: result.public_url.clone(), record_id: record.id.clone() },
+        JobState::Succeeded { public_url: result.public_url.clone(), record_id: record.id.clone(), reused: was_reused },
     );
     core.notify(events::HISTORY_CHANGED);
 
-    core.emit(
-        events::UPLOAD_SUCCEEDED,
-        UploadSucceeded {
-            destination_id: destination.id.clone(),
-            object_key: result.object_key.clone(),
-            byte_size: result.byte_size,
-        },
-    );
+    if !was_reused {
+        core.emit(
+            events::UPLOAD_SUCCEEDED,
+            UploadSucceeded {
+                destination_id: destination.id.clone(),
+                object_key: result.object_key.clone(),
+                byte_size: result.byte_size,
+            },
+        );
+    }
 
     // A file from a folder waits for the rest of it: the links are copied
     // together, with one notification, once the last is done.
@@ -539,7 +897,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         let links = groups.get_mut(&group.id);
         let open = links.is_some();
         if let Some((_, links)) = links {
-            links.insert(group.index, (link.clone(), input.original_filename.clone()));
+            links.insert(group.index, (link.clone(), filename.clone()));
         }
         open
     });
@@ -547,13 +905,17 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         finish_group_if_done(core, group);
     } else {
         let settings = core.settings.get();
-        crate::clipboard::copy(&format_link(core, destination, &link, &input.original_filename));
+        crate::clipboard::copy(&format_link(core, destination, &link, &filename));
         if settings.show_notification {
-            let body = match input.expire_after_days() {
-                Some(days) => format!("{}\n{}", input.original_filename, deletes_in(days)),
-                None => input.original_filename.clone(),
-            };
-            show_notification(core, &t!("Uploaded"), &body);
+            if was_reused {
+                show_notification(core, &filename, &t!("Already uploaded - copied the existing link"));
+            } else {
+                let body = match input.expire_after_days() {
+                    Some(days) => format!("{filename}\n{}", deletes_in(days)),
+                    None => filename.clone(),
+                };
+                show_notification(core, &t!("Uploaded"), &body);
+            }
         }
         close_panel_if_wanted(core);
     }
@@ -673,6 +1035,50 @@ pub async fn delete_remote(core: &SharedCore, record_id: &str) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_uploads() {
+        assert_eq!(named("clipboard-1.png", "release notes"), "release notes.png");
+        assert_eq!(named("photo.jpg", "  a/b\\c  "), "abc.jpg");
+        assert_eq!(named("photo.jpg", " / "), "photo.jpg");
+        assert_eq!(named("README", "notes"), "notes");
+    }
+
+    #[test]
+    fn swaps_extensions_in_keys() {
+        assert_eq!(with_extension("shots/v1.2/photo.png", Some("webp")), "shots/v1.2/photo.webp");
+        assert_eq!(with_extension("photo", Some("avif")), "photo.avif");
+        assert_eq!(with_extension("a/photo.png", None), "a/photo.png");
+    }
+
+    fn record(key: &str, expires_at: Option<i64>) -> UploadRecord {
+        UploadRecord {
+            id: "R".into(),
+            local_filename: "a.png".into(),
+            object_key: key.into(),
+            public_url: String::new(),
+            destination_id: "D".into(),
+            destination_name: "Test".into(),
+            mime_type: "image/png".into(),
+            byte_size: 1,
+            created_at: 0,
+            expires_at,
+            content_hash: Some("h".into()),
+            has_thumbnail: false,
+        }
+    }
+
+    #[test]
+    fn reuses_uploads_that_expire_alike() {
+        let now = 1_000_000;
+        assert!(expires_alike(&record("2026/a.png", None), None, now));
+        assert!(!expires_alike(&record("tmp/7d/a.png", None), None, now));
+        assert!(!expires_alike(&record("tmp/7d/a.png", Some(now + 1)), None, now));
+        assert!(expires_alike(&record("tmp/7d/a.png", Some(now + 1)), Some(7), now));
+        assert!(!expires_alike(&record("tmp/7d/a.png", Some(now)), Some(7), now));
+        assert!(!expires_alike(&record("tmp/1d/a.png", Some(now + 1)), Some(7), now));
+        assert!(!expires_alike(&record("2026/a.png", None), Some(7), now));
+    }
 
     #[test]
     fn expires_only_on_destinations_with_rules() {

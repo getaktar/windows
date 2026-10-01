@@ -14,10 +14,13 @@ mod history;
 mod hotkey;
 mod i18n;
 mod image_metadata;
+mod image_processing;
 mod local_api;
+mod multipart;
 mod output;
 mod package;
 mod panel;
+mod qr;
 mod settings;
 mod shell;
 mod storage;
@@ -90,6 +93,13 @@ pub fn run() {
             commands::remove_expiry_rules,
             commands::upload_files,
             commands::upload_clipboard,
+            commands::pending_names,
+            commands::resolve_name,
+            commands::alt_key_down,
+            commands::qr_code,
+            commands::copy_qr_image,
+            commands::save_qr_image,
+            commands::set_rename_shortcut,
             commands::list_jobs,
             commands::retry_job,
             commands::cancel_job,
@@ -169,7 +179,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     panel::create(&handle)?;
     tray::create(&handle)?;
     tray::follow_taskbar_theme(&handle);
-    if let Err(message) = hotkey::register(&handle, settings.shortcut.as_deref()) {
+    if let Err(message) = hotkey::register(&handle, settings.shortcut.as_deref(), settings.rename_shortcut.as_deref()) {
         // Taken by another app since it was set: without this, the shortcut
         // would just seem broken.
         uploads::show_notification(&core, &t!("Paste & upload from anywhere"), &message);
@@ -177,6 +187,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     local_api::start(&core);
     updater::schedule(&core);
     expiry::schedule_sweep(&core);
+    multipart::clean_up(&core);
 
     // The installer registers aktar:// for installed builds; a dev build
     // registers itself so links can be tested.

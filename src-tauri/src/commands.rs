@@ -20,7 +20,7 @@ use crate::local_api::{self, LocalApiState};
 use crate::settings::{Settings, SettingsPatch};
 use crate::storage::{BucketListing, ConnectionResult, S3Provider};
 use crate::updater::{self, UpdateStatus};
-use crate::uploads::{self, JobSnapshot, UploadInput};
+use crate::uploads::{self, JobSnapshot, NameRequest, UploadInput};
 use crate::windows::AppWindow;
 use crate::{bucket, i18n, panel, t};
 
@@ -270,12 +270,15 @@ fn inputs_from(paths: Vec<String>) -> Vec<UploadInput> {
 
 /// Returns how many of `paths` are files or folders that could be queued.
 /// With no destination set up, nothing is queued and the user is told why.
+/// With `rename`, each file first waits for its name in the panel.
 #[tauri::command]
-pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<String>) -> usize {
+pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<String>, rename: Option<bool>) -> usize {
     let destination = destination_id.and_then(|id| core.destinations.find(Some(&id)));
     let inputs = inputs_from(paths);
     let count = inputs.len();
-    if count > 0 {
+    if count > 0 && rename == Some(true) && core.destinations.default_destination().is_some() {
+        uploads::ask_for_names(&core, inputs, destination);
+    } else if count > 0 {
         uploads::enqueue(&core, inputs, destination);
     }
     count
@@ -283,7 +286,26 @@ pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<Strin
 
 #[tauri::command]
 pub async fn upload_clipboard(core: Core<'_>) -> Result<bool, String> {
-    Ok(uploads::upload_clipboard(&core).await)
+    Ok(uploads::upload_clipboard(&core, false).await)
+}
+
+/// Files waiting for their name in the panel's "Name This Upload".
+#[tauri::command]
+pub fn pending_names(core: Core) -> Vec<NameRequest> {
+    uploads::pending_names(&core)
+}
+
+/// Uploads a file waiting for its name, or drops it when `name` is none.
+#[tauri::command]
+pub fn resolve_name(core: Core, id: String, name: Option<String>) {
+    uploads::resolve_name(&core, &id, name);
+}
+
+/// Whether Alt is held right now: files dropped on the panel with Alt
+/// held are named before they go up. Drops don't carry the keys pressed.
+#[tauri::command]
+pub fn alt_key_down() -> bool {
+    crate::system::alt_key_down()
 }
 
 #[tauri::command]
@@ -487,6 +509,25 @@ pub async fn fetch_remote(url: String) -> Result<tauri::ipc::Response, String> {
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+// MARK: - QR codes
+
+#[tauri::command]
+pub fn qr_code(text: String) -> Result<crate::qr::QrMatrix, String> {
+    crate::qr::matrix(&text)
+}
+
+#[tauri::command]
+pub fn copy_qr_image(text: String) -> Result<(), String> {
+    crate::clipboard::copy_image(&crate::qr::image(&text)?)
+}
+
+/// Saves the QR code as a PNG where the user picked in the save dialog.
+#[tauri::command]
+pub async fn save_qr_image(text: String, path: String) -> Result<(), String> {
+    let data = crate::qr::png(&text)?;
+    tokio::fs::write(path, data).await.map_err(|error| error.to_string())
+}
+
 // MARK: - Settings
 
 #[tauri::command]
@@ -508,13 +549,26 @@ pub fn set_shortcut_paused(app: AppHandle, paused: bool) {
 
 #[tauri::command]
 pub fn set_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
-    let previous = core.settings.get().shortcut;
-    if let Err(message) = crate::hotkey::register(&app, accelerator.as_deref()) {
-        // Put the old one back so a failed change doesn't leave none.
-        let _ = crate::hotkey::register(&app, previous.as_deref());
+    let previous = core.settings.get();
+    if let Err(message) = crate::hotkey::register(&app, accelerator.as_deref(), previous.rename_shortcut.as_deref()) {
+        // Put the old ones back so a failed change doesn't leave none.
+        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
         return Err(message);
     }
     core.settings.update(|settings| settings.shortcut = accelerator);
+    core.notify(events::SETTINGS_CHANGED);
+    Ok(())
+}
+
+/// "Rename and upload clipboard", which asks for the upload's name first.
+#[tauri::command]
+pub fn set_rename_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
+    let previous = core.settings.get();
+    if let Err(message) = crate::hotkey::register(&app, previous.shortcut.as_deref(), accelerator.as_deref()) {
+        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
+        return Err(message);
+    }
+    core.settings.update(|settings| settings.rename_shortcut = accelerator);
     core.notify(events::SETTINGS_CHANGED);
     Ok(())
 }

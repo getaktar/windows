@@ -51,7 +51,17 @@ md-5 = "0.11"
 
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 arboard = "3"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico"] }
+# "avif" encodes with rav1e in pure Rust: no NASM ("nasm" stays off), and
+# "rayon" lets it use every core.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico", "avif", "rayon"] }
+# Lossy WebP (image only writes lossless WebP). libwebp is built from C with
+# the cc crate, like SQLite.
+webp = { version = "0.3", default-features = false }
+# Converts a photo's color profile to sRGB where the target format can't
+# carry the profile. Already built for `image`.
+moxcms = "0.8"
+qrcode = { version = "0.14", default-features = false }
+sha2 = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
 mime_guess = "2"
 sys-locale = "0.3"
@@ -71,7 +81,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse",
 # WinRT, for the Microsoft Store (MSIX) build: its startup task, how it was
 # launched, and notifications under the package's own identity. The same
 # version Tauri already builds, so nothing extra is compiled.
-windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom"] }
+windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom", "Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com"] }
 
 [profile.release]
 codegen-units = 1

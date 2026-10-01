@@ -26,6 +26,12 @@ pub struct Settings {
     /// Global "paste & upload" shortcut as an accelerator string, or none
     /// when the user cleared it.
     pub shortcut: Option<String>,
+    /// Global "rename and upload clipboard" shortcut, which asks for the
+    /// upload's name first. None (the default) when it isn't set.
+    pub rename_shortcut: Option<String>,
+    /// Copies the link of an earlier upload of the same bytes to the same
+    /// destination instead of uploading them again.
+    pub reuse_duplicate_links: bool,
     pub local_api_enabled: bool,
     pub local_api_port: u16,
     pub auto_check_updates: bool,
@@ -54,6 +60,8 @@ impl Default for Settings {
             close_panel_after_upload: true,
             language: None,
             shortcut: Some(DEFAULT_SHORTCUT.into()),
+            rename_shortcut: None,
+            reuse_duplicate_links: true,
             local_api_enabled: false,
             local_api_port: DEFAULT_LOCAL_API_PORT,
             auto_check_updates: true,
@@ -75,6 +83,7 @@ pub struct SettingsPatch {
     pub custom_template: Option<String>,
     pub show_notification: Option<bool>,
     pub close_panel_after_upload: Option<bool>,
+    pub reuse_duplicate_links: Option<bool>,
     pub auto_check_updates: Option<bool>,
     pub auto_install_updates: Option<bool>,
     pub delete_after_days: Option<u32>,
@@ -128,6 +137,9 @@ impl SettingsStore {
             if let Some(value) = patch.close_panel_after_upload {
                 settings.close_panel_after_upload = value;
             }
+            if let Some(value) = patch.reuse_duplicate_links {
+                settings.reuse_duplicate_links = value;
+            }
             if let Some(value) = patch.auto_check_updates {
                 settings.auto_check_updates = value;
             }
@@ -138,5 +150,18 @@ impl SettingsStore {
                 settings.delete_after_days = value;
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn older_settings_reuse_links_and_have_no_rename_shortcut() {
+        let settings: Settings = serde_json::from_str(r#"{"outputMode":"url","shortcut":"Ctrl+Shift+Alt+KeyU"}"#).unwrap();
+        assert!(settings.reuse_duplicate_links);
+        assert_eq!(settings.rename_shortcut, None);
+        assert_eq!(settings.shortcut.as_deref(), Some(DEFAULT_SHORTCUT));
     }
 }

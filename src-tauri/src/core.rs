@@ -11,6 +11,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::destinations::DestinationStore;
 use crate::history::History;
 use crate::local_api::LocalApiService;
+use crate::multipart::SessionStore;
 use crate::settings::SettingsStore;
 use crate::updater::UpdateService;
 use crate::uploads::UploadManager;
@@ -27,6 +28,8 @@ pub mod events {
     /// upload landed in.
     pub const UPLOAD_SUCCEEDED: &str = "upload-succeeded";
     pub const PANEL_SHOWN: &str = "panel-shown";
+    /// Files are waiting in (or were taken out of) "Name This Upload".
+    pub const NAMES_CHANGED: &str = "names-changed";
 }
 
 #[derive(Clone, Serialize)]
@@ -43,6 +46,8 @@ pub struct Core {
     pub destinations: DestinationStore,
     pub history: History,
     pub uploads: UploadManager,
+    /// Multipart uploads left unfinished, to continue.
+    pub upload_sessions: SessionStore,
     pub local_api: LocalApiService,
     pub updater: UpdateService,
     pub thumbnails_dir: PathBuf,
@@ -73,6 +78,7 @@ impl Core {
             destinations: DestinationStore::load(&data_dir),
             history: History::open(&history_dir, thumbnails_dir.clone())?,
             uploads: UploadManager::default(),
+            upload_sessions: SessionStore::load(&local_data_dir),
             local_api: LocalApiService::default(),
             updater: UpdateService::default(),
             thumbnails_dir,

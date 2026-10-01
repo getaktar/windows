@@ -84,7 +84,7 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 fn handle_menu(app: &AppHandle, id: &str) {
     match id {
         "open-panel" => panel::show(app),
-        "upload-clipboard" => crate::uploads::upload_clipboard_in_background(&crate::core::core(app)),
+        "upload-clipboard" => crate::uploads::upload_clipboard_in_background(&crate::core::core(app), false),
         "library" => crate::windows::open(app, AppWindow::Library),
         "settings" => crate::windows::open(app, AppWindow::Settings),
         "check-updates" => crate::updater::check_now(app),

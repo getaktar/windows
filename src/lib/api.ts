@@ -14,6 +14,7 @@ export const events = {
   updateChanged: "update-changed",
   uploadSucceeded: "upload-succeeded",
   panelShown: "panel-shown",
+  namesChanged: "names-changed",
 } as const;
 
 export type ProviderPreset =
@@ -52,7 +53,26 @@ export interface DestinationConfig {
   imageMetadata?: ImageMetadataPolicy | null;
   /** How folders are uploaded; null uploads them as a ZIP. */
   folderUpload?: FolderUploadMode | null;
+  /** Converting, recompressing and resizing photos before they're
+   * uploaded; null leaves them as they are. */
+  imageProcessing?: ImageProcessing | null;
 }
+
+export type ImageFormat = "original" | "webp" | "avif";
+export const imageFormats: ImageFormat[] = ["original", "webp", "avif"];
+
+export interface ImageProcessing {
+  format: ImageFormat;
+  /** Lossy quality (one of `imageQualities`); null doesn't recompress. */
+  quality: number | null;
+  /** The longest side photos are scaled down to (one of `imageSizes`);
+   * null keeps their size. */
+  maxLongEdge: number | null;
+}
+
+/** "Light", "Medium" and "Strong" compression. */
+export const imageQualities = [90, 80, 65] as const;
+export const imageSizes = [3840, 2560, 1920, 1280, 1024] as const;
 
 export type ImageMetadataPolicy = "removeLocation" | "removeAll" | "keepAll";
 export const imageMetadataPolicies: ImageMetadataPolicy[] = ["removeLocation", "removeAll", "keepAll"];
@@ -84,8 +104,11 @@ export type PublicLinkCheck = { kind: "reachable" } | { kind: "status"; code: nu
 
 export type JobState =
   | { kind: "waiting" }
-  | { kind: "uploading"; progress: number }
-  | { kind: "succeeded"; publicUrl: string; recordId: string }
+  /** `resuming` while it continues an upload left unfinished before. */
+  | { kind: "uploading"; progress: number; resuming: boolean }
+  /** `reused` when an earlier upload of the same file was found, and its
+   * link copied instead. */
+  | { kind: "succeeded"; publicUrl: string; recordId: string; reused: boolean }
   | { kind: "failed"; message: string }
   | { kind: "cancelled" };
 
@@ -109,6 +132,8 @@ export interface UploadRecord {
   createdAt: number;
   /** When an expiring upload gets deleted (Unix milliseconds), or null. */
   expiresAt: number | null;
+  /** SHA-256 of the bytes uploaded, when it was worked out. */
+  contentHash?: string | null;
   hasThumbnail: boolean;
 }
 
@@ -134,6 +159,11 @@ export interface Settings {
   closePanelAfterUpload: boolean;
   language: string | null;
   shortcut: string | null;
+  /** "Rename and upload clipboard"; null when it isn't set. */
+  renameShortcut: string | null;
+  /** Copy the link of an earlier upload of the same file to the same
+   * destination instead of uploading it again. */
+  reuseDuplicateLinks: boolean;
   localApiEnabled: boolean;
   localApiPort: number;
   autoCheckUpdates: boolean;
@@ -153,6 +183,7 @@ export type SettingsPatch = Partial<
     | "customTemplate"
     | "showNotification"
     | "closePanelAfterUpload"
+    | "reuseDuplicateLinks"
     | "autoCheckUpdates"
     | "autoInstallUpdates"
     | "deleteAfterDays"
@@ -244,6 +275,22 @@ export interface UploadSucceeded {
   byteSize: number;
 }
 
+/** A file waiting for its name in "Name This Upload". */
+export interface NameRequest {
+  id: string;
+  /** The name without its extension, to start from. */
+  name: string;
+  /** The extension, which stays; empty when there's none. */
+  extension: string;
+}
+
+/** A QR code's modules, row by row ("1" dark, "0" light), without the
+ * quiet zone. */
+export interface QrMatrix {
+  size: number;
+  modules: string;
+}
+
 export type AppWindowName = "library" | "settings" | "onboarding" | "update";
 
 export const api = {
@@ -272,10 +319,16 @@ export const api = {
     invoke<void>("remove_expiry_rules", { config, credentials }),
 
   /** Returns how many files and folders were queued: nothing is queued
-   * when there's no destination (Rust then says so itself). */
-  uploadFiles: (paths: string[], destinationId?: string) =>
-    invoke<number>("upload_files", { paths, destinationId: destinationId ?? null }),
+   * when there's no destination (Rust then says so itself). With `rename`,
+   * each file first waits for its name (`pendingNames`). */
+  uploadFiles: (paths: string[], destinationId?: string, rename = false) =>
+    invoke<number>("upload_files", { paths, destinationId: destinationId ?? null, rename }),
   uploadClipboard: () => invoke<boolean>("upload_clipboard"),
+  pendingNames: () => invoke<NameRequest[]>("pending_names"),
+  /** Uploads a file waiting for its name, or drops it (Cancel) for null. */
+  resolveName: (id: string, name: string | null) => invoke<void>("resolve_name", { id, name }),
+  /** Whether Alt is held right now (drops don't say). */
+  altKeyDown: () => invoke<boolean>("alt_key_down"),
   listJobs: () => invoke<Job[]>("list_jobs"),
   retryJob: (id: string) => invoke<void>("retry_job", { id }),
   cancelJob: (id: string) => invoke<void>("cancel_job", { id }),
@@ -301,9 +354,14 @@ export const api = {
     invoke<number>("bucket_upload", { destinationId, paths, prefix }),
   fetchRemote: (url: string) => invoke<ArrayBuffer>("fetch_remote", { url }),
 
+  qrCode: (text: string) => invoke<QrMatrix>("qr_code", { text }),
+  copyQrImage: (text: string) => invoke<void>("copy_qr_image", { text }),
+  saveQrImage: (text: string, path: string) => invoke<void>("save_qr_image", { text, path }),
+
   getSettings: () => invoke<Settings>("get_settings"),
   updateSettings: (patch: SettingsPatch) => invoke<Settings>("update_settings", { patch }),
   setShortcut: (accelerator: string | null) => invoke<void>("set_shortcut", { accelerator }),
+  setRenameShortcut: (accelerator: string | null) => invoke<void>("set_rename_shortcut", { accelerator }),
   /** While recording a new shortcut, so pressing the current one records it
    * instead of uploading the clipboard. */
   setShortcutPaused: (paused: boolean) => invoke<void>("set_shortcut_paused", { paused }),

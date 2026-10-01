@@ -25,6 +25,10 @@ pub struct UploadRecord {
     pub created_at: i64,
     /// Unix milliseconds when an expiring upload gets deleted, or none.
     pub expires_at: Option<i64>,
+    /// SHA-256 (lowercase hex) of the bytes uploaded, for reusing the link
+    /// when the same file comes up again. None for uploads made before it
+    /// was recorded, and for ones it isn't worked out for.
+    pub content_hash: Option<String>,
     pub has_thumbnail: bool,
 }
 
@@ -37,6 +41,7 @@ pub struct NewRecord<'a> {
     pub byte_size: i64,
     /// Days until it's deleted, for an expiring upload.
     pub expire_after_days: Option<u32>,
+    pub content_hash: Option<&'a str>,
 }
 
 pub struct History {
@@ -45,7 +50,7 @@ pub struct History {
 }
 
 const COLUMNS: &str =
-    "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at";
+    "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash";
 
 impl History {
     pub fn open(data_directory: &Path, thumbnails: PathBuf) -> rusqlite::Result<Self> {
@@ -73,6 +78,7 @@ impl History {
             byte_size: row.get(7)?,
             created_at: row.get(8)?,
             expires_at: row.get(9)?,
+            content_hash: row.get(10)?,
             has_thumbnail,
         })
     }
@@ -90,11 +96,12 @@ impl History {
             byte_size: record.byte_size,
             created_at,
             expires_at: record.expire_after_days.map(|days| crate::expiry::expires_at(created_at, days)),
+            content_hash: record.content_hash.map(str::to_string),
             has_thumbnail: false,
         };
         let connection = self.connection.lock().unwrap();
         let result = connection.execute(
-            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"),
+            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"),
             params![
                 stored.id,
                 stored.local_filename,
@@ -105,7 +112,8 @@ impl History {
                 stored.mime_type,
                 stored.byte_size,
                 stored.created_at,
-                stored.expires_at
+                stored.expires_at,
+                stored.content_hash
             ],
         );
         if let Err(error) = result {
@@ -136,6 +144,20 @@ impl History {
         };
         statement
             .query_map([now], |row| self.record_from_row(row))
+            .map(|rows| rows.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    }
+
+    /// Earlier uploads of the same bytes to `destination_id`, newest first.
+    pub fn with_content(&self, destination_id: &str, content_hash: &str) -> Vec<UploadRecord> {
+        let connection = self.connection.lock().unwrap();
+        let Ok(mut statement) = connection.prepare(&format!(
+            "SELECT {COLUMNS} FROM uploads WHERE destination_id = ?1 AND content_hash = ?2 ORDER BY created_at DESC"
+        )) else {
+            return Vec::new();
+        };
+        statement
+            .query_map(params![destination_id, content_hash], |row| self.record_from_row(row))
             .map(|rows| rows.filter_map(Result::ok).collect())
             .unwrap_or_default()
     }
@@ -240,6 +262,10 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     if !has_column(connection, "uploads", "expires_at")? {
         connection.execute_batch("ALTER TABLE uploads ADD COLUMN expires_at INTEGER;")?;
     }
+    if !has_column(connection, "uploads", "content_hash")? {
+        connection.execute_batch("ALTER TABLE uploads ADD COLUMN content_hash TEXT;")?;
+    }
+    connection.execute_batch("CREATE INDEX IF NOT EXISTS uploads_content ON uploads (destination_id, content_hash);")?;
     Ok(())
 }
 
@@ -277,6 +303,7 @@ mod tests {
             temporary_link: None,
             image_metadata: None,
             folder_upload: None,
+            image_processing: None,
         }
     }
 
@@ -298,12 +325,14 @@ mod tests {
         // Running again (every launch) is a no-op.
         prepare(&connection).unwrap();
         assert!(has_column(&connection, "uploads", "expires_at").unwrap());
+        assert!(has_column(&connection, "uploads", "content_hash").unwrap());
 
         let thumbnails = std::env::temp_dir().join("aktar-history-test");
         let history = History { connection: Mutex::new(connection), thumbnails };
         let old = history.get("A").unwrap();
         assert_eq!(old.local_filename, "a.png");
         assert_eq!(old.expires_at, None);
+        assert_eq!(old.content_hash, None);
         assert!(history.expired(i64::MAX).is_empty());
     }
 
@@ -321,6 +350,7 @@ mod tests {
             mime_type: "image/png",
             byte_size: 5,
             expire_after_days: Some(7),
+            content_hash: None,
         });
         let expires_at = record.expires_at.unwrap();
         assert_eq!(expires_at, record.created_at + 7 * 86_400_000);
@@ -357,7 +387,11 @@ mod tests {
             mime_type: "image/png",
             byte_size: 5,
             expire_after_days: Some(1),
+            content_hash: Some("abc"),
         });
+        assert_eq!(history.with_content(&destination.id, "abc").len(), 1);
+        assert!(history.with_content("other", "abc").is_empty());
+        assert!(history.with_content(&destination.id, "abd").is_empty());
         history.clear_expiry("other");
         assert!(history.get(&record.id).unwrap().expires_at.is_some());
         history.clear_expiry(&destination.id);

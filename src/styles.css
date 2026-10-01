@@ -1174,3 +1174,52 @@ body {
   border: 3px solid var(--colorBrandStroke1);
   border-radius: 16px;
 }
+
+/* QR code */
+.qr-surface {
+  max-width: 400px;
+}
+
+.qr-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+/* White with its quiet zone in both themes, so it scans from a dark
+   screen too. Smaller in the panel, whose window is only as tall as its
+   content. */
+.qr-code {
+  width: min(260px, 52vh);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-code svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 6px;
+}
+
+.qr-link {
+  max-width: 100%;
+  word-break: break-all;
+}
+
+.qr-actions {
+  flex-wrap: wrap;
+}
+
+/* Name This Upload */
+.name-surface {
+  max-width: 380px;
+}
+
+.name-input {
+  width: 100%;
+}

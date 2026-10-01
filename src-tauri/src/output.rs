@@ -66,11 +66,25 @@ pub fn content_type(filename: &str) -> String {
         .to_string()
 }
 
-pub fn generate_key(template: &str, original_filename: &str) -> String {
-    generate_key_at(template, original_filename, Local::now())
+/// Lowercase hex digests of the bytes uploaded, for `{md5}` and `{sha256}`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ContentHashes {
+    pub md5: String,
+    pub sha256: String,
 }
 
-pub fn generate_key_at(template: &str, original_filename: &str, date: DateTime<Local>) -> String {
+/// Whether the template needs the file's contents hashed.
+pub fn uses_hashes(template: &str) -> bool {
+    template.contains("{md5}") || template.contains("{sha256}")
+}
+
+/// A key from the template. `hashes` fill `{md5}` and `{sha256}`; without
+/// them (a folder's prefix) those come out empty.
+pub fn generate_key(template: &str, original_filename: &str, hashes: Option<&ContentHashes>) -> String {
+    generate_key_at(template, original_filename, hashes, Local::now())
+}
+
+pub fn generate_key_at(template: &str, original_filename: &str, hashes: Option<&ContentHashes>, date: DateTime<Local>) -> String {
     let (name, ext) = split_extension(original_filename);
     let uuid = uuid::Uuid::new_v4().to_string();
     let random: String = uuid::Uuid::new_v4().to_string().chars().take(8).collect();
@@ -84,6 +98,8 @@ pub fn generate_key_at(template: &str, original_filename: &str, date: DateTime<L
         ("{uuid}", uuid),
         ("{random}", random),
         ("{ext}", ext.to_string()),
+        ("{md5}", hashes.map(|hashes| hashes.md5.clone()).unwrap_or_default()),
+        ("{sha256}", hashes.map(|hashes| hashes.sha256.clone()).unwrap_or_default()),
     ];
     let mut result = template.to_string();
     for (token, value) in replacements {
@@ -183,9 +199,20 @@ mod tests {
     #[test]
     fn generates_keys_from_templates() {
         let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
-        let key = generate_key_at("{year}/{month}/{day}/{date}-{time}-{filename}.{ext}", "shot.final.png", date);
+        let key = generate_key_at("{year}/{month}/{day}/{date}-{time}-{filename}.{ext}", "shot.final.png", None, date);
         assert_eq!(key, "2026/03/07/2026-03-07-090501-shot.final.png");
-        let random = generate_key_at("{random}", "x", date);
+        let random = generate_key_at("{random}", "x", None, date);
         assert_eq!(random.len(), 8);
+    }
+
+    #[test]
+    fn fills_content_hashes() {
+        let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
+        let hashes = ContentHashes { md5: "9e10".into(), sha256: "ab12".into() };
+        assert_eq!(generate_key_at("{md5}/{sha256}.{ext}", "a.webp", Some(&hashes), date), "9e10/ab12.webp");
+        assert_eq!(generate_key_at("x{md5}.{ext}", "a.webp", None, date), "x.webp");
+        assert!(uses_hashes("{year}/{sha256}.{ext}"));
+        assert!(uses_hashes("{md5}"));
+        assert!(!uses_hashes("{year}/{uuid}.{ext}"));
     }
 }

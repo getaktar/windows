@@ -56,6 +56,53 @@ pub fn stripped_copy(path: &Path, policy: ImageMetadataPolicy) -> Result<Option<
     Ok(Some(output))
 }
 
+/// The EXIF to write into a photo `image_processing` encoded again, from
+/// the original's (a TIFF structure, with or without the "Exif\0\0" that
+/// precedes it in a JPEG): without the location for "Remove location",
+/// none at all for "Remove all", and with the orientation reset, since the
+/// new pixels are already upright. None as well when it can't be read, or
+/// the location can't be shown to be gone.
+pub fn exif_for_reencoded(exif: &[u8], policy: ImageMetadataPolicy) -> Option<Vec<u8>> {
+    if policy == ImageMetadataPolicy::RemoveAll {
+        return None;
+    }
+    let mut data = exif.strip_prefix(EXIF_HEADER).unwrap_or(exif).to_vec();
+    let mut tiff = Tiff::new(&mut data)?;
+    if policy == ImageMetadataPolicy::RemoveLocation {
+        tiff.strip(policy, false).ok()?;
+    }
+    tiff.reset_orientation().ok()?;
+    let read = exif::Reader::new().read_raw(data.clone()).ok()?;
+    if policy == ImageMetadataPolicy::RemoveLocation && read.fields().any(|field| field.tag.context() == exif::Context::Gps) {
+        return None;
+    }
+    Some(data)
+}
+
+/// The EXIF of a HEIC photo as a TIFF structure, which the `image` crate
+/// can't read from that format.
+pub fn heif_exif(data: &[u8]) -> Option<Vec<u8>> {
+    let read = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(data)).ok()?;
+    Some(read.buf().to_vec())
+}
+
+/// The ICC color profile of a HEIC photo: the first `colr` property that
+/// holds one (iPhones tag their photos Display P3 this way).
+pub fn heif_icc_profile(data: &[u8]) -> Option<Vec<u8>> {
+    let top = boxes(data, 0..data.len()).ok()?;
+    let meta = top.iter().find(|b| &b.kind == b"meta")?;
+    let children = boxes(data, meta.content.start + 4..meta.content.end).ok()?;
+    let iprp = children.iter().find(|b| &b.kind == b"iprp")?;
+    let ipco = boxes(data, iprp.content.clone()).ok()?.into_iter().find(|b| &b.kind == b"ipco")?;
+    boxes(data, ipco.content).ok()?.into_iter().filter(|b| &b.kind == b"colr").find_map(|colr| {
+        let content = &data[colr.content];
+        match content.get(..4)? {
+            b"prof" | b"rICC" => Some(content[4..].to_vec()),
+            _ => None,
+        }
+    })
+}
+
 /// Deletes a copy made by `stripped_copy`.
 pub fn remove_copy(path: &Path) {
     if let Some(directory) = path.parent() {
@@ -322,6 +369,16 @@ impl<'a> Tiff<'a> {
             self.zero(start..start.saturating_add(length));
         }
         self.zero(offset..next + 4);
+        Ok(())
+    }
+
+    /// Sets IFD0's orientation, if it has one, to "up".
+    fn reset_orientation(&mut self) -> Parsed<()> {
+        let first = self.chain()?.first().copied().ok_or(Malformed)?;
+        let (entries, _) = self.entries(first)?;
+        if let Some(entry) = entries.iter().find(|entry| entry.tag == TAG_ORIENTATION && entry.kind == 3) {
+            self.put_u16(entry.at + 8, 1);
+        }
         Ok(())
     }
 

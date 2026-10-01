@@ -1,5 +1,12 @@
 import {
   Button,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
+  Input,
   Link,
   Menu,
   MenuDivider,
@@ -29,6 +36,7 @@ import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
+import { QrCodeDialog } from "../components/QrCodeDialog";
 import { temporaryLinkMenu } from "../components/temporaryLinkMenu";
 import { ExpiryBadge, FileIcon, Thumbnail } from "../components/FileVisuals";
 import {
@@ -41,6 +49,7 @@ import {
   temporaryLinkDurations,
   type DestinationConfig,
   type Job,
+  type NameRequest,
   type UploadRecord,
 } from "../lib/api";
 import {
@@ -52,7 +61,7 @@ import {
   temporaryLinkLabel,
   withoutScheme,
 } from "../lib/format";
-import { useDestinations, useHistory, useJobs, useSettings, useTauriEvent } from "../lib/hooks";
+import { useDestinations, useHistory, useJobs, useLive, useSettings, useTauriEvent } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 
 export default function Panel() {
@@ -61,6 +70,7 @@ export default function Panel() {
   const [jobs] = useJobs();
   const [records] = useHistory();
   const [settings] = useSettings();
+  const [names, refreshNames] = useLive<NameRequest[]>(api.pendingNames, [events.namesChanged], []);
   const [isSettingUpExpiry, setIsSettingUpExpiry] = useState(false);
   const [isTargeted, setIsTargeted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -91,7 +101,14 @@ export default function Panel() {
         setIsTargeted(false);
       } else if (payload.type === "drop") {
         setIsTargeted(false);
-        uploadDropped(payload.paths, tRef.current).then(setNotice);
+        // Alt held while dropping: name each file first. The drop itself
+        // doesn't say which keys were down, so ask right away.
+        api
+          .altKeyDown()
+          .catch(() => false)
+          .then((rename) => uploadDropped(payload.paths, tRef.current, rename))
+          .then(setNotice)
+          .then(refreshNames);
         // Take focus, so the next click elsewhere closes the panel.
         getCurrentWindow().setFocus();
       }
@@ -106,12 +123,14 @@ export default function Panel() {
     setNotice(uploaded ? null : t("The clipboard has no file or image to upload."));
   };
 
-  const browse = async () => {
+  /** With `rename` (Alt held on Browse), each file is named first. */
+  const browse = async (rename = false) => {
     // The file picker takes focus; that mustn't close the panel.
     await api.setPanelShowingDialog(true);
     try {
       const selection = await open({ multiple: true, directory: false });
-      if (Array.isArray(selection) && selection.length > 0) setNotice(await uploadDropped(selection, t));
+      if (Array.isArray(selection) && selection.length > 0) setNotice(await uploadDropped(selection, t, rename));
+      refreshNames();
     } finally {
       await api.setPanelShowingDialog(false);
       getCurrentWindow().setFocus();
@@ -239,7 +258,10 @@ export default function Panel() {
             <LinkPicker destination={currentDestination} />
           </div>
 
-          <div className={`dropzone ${isTargeted ? "dropzone-targeted" : ""}`}>
+          <div
+            className={`dropzone ${isTargeted ? "dropzone-targeted" : ""}`}
+            title={t("Hold Alt to rename files before they upload")}
+          >
             {isTargeted ? (
               <>
                 <ArrowDownloadRegular fontSize={28} className="accent" />
@@ -253,7 +275,7 @@ export default function Panel() {
                   <Button size="small" icon={<ClipboardPasteRegular />} onClick={uploadClipboard}>
                     {t("Paste")}
                   </Button>
-                  <Button size="small" icon={<FolderOpenRegular />} onClick={browse}>
+                  <Button size="small" icon={<FolderOpenRegular />} onClick={(event) => browse(event.altKey)}>
                     {t("Browse")}
                   </Button>
                 </div>
@@ -298,14 +320,76 @@ export default function Panel() {
                   <JobRow key={job.id} job={job} />
                 ))}
                 {recent.map((record) => (
-                  <RecentRow key={record.id} record={record} onError={setNotice} />
+                  <RecentRow key={record.id} record={record} destinations={destinations} onError={setNotice} />
                 ))}
               </div>
             )}
           </div>
         </>
       )}
+      <NameDialog request={names[0] ?? null} onResolved={refreshNames} />
     </div>
+  );
+}
+
+/** "Name This Upload", for each file waiting for its name: dropped with
+ * Alt held, or from the "Rename and upload clipboard" shortcut. The name
+ * replaces the file's own; the extension stays. */
+function NameDialog({ request, onResolved }: { request: NameRequest | null; onResolved: () => void }) {
+  const { t } = useI18n();
+  const [value, setValue] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!request) return;
+    setValue(request.name);
+    window.setTimeout(() => {
+      input.current?.focus();
+      input.current?.select();
+    }, 0);
+  }, [request?.id]);
+
+  const resolve = (name: string | null) => {
+    if (!request) return;
+    api
+      .resolveName(request.id, name)
+      .catch(() => {})
+      .then(onResolved);
+  };
+
+  return (
+    <Dialog open={request !== null} onOpenChange={(_, data) => !data.open && resolve(null)}>
+      <DialogSurface className="name-surface">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            resolve(value);
+          }}
+        >
+          <DialogBody>
+            <DialogTitle>{t("Name This Upload")}</DialogTitle>
+            <DialogContent>
+              <Input
+                ref={input}
+                className="name-input"
+                value={value}
+                aria-label={t("Name This Upload")}
+                contentAfter={request?.extension ? <Text className="secondary">.{request.extension}</Text> : undefined}
+                onChange={(_, data) => setValue(data.value)}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => resolve(null)}>
+                {t("Cancel")}
+              </Button>
+              <Button appearance="primary" type="submit">
+                {t("Upload")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </form>
+      </DialogSurface>
+    </Dialog>
   );
 }
 
@@ -313,8 +397,8 @@ export default function Panel() {
  * none of them could be: virtual items (an Outlook attachment, an image
  * dragged out of a browser) come with no file path at all. With no
  * destination, Rust itself explains and opens Welcome. */
-async function uploadDropped(paths: string[], t: ReturnType<typeof useI18n>["t"]): Promise<string | null> {
-  const queued = paths.length === 0 ? 0 : await api.uploadFiles(paths).catch(() => -1);
+async function uploadDropped(paths: string[], t: ReturnType<typeof useI18n>["t"], rename = false): Promise<string | null> {
+  const queued = paths.length === 0 ? 0 : await api.uploadFiles(paths, undefined, rename).catch(() => -1);
   if (queued === 0) return t("This item can’t be uploaded. Save it as a file first, then drop the file.");
   return null;
 }
@@ -490,7 +574,14 @@ function JobRow({ job }: { job: Job }) {
           {job.filename}
         </Text>
         {job.state.kind === "uploading" || job.state.kind === "waiting" ? (
-          <ProgressBar thickness="medium" value={job.state.kind === "uploading" && job.state.progress > 0 ? job.state.progress : undefined} />
+          <>
+            <ProgressBar thickness="medium" value={job.state.kind === "uploading" && job.state.progress > 0 ? job.state.progress : undefined} />
+            {job.state.kind === "uploading" && job.state.resuming && (
+              <Text size={100} className="secondary">
+                {t("Resuming upload…")}
+              </Text>
+            )}
+          </>
         ) : job.state.kind === "failed" ? (
           <div className="inline-row">
             <Text size={100} className="text-error ellipsis" title={job.state.message}>
@@ -514,10 +605,19 @@ function JobRow({ job }: { job: Job }) {
   );
 }
 
-function RecentRow({ record, onError }: { record: UploadRecord; onError: (message: string) => void }) {
+function RecentRow({
+  record,
+  destinations,
+  onError,
+}: {
+  record: UploadRecord;
+  destinations: DestinationConfig[];
+  onError: (message: string) => void;
+}) {
   const { t } = useI18n();
   const [settings] = useSettings();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showingQr, setShowingQr] = useState(false);
   const copy = (mode: "url" | "markdown" | "html") =>
     api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType));
 
@@ -536,6 +636,7 @@ function RecentRow({ record, onError }: { record: UploadRecord; onError: (messag
     { label: t("Copy Markdown"), onClick: () => copy("markdown") },
     { label: t("Copy HTML"), onClick: () => copy("html") },
     temporaryLinkMenu(record, t, onError),
+    { label: t("Show QR Code"), onClick: () => setShowingQr(true) },
     "divider",
     { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
     { label: t("Show in Library"), onClick: () => api.openWindow("library") },
@@ -579,6 +680,7 @@ function RecentRow({ record, onError }: { record: UploadRecord; onError: (messag
         onCancel={() => setConfirmingDelete(false)}
         onConfirm={deleteRemote}
       />
+      <QrCodeDialog record={showingQr ? record : null} destinations={destinations} onClose={() => setShowingQr(false)} />
     </div>
   );
 }

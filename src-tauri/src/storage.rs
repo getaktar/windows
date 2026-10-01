@@ -14,17 +14,19 @@ use aws_sigv4::http_request::{
     sign, PayloadChecksumKind, PercentEncodingMode, SignableBody, SignableRequest, SigningSettings, UriPathNormalizationMode,
 };
 use aws_sigv4::sign::v4;
+use aws_sdk_s3::config::retry::RetryConfig;
 use aws_sdk_s3::config::{BehaviorVersion, Region, RequestChecksumCalculation, ResponseChecksumValidation};
 use aws_sdk_s3::error::{DisplayErrorContext, ProvideErrorMetadata, SdkError};
 use aws_sdk_s3::presigning::PresigningConfig;
-use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::primitives::{ByteStream, Length};
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_sdk_s3::Client;
 use aws_smithy_runtime_api::client::http::SharedHttpClient;
 use aws_smithy_runtime_api::client::orchestrator::HttpResponse;
 use aws_smithy_http_client::tls::{self, rustls_provider::CryptoMode};
 use aws_smithy_types::body::SdkBody;
 use aws_smithy_types::timeout::TimeoutConfig;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::credentials::StorageCredentials;
 use crate::destinations::DestinationConfig;
@@ -107,6 +109,28 @@ pub enum StorageError {
     LifecycleUnsupported,
     #[error("{0}")]
     Unknown(String),
+}
+
+const MIB: u64 = 1024 * 1024;
+/// Files up to this size go up in one request; bigger ones in parts.
+pub const SINGLE_UPLOAD_LIMIT: u64 = 64 * MIB;
+/// How long to wait before each new try of a part that failed on the way.
+const PART_RETRY_DELAYS: [u64; 5] = [1, 2, 4, 8, 16];
+
+/// The size of each part of a multipart upload: at least 16 MiB, and big
+/// enough (in whole MiB) that S3's 10,000 parts cover the file, with room
+/// to spare: 9,000 parts of 5 TB fit.
+pub fn part_size(file_size: u64) -> u64 {
+    (file_size.div_ceil(9000).div_ceil(MIB) * MIB).max(16 * MIB)
+}
+
+/// A part of a multipart upload the server has.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadedPart {
+    pub number: i32,
+    pub etag: String,
+    pub size: u64,
 }
 
 /// One HTTPS client for every destination, so connections are pooled.
@@ -219,7 +243,7 @@ impl S3Provider {
         let body = SdkBody::retryable(move || {
             progress.sent.store(0, Ordering::Relaxed);
             match file.try_clone() {
-                Some(inner) => SdkBody::from_body_1_x(CountingBody { inner, progress: progress.clone() }),
+                Some(inner) => SdkBody::from_body_1_x(CountingBody { inner, progress: progress.clone(), attempt: None }),
                 None => SdkBody::taken(),
             }
         });
@@ -231,15 +255,99 @@ impl S3Provider {
             .body(ByteStream::new(body))
             .send()
             .await
-            .map_err(|error| match map_error(error, self.bucket()) {
-                StorageError::Connection(message) => StorageError::Network(message),
-                other => other,
-            })?;
+            .map_err(|error| upload_error(error, self.bucket()))?;
         Ok(UploadResult {
             object_key: object_key.to_string(),
             public_url: resolve_public_url(&self.config.public_base_url, object_key),
             byte_size: byte_size as i64,
         })
+    }
+
+    /// Starts a multipart upload and returns its ID.
+    pub async fn create_multipart(&self, object_key: &str, content_type: &str) -> Result<String, StorageError> {
+        let output = self
+            .client
+            .create_multipart_upload()
+            .bucket(self.bucket())
+            .key(object_key)
+            .content_type(content_type)
+            .send()
+            .await
+            .map_err(|error| upload_error(error, self.bucket()))?;
+        output.upload_id().map(str::to_string).ok_or_else(|| StorageError::Unknown("No upload ID".into()))
+    }
+
+    /// The parts the server has of a multipart upload, or None when it no
+    /// longer knows the upload (aborted, or cleaned up by the bucket).
+    pub async fn uploaded_parts(&self, object_key: &str, upload_id: &str) -> Result<Option<Vec<UploadedPart>>, StorageError> {
+        let mut parts = Vec::new();
+        let mut marker: Option<String> = None;
+        loop {
+            let result = self
+                .client
+                .list_parts()
+                .bucket(self.bucket())
+                .key(object_key)
+                .upload_id(upload_id)
+                .set_part_number_marker(marker.take())
+                .send()
+                .await;
+            let output = match result {
+                Ok(output) => output,
+                Err(error) if error.code() == Some("NoSuchUpload") || error.raw_response().is_some_and(|r| r.status().as_u16() == 404) => {
+                    return Ok(None);
+                }
+                Err(error) => return Err(upload_error(error, self.bucket())),
+            };
+            for part in output.parts() {
+                if let (Some(number), Some(etag)) = (part.part_number(), part.e_tag()) {
+                    parts.push(UploadedPart { number, etag: etag.to_string(), size: part.size().unwrap_or(0).max(0) as u64 });
+                }
+            }
+            match output.next_part_number_marker() {
+                Some(next) if output.is_truncated() == Some(true) => marker = Some(next.to_string()),
+                _ => break,
+            }
+        }
+        Ok(Some(parts))
+    }
+
+    /// What uploads the parts, which can be sent from tasks of their own.
+    pub fn part_sender(&self) -> PartSender {
+        PartSender { client: self.client.clone(), bucket: self.bucket().to_string() }
+    }
+
+    pub async fn complete_multipart(&self, object_key: &str, upload_id: &str, parts: &[UploadedPart]) -> Result<(), StorageError> {
+        let mut parts = parts.to_vec();
+        parts.sort_by_key(|part| part.number);
+        let completed = CompletedMultipartUpload::builder()
+            .set_parts(Some(
+                parts.iter().map(|part| CompletedPart::builder().part_number(part.number).e_tag(&part.etag).build()).collect(),
+            ))
+            .build();
+        self.client
+            .complete_multipart_upload()
+            .bucket(self.bucket())
+            .key(object_key)
+            .upload_id(upload_id)
+            .multipart_upload(completed)
+            .send()
+            .await
+            .map_err(|error| upload_error(error, self.bucket()))?;
+        Ok(())
+    }
+
+    /// Throws away a multipart upload and the parts sent so far.
+    pub async fn abort_multipart(&self, object_key: &str, upload_id: &str) -> Result<(), StorageError> {
+        self.client
+            .abort_multipart_upload()
+            .bucket(self.bucket())
+            .key(object_key)
+            .upload_id(upload_id)
+            .send()
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(())
     }
 
     pub async fn delete(&self, object_key: &str) -> Result<(), StorageError> {
@@ -547,6 +655,123 @@ impl S3Provider {
     }
 }
 
+/// Sends the parts of a multipart upload.
+#[derive(Clone)]
+pub struct PartSender {
+    client: Client,
+    bucket: String,
+}
+
+impl PartSender {
+    /// Uploads `length` bytes of `path` from `offset` as part `number`, read
+    /// from the file as they're sent. A dropped connection, a timeout or a
+    /// server error (5xx, 429) is tried again after 1, 2, 4, 8 and 16
+    /// seconds; anything else fails right away. Returns the part's ETag.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send(
+        &self,
+        object_key: &str,
+        upload_id: &str,
+        number: i32,
+        path: &Path,
+        offset: u64,
+        length: u64,
+        progress: Arc<Progress>,
+    ) -> Result<String, StorageError> {
+        let mut delays = PART_RETRY_DELAYS.iter();
+        loop {
+            let attempt = Arc::new(AtomicU64::new(0));
+            let result = self.send_once(object_key, upload_id, number, path, offset, length, &progress, &attempt).await;
+            match result {
+                Ok(etag) => return Ok(etag),
+                Err((error, transient)) => {
+                    // What this try sent doesn't count any more.
+                    progress.sent.fetch_sub(attempt.load(Ordering::Relaxed), Ordering::Relaxed);
+                    match delays.next() {
+                        Some(seconds) if transient => {
+                            log::info!("Part {number} failed, trying again in {seconds} s: {error}");
+                            tokio::time::sleep(Duration::from_secs(*seconds)).await;
+                            // Waiting isn't stalling.
+                            progress.last_activity.store(crate::util::now_millis(), Ordering::Relaxed);
+                        }
+                        _ => return Err(error),
+                    }
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn send_once(
+        &self,
+        object_key: &str,
+        upload_id: &str,
+        number: i32,
+        path: &Path,
+        offset: u64,
+        length: u64,
+        progress: &Arc<Progress>,
+        attempt: &Arc<AtomicU64>,
+    ) -> Result<String, (StorageError, bool)> {
+        let file = ByteStream::read_from()
+            .path(path)
+            .offset(offset)
+            .length(Length::Exact(length))
+            .build()
+            .await
+            .map_err(|error| (StorageError::Unknown(error.to_string()), false))?
+            .into_inner();
+        let (progress, attempt) = (progress.clone(), attempt.clone());
+        let body = SdkBody::retryable(move || match file.try_clone() {
+            Some(inner) => SdkBody::from_body_1_x(CountingBody { inner, progress: progress.clone(), attempt: Some(attempt.clone()) }),
+            None => SdkBody::taken(),
+        });
+        let output = self
+            .client
+            .upload_part()
+            .bucket(&self.bucket)
+            .key(object_key)
+            .upload_id(upload_id)
+            .part_number(number)
+            .content_length(length as i64)
+            .body(ByteStream::new(body))
+            // Retried here, with longer waits than the SDK's.
+            .customize()
+            .config_override(aws_sdk_s3::Config::builder().retry_config(RetryConfig::disabled()))
+            .send()
+            .await
+            .map_err(|error| {
+                let transient = is_transient(&error);
+                (upload_error(error, &self.bucket), transient)
+            })?;
+        output.e_tag().map(str::to_string).ok_or((StorageError::Unknown("No ETag".into()), false))
+    }
+}
+
+/// Whether trying again may work: the connection dropped or timed out, or
+/// the server was overloaded or broke.
+fn is_transient<E>(error: &SdkError<E, HttpResponse>) -> bool {
+    match error {
+        SdkError::DispatchFailure(_) | SdkError::TimeoutError(_) | SdkError::ResponseError(_) => true,
+        SdkError::ServiceError(service) => {
+            let status = service.raw().status().as_u16();
+            status >= 500 || status == 429
+        }
+        _ => false,
+    }
+}
+
+/// An upload's error: a connection failure is an interrupted upload.
+fn upload_error<E>(error: SdkError<E, HttpResponse>, bucket: &str) -> StorageError
+where
+    E: ProvideErrorMetadata + std::error::Error + Send + Sync + 'static,
+{
+    match map_error(error, bucket) {
+        StorageError::Connection(message) => StorageError::Network(message),
+        other => other,
+    }
+}
+
 /// How far an upload has got, and when it last moved.
 pub struct Progress {
     sent: AtomicU64,
@@ -562,6 +787,14 @@ impl Default for Progress {
 }
 
 impl Progress {
+    /// Starts counting `total` bytes, `done` of which are already sent
+    /// (the parts of an upload being resumed).
+    pub fn start(&self, total: u64, done: u64) {
+        self.total.store(total, Ordering::Relaxed);
+        self.sent.store(done, Ordering::Relaxed);
+        self.last_activity.store(crate::util::now_millis(), Ordering::Relaxed);
+    }
+
     /// 0 to 1, once the size is known.
     pub fn fraction(&self) -> Option<f64> {
         let total = self.total.load(Ordering::Relaxed);
@@ -576,10 +809,12 @@ impl Progress {
 }
 
 /// Passes a request body through unchanged, counting the bytes the HTTP
-/// client pulls from it.
+/// client pulls from it: into the upload's progress, and into `attempt`
+/// for a part, so a try that fails can be taken back out.
 struct CountingBody {
     inner: SdkBody,
     progress: Arc<Progress>,
+    attempt: Option<Arc<AtomicU64>>,
 }
 
 impl http_body::Body for CountingBody {
@@ -595,6 +830,9 @@ impl http_body::Body for CountingBody {
         if let Poll::Ready(Some(Ok(frame))) = &poll {
             if let Some(data) = frame.data_ref() {
                 this.progress.sent.fetch_add(data.len() as u64, Ordering::Relaxed);
+                if let Some(attempt) = &this.attempt {
+                    attempt.fetch_add(data.len() as u64, Ordering::Relaxed);
+                }
                 this.progress.last_activity.store(crate::util::now_millis(), Ordering::Relaxed);
             }
         }
@@ -781,6 +1019,7 @@ mod tests {
             temporary_link: None,
             image_metadata: None,
             folder_upload: None,
+            image_processing: None,
         }
     }
 
@@ -817,7 +1056,8 @@ mod tests {
 }
 
 /// Runs against a real S3-compatible server, e.g. `moto_server -p 9100`
-/// with a bucket named "aktar-test":
+/// (moto 5.1: 5.2 answers ListParts in a shape the SDK rejects) with a
+/// bucket named "aktar-test":
 ///
 /// ```text
 /// AKTAR_TEST_S3_ENDPOINT=http://127.0.0.1:9100 cargo test storage -- --ignored
@@ -850,6 +1090,7 @@ mod live_tests {
             temporary_link: None,
             image_metadata: None,
             folder_upload: None,
+            image_processing: None,
         };
         // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
@@ -909,6 +1150,141 @@ mod live_tests {
         storage.delete("moved/renamed.txt").await.unwrap();
         storage.delete("live/empty/").await.unwrap();
         assert!(!storage.object_exists("moved/renamed.txt").await.unwrap());
+    }
+
+    /// A file of `size` bytes that differ from part to part, and its SHA-256.
+    fn big_file(name: &str, size: usize) -> (std::path::PathBuf, String) {
+        let path = std::env::temp_dir().join(format!("aktar-{name}-{}.bin", crate::util::new_id()));
+        let mut data = vec![0u8; size];
+        let mut seed = 0x2545_F491u32;
+        for byte in data.iter_mut() {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            *byte = seed as u8;
+        }
+        std::fs::write(&path, &data).unwrap();
+        let sha256 = crate::util::content_hashes(&path).unwrap().sha256;
+        (path, sha256)
+    }
+
+    async fn downloaded_sha256(storage: &S3Provider, key: &str) -> String {
+        let url = storage.temporary_url(key, 600).await.unwrap();
+        let bytes = reqwest::get(&url).await.unwrap().bytes().await.unwrap();
+        let path = std::env::temp_dir().join(format!("aktar-download-{}", crate::util::new_id()));
+        std::fs::write(&path, &bytes).unwrap();
+        let sha256 = crate::util::content_hashes(&path).unwrap().sha256;
+        std::fs::remove_file(path).unwrap();
+        sha256
+    }
+
+    fn session_store() -> (crate::multipart::SessionStore, std::path::PathBuf) {
+        let directory = std::env::temp_dir().join(format!("aktar-sessions-{}", crate::util::new_id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        (crate::multipart::SessionStore::load(&directory), directory)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn uploads_big_files_in_parts() {
+        use crate::multipart::{self, SourceFile};
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+        let (store, directory) = session_store();
+        let size = 70 * 1024 * 1024 + 123;
+        let (file, sha256) = big_file("multipart", size);
+        let key = "live/multipart.bin";
+        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, SourceFile::of(&file), None)
+            .await
+            .unwrap();
+        assert_eq!(session.part_size, 16 * 1024 * 1024);
+        let progress = Arc::new(Progress::default());
+        multipart::upload(&storage, &store, session, &file, "application/octet-stream", false, progress.clone()).await.unwrap();
+        assert_eq!(progress.fraction(), Some(1.0));
+        assert!(store.all().is_empty());
+        assert_eq!(downloaded_sha256(&storage, key).await, sha256);
+        storage.delete(key).await.unwrap();
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// Stopped halfway (the app quit), then picked up again from the saved
+    /// session after a "restart": only the missing parts are sent.
+    #[tokio::test]
+    #[ignore]
+    async fn resumes_an_unfinished_upload() {
+        use crate::multipart::{self, Candidate, SessionStore, SourceFile};
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+        let (store, directory) = session_store();
+        let size = 100 * 1024 * 1024;
+        let (file, sha256) = big_file("resume", size);
+        let key = "live/resumed.bin";
+        let source = SourceFile::of(&file);
+        let session =
+            multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, source.clone(), None)
+                .await
+                .unwrap();
+        // Two parts get there; the rest are cut off.
+        let sender = storage.part_sender();
+        for number in 1..=2 {
+            let part_size = 16 * 1024 * 1024;
+            let etag = sender
+                .send(key, &session.upload_id, number, &file, (number as u64 - 1) * part_size, part_size, Arc::new(Progress::default()))
+                .await
+                .unwrap();
+            if number == 1 {
+                // Only the first one was saved before the "crash"; the
+                // server's list has both.
+                let mut saved = store.get(&session.id).unwrap();
+                saved.parts.push(UploadedPart { number, etag, size: part_size });
+                store.put(saved);
+            }
+        }
+        let interrupted = multipart::upload(&storage, &store, session.clone(), &file, "application/octet-stream", true, Arc::new(Progress::default()));
+        assert!(tokio::time::timeout(Duration::from_millis(30), interrupted).await.is_err());
+
+        let restarted = SessionStore::load(&directory);
+        let candidate = Candidate { destination_id: "TEST", bucket: "aktar-test", file_size: size as u64, source: source.as_ref(), sha256: None };
+        let found = restarted.matching(&candidate, &[]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].object_key, key);
+        let progress = Arc::new(Progress::default());
+        multipart::upload(&storage, &restarted, found[0].clone(), &file, "application/octet-stream", true, progress.clone())
+            .await
+            .unwrap();
+        assert_eq!(progress.fraction(), Some(1.0));
+        assert!(restarted.all().is_empty());
+        assert_eq!(downloaded_sha256(&storage, key).await, sha256);
+        storage.delete(key).await.unwrap();
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn aborts_a_cancelled_upload() {
+        use crate::multipart::{self, SourceFile};
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+        let (store, directory) = session_store();
+        let size = 40 * 1024 * 1024;
+        let (file, _) = big_file("abort", size);
+        let key = "live/aborted.bin";
+        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, SourceFile::of(&file), None)
+            .await
+            .unwrap();
+        let sender = storage.part_sender();
+        sender.send(key, &session.upload_id, 1, &file, 0, 16 * 1024 * 1024, Arc::new(Progress::default())).await.unwrap();
+        assert_eq!(storage.uploaded_parts(key, &session.upload_id).await.unwrap().unwrap().len(), 1);
+        multipart::abort(&storage, &store, &session).await;
+        assert!(store.all().is_empty());
+        assert_eq!(storage.uploaded_parts(key, &session.upload_id).await.unwrap(), None);
+        assert!(!storage.object_exists(key).await.unwrap());
+        // Continuing it after all starts over under the same key.
+        store.put(session.clone());
+        multipart::upload(&storage, &store, session, &file, "application/octet-stream", true, Arc::new(Progress::default())).await.unwrap();
+        assert!(storage.object_exists(key).await.unwrap());
+        storage.delete(key).await.unwrap();
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     async fn lifecycle_xml(storage: &S3Provider) -> Option<String> {

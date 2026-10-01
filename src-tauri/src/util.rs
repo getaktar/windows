@@ -26,6 +26,29 @@ pub fn write_json_atomically(path: &Path, value: &impl Serialize) {
     }
 }
 
+/// MD5 and SHA-256 of a file, read a piece at a time so a big file is
+/// never in memory whole.
+pub fn content_hashes(path: &Path) -> std::io::Result<crate::output::ContentHashes> {
+    use md5::Digest as _;
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let (mut md5, mut sha256) = (md5::Md5::new(), sha2::Sha256::new());
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        md5.update(&buffer[..read]);
+        sha2::Digest::update(&mut sha256, &buffer[..read]);
+    }
+    Ok(crate::output::ContentHashes { md5: hex(&md5.finalize()), sha256: hex(&sha2::Digest::finalize(sha256)) })
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 pub fn now_millis() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
@@ -69,6 +92,16 @@ mod tests {
         assert_eq!(split_extension(".env"), (".env", ""));
         assert_eq!(split_extension("README"), ("README", ""));
         assert_eq!(split_extension("trailing."), ("trailing.", ""));
+    }
+
+    #[test]
+    fn hashes_contents() {
+        let path = std::env::temp_dir().join(format!("aktar-hash-{}", new_id()));
+        std::fs::write(&path, b"hello").unwrap();
+        let hashes = content_hashes(&path).unwrap();
+        assert_eq!(hashes.md5, "5d41402abc4b2a76b9719d911017c592");
+        assert_eq!(hashes.sha256, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

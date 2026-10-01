@@ -93,7 +93,9 @@ fn is_hidden(name: &str, _metadata: &std::fs::Metadata) -> bool {
 /// "2026/09/7f3c…/Project/", so two uploads of the same folder never
 /// collide and the folder name still shows in every link.
 pub fn key_prefix(template: &str, folder_name: &str) -> String {
-    let mut base = crate::output::generate_key(template, folder_name);
+    // A folder has no contents of its own to hash: {md5} and {sha256} come
+    // out empty, and so does a "/" they leave at the start.
+    let mut base = crate::output::generate_key(template, folder_name, None).trim_start_matches('/').to_string();
     // The folder has no extension, so "{uuid}.{ext}" ends in a dot.
     while base.ends_with('.') || base.ends_with('/') {
         base.pop();
@@ -217,6 +219,7 @@ mod tests {
         assert_eq!(key_prefix("{filename}.{ext}", "Project"), "Project/");
         assert_eq!(key_prefix("shots/{filename}", "Project"), "shots/Project/");
         assert_eq!(key_prefix("", "Project"), "Project/");
+        assert_eq!(key_prefix("{md5}/{filename}.{ext}", "Project"), "Project/");
     }
 
     #[test]

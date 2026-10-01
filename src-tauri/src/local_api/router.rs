@@ -17,6 +17,11 @@
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
 //! ```
 //!
+//! An upload's response is `{"upload": {...}, "reused": false}`; `reused`
+//! is true when the same file was already uploaded there and that upload's
+//! link was used instead (Settings > General > Reuse links for duplicate
+//! files). Uploads with `prefix` are never reused.
+//!
 //! `expires` is a number of days (1, 7, 14, or 30) after which the upload is
 //! deleted. Left out or 0, it's kept: the app's "Delete after" setting never
 //! applies here, so a script is never surprised by a file disappearing. It's
@@ -238,9 +243,11 @@ async fn run(core: &SharedCore, input: UploadInput, destination: DestinationConf
     loop {
         let state = queued.receiver.borrow_and_update().clone();
         match state {
-            JobState::Succeeded { record_id, .. } => {
+            JobState::Succeeded { record_id, reused, .. } => {
+                // `reused`: the file was already in the bucket, and that
+                // upload's entry is what's returned.
                 return match core.history.get(&record_id) {
-                    Some(record) => Response::json(201, serde_json::json!({ "upload": upload_dto(core, &record) })),
+                    Some(record) => Response::json(201, serde_json::json!({ "upload": upload_dto(core, &record), "reused": reused })),
                     None => Response::error(500, "The upload finished but its history entry is missing."),
                 };
             }

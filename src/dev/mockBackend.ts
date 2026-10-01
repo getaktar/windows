@@ -11,6 +11,8 @@ import type {
   DestinationConfig,
   Job,
   LocalApiState,
+  NameRequest,
+  QrMatrix,
   Settings,
   UpdateStatus,
   UploadRecord,
@@ -50,6 +52,7 @@ const destinations: DestinationConfig[] = [
     objectPathTemplate: "{date}/{filename}.{ext}",
     forcePathStyle: false,
     isDefault: false,
+    imageProcessing: { format: "webp", quality: 80, maxLongEdge: 2560 },
   },
 ];
 
@@ -78,9 +81,16 @@ let history: UploadRecord[] = [
 }));
 
 let jobs: Job[] = storeScene
-  ? [{ id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0.62 } }]
+  ? [{ id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0.62, resuming: false } }]
   : [
-      { id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0 } },
+      { id: "J1", filename: "screen-recording.mp4", destinationId: "D1", destinationName: "Screenshots", state: { kind: "uploading", progress: 0, resuming: false } },
+      {
+        id: "J3",
+        filename: "disk-image.iso",
+        destinationId: "D1",
+        destinationName: "Screenshots",
+        state: { kind: "uploading", progress: 0.41, resuming: true },
+      },
       {
         id: "J2",
         filename: "huge-export.csv",
@@ -97,6 +107,8 @@ let settings: Settings = {
   closePanelAfterUpload: true,
   language: null,
   shortcut: "Ctrl+Shift+Alt+KeyU",
+  renameShortcut: null,
+  reuseDuplicateLinks: true,
   localApiEnabled: true,
   localApiPort: 47913,
   autoCheckUpdates: true,
@@ -137,6 +149,35 @@ function listing(prefix: string, recursive: boolean): BucketListing {
     ),
   ];
   return { prefix, folders, objects: direct, nextContinuationToken: null };
+}
+
+/** Files dropped with Alt held (?alt in the URL), waiting for a name;
+ * ?rename starts with one, to see the dialog. */
+let pendingNames: NameRequest[] = new URLSearchParams(window.location.search).has("rename")
+  ? [{ id: "N1", name: "Screenshot 2026-10-01 at 09.12", extension: "png" }]
+  : [];
+
+/** A stand-in QR code: the three finder squares and a scatter of modules
+ * from the text, enough to see the layout (it doesn't scan). */
+function mockQr(text: string): QrMatrix {
+  const size = 33;
+  let seed = [...text].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
+  const finder = (row: number, column: number) => {
+    for (const [top, left] of [[0, 0], [0, size - 7], [size - 7, 0]]) {
+      const [r, c] = [row - top, column - left];
+      if (r >= 0 && r < 7 && c >= 0 && c < 7) return r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4) ? 1 : 0;
+      if (r >= -1 && r <= 7 && c >= -1 && c <= 7) return 0;
+    }
+    return null;
+  };
+  let modules = "";
+  for (let row = 0; row < size; row++) {
+    for (let column = 0; column < size; column++) {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      modules += String(finder(row, column) ?? (seed >>> 16) % 2);
+    }
+  }
+  return { size, modules };
 }
 
 export function installMockBackend(route: string) {
@@ -217,8 +258,35 @@ export function installMockBackend(route: string) {
         case "upload_clipboard":
           return false;
         case "upload_files":
+          if (args.rename || new URLSearchParams(window.location.search).has("alt")) {
+            for (const path of args.paths as string[]) {
+              const filename = path.split(/[\\/]/).pop() ?? path;
+              const dot = filename.lastIndexOf(".");
+              pendingNames.push({
+                id: `N${Date.now()}${pendingNames.length}`,
+                name: dot > 0 ? filename.slice(0, dot) : filename,
+                extension: dot > 0 ? filename.slice(dot + 1) : "",
+              });
+            }
+          }
+          return (args.paths as string[]).length;
         case "bucket_upload":
           return (args.paths as string[]).length;
+        case "pending_names":
+          return pendingNames;
+        case "resolve_name":
+          pendingNames = pendingNames.filter((request) => request.id !== args.id);
+          return null;
+        case "alt_key_down":
+          return new URLSearchParams(window.location.search).has("alt");
+        case "qr_code":
+          return mockQr(args.text as string);
+        case "set_rename_shortcut":
+          settings = { ...settings, renameShortcut: (args.accelerator as string | null) ?? null };
+          return null;
+        case "set_shortcut":
+          settings = { ...settings, shortcut: (args.accelerator as string | null) ?? null };
+          return null;
         case "dismiss_job":
         case "cancel_job":
           jobs = jobs.filter((job) => job.id !== args.id);

@@ -1,7 +1,8 @@
 //! The few things Aktar asks Windows directly rather than through Tauri:
-//! theme settings, the regional format, the double-click time, and an error
-//! box for when the app can't start. Other platforms (the UI is sometimes
-//! run elsewhere during development) get plain defaults.
+//! theme settings, the regional format, the double-click time, whether Alt
+//! is held, and an error box for when the app can't start. Other platforms
+//! (the UI is sometimes run elsewhere during development) get plain
+//! defaults.
 
 #[cfg(windows)]
 mod imp {
@@ -100,6 +101,13 @@ mod imp {
         let (text, title) = (wide(message), wide("Aktar"));
         unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR) };
     }
+
+    /// Whether either Alt key is held down right now.
+    pub fn alt_key_down() -> bool {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
+        // The high bit is set while the key is held.
+        unsafe { GetAsyncKeyState(i32::from(VK_MENU)) as u16 & 0x8000 != 0 }
+    }
 }
 
 #[cfg(not(windows))]
@@ -124,6 +132,10 @@ mod imp {
 
     pub fn show_fatal_error(message: &str) {
         eprintln!("{message}");
+    }
+
+    pub fn alt_key_down() -> bool {
+        false
     }
 }
 

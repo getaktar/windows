@@ -15,6 +15,13 @@ pub fn copy(text: &str) {
     }
 }
 
+/// Puts an image on the clipboard (a QR code).
+pub fn copy_image(image: &image::GrayImage) -> Result<(), String> {
+    let rgba = image::DynamicImage::ImageLuma8(image.clone()).to_rgba8();
+    let data = ImageData { width: rgba.width() as usize, height: rgba.height() as usize, bytes: rgba.into_raw().into() };
+    Clipboard::new().and_then(|mut clipboard| clipboard.set_image(data)).map_err(|error| error.to_string())
+}
+
 /// Inspects the clipboard for something uploadable: files and folders
 /// copied in File Explorer take priority, falling back to raw image data (a screenshot or
 /// an image copied from a browser, which isn't backed by a file).
