@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Deleting the files of a large batch that was waiting for "Upload" or
+  "Skip" now withdraws the question. Before, the question stayed until
+  Aktar restarted, and the folder held every new file back behind it
+  instead of uploading it
+
 ## [0.4.0] - 2026-10-02
 
 ### Added

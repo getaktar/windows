@@ -170,6 +170,39 @@ fn holds_a_large_batch_for_confirmation() {
 }
 
 #[test]
+fn deleting_a_held_batch_withdraws_the_ask() {
+    let mut setup = Setup::new(|_| {});
+    let paths: Vec<_> = (0..60).map(|index| setup.write(&format!("shot-{index:02}.png"), b"png")).collect();
+    paths.iter().for_each(|path| setup.hint(path));
+    setup.run(8);
+    assert_eq!(setup.status().awaiting_confirmation, 60);
+    for path in &paths {
+        std::fs::remove_file(path).unwrap();
+        setup.hint(path);
+    }
+    setup.run(8);
+    assert_eq!(setup.status().awaiting_confirmation, 0);
+    // The folder isn't stuck behind the old ask: a new file goes up.
+    let path = setup.write("after.png", b"after");
+    setup.hint(&path);
+    setup.run(8);
+    assert_eq!(setup.queued(), vec!["after.png".to_string()]);
+}
+
+#[test]
+fn uploading_a_held_batch_leaves_out_deleted_files() {
+    let mut setup = Setup::new(|_| {});
+    let paths: Vec<_> = (0..60).map(|index| setup.write(&format!("shot-{index:02}.png"), b"png")).collect();
+    paths.iter().for_each(|path| setup.hint(path));
+    setup.run(8);
+    // Deleted without Aktar hearing about it.
+    paths[..10].iter().for_each(|path| std::fs::remove_file(path).unwrap());
+    setup.engine.confirm(&setup.folder().id, true);
+    assert_eq!(setup.queued().len(), 50);
+    assert!(!setup.queued().contains(&"shot-00.png".to_string()));
+}
+
+#[test]
 fn skipping_a_large_batch_remembers_the_files() {
     let mut setup = Setup::new(|_| {});
     for index in 0..51 {

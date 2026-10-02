@@ -1257,6 +1257,11 @@ impl<H: Host> Engine<H> {
             let mut inner = self.inner.lock().unwrap();
             inner.runtimes.get_mut(&folder.id).is_some_and(|runtime| {
                 runtime.candidates.remove(relative);
+                // A held file that's gone leaves the ask, which would
+                // otherwise hold every later file up behind it.
+                if rejected == Rejection::Missing && is_missing(path) {
+                    runtime.awaiting.retain(|file| file.relative_path != relative);
+                }
                 runtime.in_flight.contains_key(relative)
             })
         };
@@ -1286,6 +1291,8 @@ impl<H: Host> Engine<H> {
         let held = {
             let mut inner = self.inner.lock().unwrap();
             let Some(runtime) = inner.runtimes.get_mut(&folder.id) else { return };
+            // Held files deleted without an event don't keep the ask open.
+            runtime.awaiting.retain(|file| !is_missing(&file.path));
             let was_empty = runtime.awaiting.is_empty();
             if unconfirmed > LARGE_BATCH || !was_empty {
                 runtime.awaiting.extend(ready.iter().cloned());
@@ -1861,6 +1868,8 @@ impl<H: Host> Engine<H> {
             let mut inner = self.inner.lock().unwrap();
             inner.runtimes.get_mut(folder_id).map(|runtime| std::mem::take(&mut runtime.awaiting)).unwrap_or_default()
         };
+        // Files deleted since they were held are neither uploaded nor skipped.
+        let held: Vec<Ready> = held.into_iter().filter(|file| !is_missing(&file.path)).collect();
         if upload {
             self.enqueue(&folder, held);
         } else {
