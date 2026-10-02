@@ -44,6 +44,14 @@ import { hasTextSelection, useDestinations, useFlag, useHistory, useJobs, useSel
 import { useI18n } from "../../lib/i18n";
 import { DetailRow, LinkSection } from "./BucketView";
 
+/** The filter for every watched folder's uploads, next to the destinations. */
+const WATCHED_FILTER = "watched";
+
+/** "Watched: Screenshots" for a watched folder's upload. */
+function sourceLabel(record: UploadRecord, t: ReturnType<typeof useI18n>["t"]) {
+  return record.source?.startsWith("watchedFolder:") ? t("Watched: {0}", record.sourceName ?? "") : null;
+}
+
 export function HistoryView({ active }: { active: boolean }) {
   const { t, locale } = useI18n();
   const [records] = useHistory();
@@ -68,11 +76,14 @@ export function HistoryView({ active }: { active: boolean }) {
     return [...seen.entries()].map(([id, name]) => ({ id, name }));
   }, [records]);
 
+  const hasWatched = useMemo(() => records.some((record) => record.source?.startsWith("watchedFolder:")), [records]);
+
   const filtered = useMemo(() => {
     const query = searchText.trim().toLocaleLowerCase();
     return records.filter(
       (record) =>
-        (!destinationFilter || record.destinationId === destinationFilter) &&
+        (!destinationFilter ||
+          (destinationFilter === WATCHED_FILTER ? record.source?.startsWith("watchedFolder:") : record.destinationId === destinationFilter)) &&
         (!query ||
           record.localFilename.toLocaleLowerCase().includes(query) ||
           record.publicUrl.toLocaleLowerCase().includes(query) ||
@@ -205,9 +216,12 @@ export function HistoryView({ active }: { active: boolean }) {
       ? t("Delete {0} files?", pendingDeletion.length)
       : t("Delete “{0}” from {1}?", pendingDeletion[0]?.localFilename ?? "", pendingDeletion[0]?.destinationName ?? "");
 
-  const filterLabel = destinationFilter
-    ? t("Destination: {0}", availableDestinations.find((destination) => destination.id === destinationFilter)?.name ?? "")
-    : t("Destination: All");
+  const filterLabel =
+    destinationFilter === WATCHED_FILTER
+      ? t("Watched folders")
+      : destinationFilter
+        ? t("Destination: {0}", availableDestinations.find((destination) => destination.id === destinationFilter)?.name ?? "")
+        : t("Destination: All");
 
   const isEmpty = records.length === 0 && activeJobs.length === 0;
 
@@ -235,7 +249,7 @@ export function HistoryView({ active }: { active: boolean }) {
                 onChange={(_, data) => setSearchText(data.value)}
               />
             </div>
-            {availableDestinations.length > 1 && (
+            {(availableDestinations.length > 1 || hasWatched) && (
               <div className="filter-row">
                 <Menu
                   checkedValues={{ destination: [destinationFilter ?? ""] }}
@@ -256,6 +270,11 @@ export function HistoryView({ active }: { active: boolean }) {
                           {destination.name}
                         </MenuItemRadio>
                       ))}
+                      {hasWatched && (
+                        <MenuItemRadio name="destination" value={WATCHED_FILTER}>
+                          {t("Watched folders")}
+                        </MenuItemRadio>
+                      )}
                     </MenuList>
                   </MenuPopover>
                 </Menu>
@@ -285,7 +304,9 @@ export function HistoryView({ active }: { active: boolean }) {
                           record={record}
                           selected={selection.selected.has(record.id)}
                           deleting={deleting.has(record.id)}
-                          subtitle={`${record.destinationName} · ${shortDay(record.createdAt, locale, t)}, ${formatTime(record.createdAt, locale)}`}
+                          subtitle={[record.destinationName, sourceLabel(record, t), `${shortDay(record.createdAt, locale, t)}, ${formatTime(record.createdAt, locale)}`]
+                            .filter(Boolean)
+                            .join(" · ")}
                           onClick={(event) => selection.click(record.id, event)}
                           onContextMenu={(event) => {
                             event.preventDefault();
@@ -415,6 +436,11 @@ function ActiveUploadRow({ job }: { job: Job }) {
       </div>
       <span className="row-text">
         <Text className="ellipsis">{job.filename}</Text>
+        {job.source && (
+          <Text size={200} className="secondary ellipsis">
+            {t("Watched: {0}", job.source)}
+          </Text>
+        )}
         {job.state.kind === "uploading" ? (
           <>
             <ProgressBar value={job.state.progress > 0 ? job.state.progress : undefined} />
@@ -544,6 +570,7 @@ function UploadDetail(props: {
             {t("Details")}
           </Text>
           <DetailRow label={t("Destination")} value={record.destinationName} />
+          {sourceLabel(record, t) && <DetailRow label={t("Source")} value={sourceLabel(record, t) ?? ""} />}
           <DetailRow label={t("File size")} value={formatBytes(record.byteSize, locale)} />
           <DetailRow
             label={t("Uploaded")}

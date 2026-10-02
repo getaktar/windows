@@ -107,8 +107,21 @@ pub enum StorageError {
     LifecycleNotAllowed,
     #[error("{}", t!("This provider doesn't support lifecycle rules."))]
     LifecycleUnsupported,
+    /// The server broke or was overloaded (5xx, 429): trying again later
+    /// may work.
+    #[error("{0}")]
+    Server(String),
     #[error("{0}")]
     Unknown(String),
+}
+
+impl StorageError {
+    /// Whether the same request may work later on its own: the network
+    /// dropped, or the server had a problem. Watched folders try those
+    /// again by themselves.
+    pub fn is_transient(&self) -> bool {
+        matches!(self, StorageError::Network(_) | StorageError::Connection(_) | StorageError::Server(_))
+    }
 }
 
 const MIB: u64 = 1024 * 1024;
@@ -439,6 +452,21 @@ impl S3Provider {
             .await
             .map_err(|error| map_error(error, self.bucket()))?;
         Ok(output.contents().first().and_then(|object| object.key()) == Some(key))
+    }
+
+    /// The size of the object at exactly `key`, or None when there's none.
+    /// Watched folders check it before moving an uploaded original away.
+    pub async fn object_size(&self, key: &str) -> Result<Option<i64>, StorageError> {
+        let output = self
+            .client
+            .list_objects_v2()
+            .bucket(self.bucket())
+            .max_keys(1)
+            .prefix(key)
+            .send()
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(output.contents().first().filter(|object| object.key() == Some(key)).map(|object| object.size().unwrap_or_default()))
     }
 
     /// S3 has no rename or move: both are a server-side copy followed by
@@ -903,6 +931,9 @@ where
     }
     match &error {
         SdkError::DispatchFailure(_) | SdkError::TimeoutError(_) => StorageError::Connection(readable(&error)),
+        _ if status.is_some_and(|status| status >= 500 || status == 429) => {
+            StorageError::Server(error.message().map(str::to_string).unwrap_or_else(|| readable(&error)))
+        }
         _ => StorageError::Unknown(error.message().map(str::to_string).unwrap_or_else(|| readable(&error))),
     }
 }

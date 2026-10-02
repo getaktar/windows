@@ -15,6 +15,9 @@ export const events = {
   uploadSucceeded: "upload-succeeded",
   panelShown: "panel-shown",
   namesChanged: "names-changed",
+  watchedChanged: "watched-changed",
+  /** Settings should switch tabs or add a watched folder (`takeSettingsRequest`). */
+  settingsRequest: "settings-request",
 } as const;
 
 export type ProviderPreset =
@@ -118,6 +121,8 @@ export interface Job {
   destinationId: string;
   destinationName: string;
   state: JobState;
+  /** The watched folder it came from, by name. */
+  source?: string | null;
 }
 
 export interface UploadRecord {
@@ -134,7 +139,109 @@ export interface UploadRecord {
   expiresAt: number | null;
   /** SHA-256 of the bytes uploaded, when it was worked out. */
   contentHash?: string | null;
+  /** "watchedFolder:<ID>" for a watched folder's uploads. */
+  source?: string | null;
+  /** The watched folder's name at the time. */
+  sourceName?: string | null;
   hasThumbnail: boolean;
+}
+
+// MARK: - Watched folders (src-tauri/src/watched/model.rs)
+
+export type Subfolders = "ignore" | "keepStructure" | "flatten";
+export type FilterKind = "all" | "images" | "videos" | "screenshots" | "custom";
+export type ModifiedPolicy = "ignore" | "uploadAgain" | "overwrite";
+/** "tag" is the Mac's Finder tag; never offered on Windows. */
+export type AfterUpload = "keep" | "trash" | "moveToUploaded" | "tag";
+export type ClipboardPolicy = "copyLink" | "none";
+/** What happens to an upload when its file is deleted from the folder. */
+export type OnDeletePolicy = "keep" | "deleteRemote";
+export type NotificationPolicy = "each" | "grouped" | "failuresOnly";
+
+export interface WatchFilter {
+  kind: FilterKind;
+  include: string[];
+  exclude: string[];
+  minBytes: number | null;
+  maxBytes: number | null;
+}
+
+export interface WatchHook {
+  id: string;
+  kind: "webhook" | "script";
+  /** The webhook's URL, or the script's path. */
+  target: string;
+  enabled: boolean;
+}
+
+export interface WatchedFolder {
+  id: string;
+  name: string;
+  path: string;
+  enabled: boolean;
+  preset: "screenshots" | null;
+  /** null uploads to the default destination. */
+  destinationID: string | null;
+  /** null uses the destination's path template. */
+  pathTemplate: string | null;
+  subfolders: Subfolders;
+  filter: WatchFilter;
+  includeCloudOnly: boolean;
+  modified: ModifiedPolicy;
+  afterUpload: AfterUpload;
+  /** Only works while the original stays in the folder (afterUpload "keep"). */
+  onDelete: OnDeletePolicy;
+  /** "Ask before deleting": every delete from the bucket waits for the user. */
+  confirmDelete: boolean;
+  clipboard: ClipboardPolicy;
+  notifications: NotificationPolicy;
+  /** null follows the destination; "public" or a temporary link's seconds. */
+  temporaryLink: "public" | number | null;
+  /** null follows the destination; 0 keeps uploads. */
+  expiryDays: number | null;
+  hooks: WatchHook[];
+  addedAt: string;
+}
+
+export type WatchStatus = "watching" | "paused" | "disabled" | "accessNeeded" | "notFound" | "error";
+
+export interface WatchedFolderInfo extends WatchedFolder {
+  status: WatchStatus;
+  waiting: number;
+  uploading: number;
+  failed: number;
+  awaitingConfirmation: number;
+  /** Uploads of deleted files on their way out of the bucket. */
+  deleting: number;
+  /** Deleted files whose uploads wait for "Delete from Bucket". */
+  awaitingDeleteConfirmation: number;
+  /** The file's name when exactly one waits. */
+  awaitingDeleteName?: string | null;
+  /** Unix milliseconds. */
+  lastUploadAt: number | null;
+  lastError: string | null;
+}
+
+export interface WatchOverview {
+  paused: boolean;
+  pauseReason: "user" | "battery" | "metered" | null;
+  /** null, an ISO date, or "forever". */
+  pausedUntil: string | null;
+  pauseOnBattery: boolean;
+  pauseOnMetered: boolean;
+  folders: WatchedFolderInfo[];
+}
+
+export interface FolderCheck {
+  path: string;
+  name: string;
+  /** Files already there that it would upload. */
+  existingFiles: number;
+}
+
+export interface SettingsRequest {
+  tab: string | null;
+  watchPath: string | null;
 }
 
 export interface BucketObject {
@@ -385,6 +492,31 @@ export const api = {
   setPanelShowingDialog: (showing: boolean) => invoke<void>("set_panel_showing_dialog", { showing }),
   setPanelHeight: (height: number) => invoke<void>("set_panel_height", { height }),
   quitApp: () => invoke<void>("quit_app"),
+
+  watchedFolders: () => invoke<WatchOverview>("watched_folders"),
+  /** Refused folders reject with the reason. */
+  checkWatchFolder: (path: string) => invoke<FolderCheck>("check_watch_folder", { path }),
+  addWatchedFolder: (path: string, uploadExisting: boolean) =>
+    invoke<WatchedFolder>("add_watched_folder", { path, uploadExisting }),
+  addScreenshotsFolder: () => invoke<WatchedFolder>("add_screenshots_folder"),
+  saveWatchedFolder: (folder: WatchedFolder) => invoke<void>("save_watched_folder", { folder }),
+  removeWatchedFolder: (id: string) => invoke<void>("remove_watched_folder", { id }),
+  resetWatchedFolder: (id: string) => invoke<void>("reset_watched_folder", { id }),
+  setWatchedFolderEnabled: (id: string, enabled: boolean) => invoke<void>("set_watched_folder_enabled", { id, enabled }),
+  /** "Upload" (true) or "Skip" on a large batch. */
+  confirmWatchedBatch: (id: string, upload: boolean) => invoke<void>("confirm_watched_batch", { id, upload }),
+  /** "Delete from Bucket" (true) or "Keep Uploaded Files" on a large deletion. */
+  confirmWatchedDeletions: (id: string, deleteRemote: boolean) => invoke<void>("confirm_watched_deletions", { id, delete: deleteRemote }),
+  uploadWatchedPending: (id: string) => invoke<void>("upload_watched_pending", { id }),
+  retryWatchedFailed: (id: string) => invoke<void>("retry_watched_failed", { id }),
+  /** For `minutes`, until midnight with `untilTomorrow`, or until resumed. */
+  pauseWatching: (minutes: number | null, untilTomorrow = false) => invoke<void>("pause_watching", { minutes, untilTomorrow }),
+  resumeWatching: () => invoke<void>("resume_watching"),
+  setWatchPauseConditions: (onBattery: boolean | null, onMetered: boolean | null) =>
+    invoke<void>("set_watch_pause_conditions", { onBattery, onMetered }),
+  testWatchHook: (folder: WatchedFolder, hook: WatchHook) => invoke<void>("test_watch_hook", { folder, hook }),
+  showFolder: (path: string) => invoke<void>("show_folder", { path }),
+  takeSettingsRequest: () => invoke<SettingsRequest>("take_settings_request"),
 
   updateStatus: () => invoke<UpdateStatus>("update_status"),
   checkForUpdates: () => invoke<void>("check_for_updates"),

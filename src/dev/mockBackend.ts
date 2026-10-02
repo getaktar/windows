@@ -4,6 +4,7 @@
 // #/update). Add ?lang=tr (etc.) before the # to preview a translation.
 // Only loaded in mock mode; production builds drop it entirely.
 
+import { emit } from "@tauri-apps/api/event";
 import { mockConvertFileSrc, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 
 import type {
@@ -16,6 +17,8 @@ import type {
   Settings,
   UpdateStatus,
   UploadRecord,
+  WatchedFolder,
+  WatchOverview,
 } from "../lib/api";
 
 // VITE_MOCK_SCENE=store: tidy sample data for Microsoft Store screenshots
@@ -78,6 +81,7 @@ let history: UploadRecord[] = [
   // Two expiring uploads (one about to go) outside the Store scene.
   expiresAt: storeScene ? null : index === 0 ? (createdAt as number) + 7 * 24 * hour : index === 2 ? now + 0.5 * hour : null,
   hasThumbnail: false,
+  ...(index === 0 ? { source: "watchedFolder:W1", sourceName: "Screenshots" } : {}),
 }));
 
 let jobs: Job[] = storeScene
@@ -90,6 +94,14 @@ let jobs: Job[] = storeScene
         destinationId: "D1",
         destinationName: "Screenshots",
         state: { kind: "uploading", progress: 0.41, resuming: true },
+      },
+      {
+        id: "J4",
+        filename: "Screenshot 2026-10-02 091233.png",
+        destinationId: "D1",
+        destinationName: "Screenshots",
+        state: { kind: "uploading", progress: 0.3, resuming: false },
+        source: "Screenshots",
       },
       {
         id: "J2",
@@ -149,6 +161,82 @@ function listing(prefix: string, recursive: boolean): BucketListing {
     ),
   ];
   return { prefix, folders, objects: direct, nextContinuationToken: null };
+}
+
+/** ?nowatch starts without watched folders, to see the empty state. */
+const watchedBase = (id: string, name: string, path: string): WatchedFolder => ({
+  id,
+  name,
+  path,
+  enabled: true,
+  preset: null,
+  destinationID: null,
+  pathTemplate: null,
+  subfolders: "ignore",
+  filter: { kind: "all", include: [], exclude: [], minBytes: null, maxBytes: null },
+  includeCloudOnly: false,
+  modified: "ignore",
+  afterUpload: "keep",
+  onDelete: "keep",
+  confirmDelete: true,
+  clipboard: "none",
+  notifications: "grouped",
+  temporaryLink: null,
+  expiryDays: null,
+  hooks: [],
+  addedAt: new Date(now - 24 * hour).toISOString(),
+});
+
+let watched: WatchOverview = {
+  paused: false,
+  pauseReason: null,
+  pausedUntil: null,
+  pauseOnBattery: false,
+  pauseOnMetered: true,
+  folders: new URLSearchParams(window.location.search).has("nowatch")
+    ? []
+    : [
+        {
+          ...watchedBase("W1", "Screenshots", "C:\\Users\\you\\Pictures\\Screenshots"),
+          preset: "screenshots",
+          onDelete: "deleteRemote",
+          filter: { kind: "screenshots", include: [], exclude: [], minBytes: null, maxBytes: null },
+          clipboard: "copyLink",
+          notifications: "each",
+          status: "watching",
+          waiting: 1,
+          uploading: 1,
+          failed: 0,
+          awaitingConfirmation: 0,
+          deleting: 0,
+          awaitingDeleteConfirmation: storeScene ? 0 : 1,
+          awaitingDeleteName: "Screenshot 2026-10-01 181512.png",
+          lastUploadAt: now - 0.2 * hour,
+          lastError: null,
+        },
+        {
+          ...watchedBase("W2", "Exports", "D:\\Projects\\Client Work\\2026\\Quarterly Reports\\Exports"),
+          destinationID: "D2",
+          subfolders: "keepStructure",
+          afterUpload: "moveToUploaded",
+          hooks: [{ id: "H1", kind: "webhook", target: "https://hooks.example.com/aktar", enabled: true }],
+          status: "watching",
+          waiting: 0,
+          uploading: 0,
+          failed: storeScene ? 0 : 2,
+          awaitingConfirmation: storeScene ? 0 : 312,
+          deleting: 0,
+          awaitingDeleteConfirmation: 0,
+          lastUploadAt: now - 26 * hour,
+          lastError: storeScene ? null : "Upload interrupted. The connection stopped responding.",
+        },
+      ],
+};
+
+function setWatched(change: Partial<WatchOverview>) {
+  watched = { ...watched, ...change };
+  window.setTimeout(() => emit("watched-changed"), 0);
+  return null;
 }
 
 /** Files dropped with Alt held (?alt in the URL), waiting for a name;
@@ -286,6 +374,68 @@ export function installMockBackend(route: string) {
           return null;
         case "set_shortcut":
           settings = { ...settings, shortcut: (args.accelerator as string | null) ?? null };
+          return null;
+        case "watched_folders":
+          return watched;
+        case "check_watch_folder":
+          return { path: args.path, name: String(args.path).split(/[\\/]/).pop(), existingFiles: 37 };
+        case "add_watched_folder":
+        case "add_screenshots_folder": {
+          const path = (args.path as string | undefined) ?? "C:\\Users\\you\\Pictures\\Screenshots";
+          const folder = watchedBase(`W${Date.now()}`, path.split(/[\\/]/).pop() ?? path, path);
+          setWatched({
+            folders: [
+              ...watched.folders,
+              {
+                ...folder,
+                status: "watching",
+                waiting: 0,
+                uploading: 0,
+                failed: 0,
+                awaitingConfirmation: 0,
+                deleting: 0,
+                awaitingDeleteConfirmation: 0,
+                lastUploadAt: null,
+                lastError: null,
+              },
+            ],
+          });
+          return folder;
+        }
+        case "save_watched_folder": {
+          const saved = args.folder as WatchedFolder;
+          return setWatched({ folders: watched.folders.map((folder) => (folder.id === saved.id ? { ...folder, ...saved } : folder)) });
+        }
+        case "remove_watched_folder":
+          return setWatched({ folders: watched.folders.filter((folder) => folder.id !== args.id) });
+        case "set_watched_folder_enabled":
+          return setWatched({
+            folders: watched.folders.map((folder) =>
+              folder.id === args.id ? { ...folder, enabled: args.enabled as boolean, status: args.enabled ? "watching" : "disabled" } : folder,
+            ),
+          });
+        case "confirm_watched_batch":
+          return setWatched({ folders: watched.folders.map((folder) => (folder.id === args.id ? { ...folder, awaitingConfirmation: 0 } : folder)) });
+        case "confirm_watched_deletions":
+          return setWatched({ folders: watched.folders.map((folder) => (folder.id === args.id ? { ...folder, awaitingDeleteConfirmation: 0 } : folder)) });
+        case "pause_watching": {
+          const until = args.untilTomorrow
+            ? new Date(new Date().setHours(24, 0, 0, 0)).toISOString()
+            : args.minutes
+              ? new Date(Date.now() + (args.minutes as number) * 60_000).toISOString()
+              : "forever";
+          return setWatched({ paused: true, pauseReason: "user", pausedUntil: until });
+        }
+        case "resume_watching":
+          return setWatched({ paused: false, pauseReason: null, pausedUntil: null });
+        case "set_watch_pause_conditions":
+          return setWatched({
+            pauseOnBattery: (args.onBattery as boolean | null) ?? watched.pauseOnBattery,
+            pauseOnMetered: (args.onMetered as boolean | null) ?? watched.pauseOnMetered,
+          });
+        case "take_settings_request":
+          return { tab: new URLSearchParams(window.location.search).get("tab"), watchPath: null };
+        case "test_watch_hook":
           return null;
         case "dismiss_job":
         case "cancel_job":

@@ -1223,3 +1223,60 @@ body {
 .name-input {
   width: 100%;
 }
+
+/* Watched folders */
+
+.watch-chip {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: var(--borderRadiusCircular);
+  font-size: var(--fontSizeBase100);
+  line-height: 18px;
+  white-space: nowrap;
+  background: var(--colorNeutralBackground3);
+  color: var(--colorNeutralForeground2);
+}
+
+.watch-chip-busy {
+  background: var(--colorBrandBackground2);
+  color: var(--colorBrandForeground2);
+}
+
+.watch-chip-warning {
+  background: var(--colorPaletteDarkOrangeBackground1);
+  color: var(--colorPaletteDarkOrangeForeground1);
+}
+
+.watch-path {
+  word-break: break-all;
+}
+
+.watch-hook {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.watch-hook-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.watch-banner {
+  flex-shrink: 0;
+}
+
+/* The panel's "Watching 2 folders" row. */
+.watch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--borderRadiusMedium);
+  background: var(--colorNeutralBackground1);
+  border: 1px solid var(--colorNeutralStroke2);
+}

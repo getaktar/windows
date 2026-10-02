@@ -45,6 +45,23 @@ pub fn content_hashes(path: &Path) -> std::io::Result<crate::output::ContentHash
     Ok(crate::output::ContentHashes { md5: hex(&md5.finalize()), sha256: hex(&sha2::Digest::finalize(sha256)) })
 }
 
+/// SHA-256 of a file alone (a watched folder telling a change from a
+/// touch), read a piece at a time.
+pub fn sha256_file(path: &Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut sha256 = <sha2::Sha256 as sha2::Digest>::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        sha2::Digest::update(&mut sha256, &buffer[..read]);
+    }
+    Ok(hex(&sha2::Digest::finalize(sha256)))
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -101,6 +118,7 @@ mod tests {
         let hashes = content_hashes(&path).unwrap();
         assert_eq!(hashes.md5, "5d41402abc4b2a76b9719d911017c592");
         assert_eq!(hashes.sha256, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assert_eq!(sha256_file(&path).unwrap(), hashes.sha256);
         std::fs::remove_file(path).unwrap();
     }
 

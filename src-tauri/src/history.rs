@@ -2,7 +2,7 @@
 //! itself is never kept, only a small thumbnail (see `thumbnails`).
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::Serialize;
@@ -29,6 +29,12 @@ pub struct UploadRecord {
     /// when the same file comes up again. None for uploads made before it
     /// was recorded, and for ones it isn't worked out for.
     pub content_hash: Option<String>,
+    /// Where the upload came from when it wasn't the user directly:
+    /// "watchedFolder:<ID>" for a watched folder's.
+    pub source: Option<String>,
+    /// The watched folder's name at the time, for "Watched: Screenshots"
+    /// even after it's removed.
+    pub source_name: Option<String>,
     pub has_thumbnail: bool,
 }
 
@@ -42,22 +48,40 @@ pub struct NewRecord<'a> {
     /// Days until it's deleted, for an expiring upload.
     pub expire_after_days: Option<u32>,
     pub content_hash: Option<&'a str>,
+    /// A watched folder's ID and name.
+    pub watched_folder: Option<(&'a str, &'a str)>,
 }
 
 pub struct History {
-    connection: Mutex<Connection>,
+    /// Shared with the watched folders' ledger, which keeps its table in
+    /// the same database.
+    connection: Arc<Mutex<Connection>>,
     thumbnails: PathBuf,
 }
 
-const COLUMNS: &str =
-    "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash";
+const COLUMNS: &str = "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name";
+
+/// The `source` of a watched folder's uploads.
+pub fn watched_source(folder_id: &str) -> String {
+    format!("watchedFolder:{folder_id}")
+}
 
 impl History {
     pub fn open(data_directory: &Path, thumbnails: PathBuf) -> rusqlite::Result<Self> {
         let connection = Connection::open(data_directory.join("history.sqlite"))?;
-        connection.execute_batch("PRAGMA journal_mode = WAL;")?;
+        // NORMAL is the usual pairing with WAL: a crash of the app never
+        // loses or damages anything; only a power cut can lose the last
+        // moments, never corrupt the database. FULL fsyncs every write.
+        connection.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
+        // The ledger writes from other threads; wait for it rather than fail.
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
         prepare(&connection)?;
-        Ok(Self { connection: Mutex::new(connection), thumbnails })
+        Ok(Self { connection: Arc::new(Mutex::new(connection)), thumbnails })
+    }
+
+    /// The watched folders' ledger, in this database.
+    pub fn ledger(&self) -> rusqlite::Result<crate::watched::ledger::Ledger> {
+        crate::watched::ledger::Ledger::new(self.connection.clone())
     }
 
     pub fn thumbnail_path(&self, id: &str) -> PathBuf {
@@ -79,6 +103,8 @@ impl History {
             created_at: row.get(8)?,
             expires_at: row.get(9)?,
             content_hash: row.get(10)?,
+            source: row.get(11)?,
+            source_name: row.get(12)?,
             has_thumbnail,
         })
     }
@@ -97,11 +123,13 @@ impl History {
             created_at,
             expires_at: record.expire_after_days.map(|days| crate::expiry::expires_at(created_at, days)),
             content_hash: record.content_hash.map(str::to_string),
+            source: record.watched_folder.map(|(id, _)| watched_source(id)),
+            source_name: record.watched_folder.map(|(_, name)| name.to_string()),
             has_thumbnail: false,
         };
         let connection = self.connection.lock().unwrap();
         let result = connection.execute(
-            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"),
+            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"),
             params![
                 stored.id,
                 stored.local_filename,
@@ -113,7 +141,9 @@ impl History {
                 stored.byte_size,
                 stored.created_at,
                 stored.expires_at,
-                stored.content_hash
+                stored.content_hash,
+                stored.source,
+                stored.source_name
             ],
         );
         if let Err(error) = result {
@@ -158,6 +188,20 @@ impl History {
         };
         statement
             .query_map(params![destination_id, content_hash], |row| self.record_from_row(row))
+            .map(|rows| rows.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    }
+
+    /// Uploads that went to `object_key` in `destination_id`, newest first.
+    pub fn with_object(&self, destination_id: &str, object_key: &str) -> Vec<UploadRecord> {
+        let connection = self.connection.lock().unwrap();
+        let Ok(mut statement) = connection.prepare(&format!(
+            "SELECT {COLUMNS} FROM uploads WHERE destination_id = ?1 AND object_key = ?2 ORDER BY created_at DESC"
+        )) else {
+            return Vec::new();
+        };
+        statement
+            .query_map(params![destination_id, object_key], |row| self.record_from_row(row))
             .map(|rows| rows.filter_map(Result::ok).collect())
             .unwrap_or_default()
     }
@@ -266,6 +310,9 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
         connection.execute_batch("ALTER TABLE uploads ADD COLUMN content_hash TEXT;")?;
     }
     connection.execute_batch("CREATE INDEX IF NOT EXISTS uploads_content ON uploads (destination_id, content_hash);")?;
+    if !has_column(connection, "uploads", "source")? {
+        connection.execute_batch("ALTER TABLE uploads ADD COLUMN source TEXT; ALTER TABLE uploads ADD COLUMN source_name TEXT;")?;
+    }
     Ok(())
 }
 
@@ -326,13 +373,15 @@ mod tests {
         prepare(&connection).unwrap();
         assert!(has_column(&connection, "uploads", "expires_at").unwrap());
         assert!(has_column(&connection, "uploads", "content_hash").unwrap());
+        assert!(has_column(&connection, "uploads", "source").unwrap());
 
         let thumbnails = std::env::temp_dir().join("aktar-history-test");
-        let history = History { connection: Mutex::new(connection), thumbnails };
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails };
         let old = history.get("A").unwrap();
         assert_eq!(old.local_filename, "a.png");
         assert_eq!(old.expires_at, None);
         assert_eq!(old.content_hash, None);
+        assert_eq!(old.source, None);
         assert!(history.expired(i64::MAX).is_empty());
     }
 
@@ -340,7 +389,7 @@ mod tests {
     fn tracks_expiring_uploads() {
         let connection = Connection::open_in_memory().unwrap();
         prepare(&connection).unwrap();
-        let history = History { connection: Mutex::new(connection), thumbnails: std::env::temp_dir().join("aktar-history-test") };
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: std::env::temp_dir().join("aktar-history-test") };
         let destination = destination();
         let record = history.insert(NewRecord {
             local_filename: "a.png",
@@ -351,7 +400,10 @@ mod tests {
             byte_size: 5,
             expire_after_days: Some(7),
             content_hash: None,
+            watched_folder: Some(("F1", "Screenshots")),
         });
+        assert_eq!(history.get(&record.id).unwrap().source.as_deref(), Some("watchedFolder:F1"));
+        assert_eq!(history.get(&record.id).unwrap().source_name.as_deref(), Some("Screenshots"));
         let expires_at = record.expires_at.unwrap();
         assert_eq!(expires_at, record.created_at + 7 * 86_400_000);
         assert_eq!(history.get(&record.id).unwrap().expires_at, Some(expires_at));
@@ -377,7 +429,7 @@ mod tests {
     fn clears_expiry_when_the_rules_go() {
         let connection = Connection::open_in_memory().unwrap();
         prepare(&connection).unwrap();
-        let history = History { connection: Mutex::new(connection), thumbnails: std::env::temp_dir().join("aktar-history-test") };
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: std::env::temp_dir().join("aktar-history-test") };
         let destination = destination();
         let record = history.insert(NewRecord {
             local_filename: "a.png",
@@ -388,6 +440,7 @@ mod tests {
             byte_size: 5,
             expire_after_days: Some(1),
             content_hash: Some("abc"),
+            watched_folder: None,
         });
         assert_eq!(history.with_content(&destination.id, "abc").len(), 1);
         assert!(history.with_content("other", "abc").is_empty());

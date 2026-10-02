@@ -24,6 +24,7 @@ import {
   ChevronDownRegular,
   ClipboardPasteRegular,
   DismissRegular,
+  EyeRegular,
   FolderOpenRegular,
   MoreHorizontalRegular,
   SettingsRegular,
@@ -61,8 +62,9 @@ import {
   temporaryLinkLabel,
   withoutScheme,
 } from "../lib/format";
-import { useDestinations, useHistory, useJobs, useLive, useSettings, useTauriEvent } from "../lib/hooks";
+import { useDestinations, useHistory, useJobs, useLive, useSettings, useTauriEvent, useWatched } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
+import { LargeBatchBanners, PauseControl, watchingStatus } from "./settings/WatchedFolders";
 
 export default function Panel() {
   const { t } = useI18n();
@@ -295,6 +297,8 @@ export default function Panel() {
             </Text>
           )}
 
+          <WatchRow />
+
           <div className="recent">
             <div className="recent-header">
               <Text weight="semibold" size={300}>
@@ -329,6 +333,39 @@ export default function Panel() {
       )}
       <NameDialog request={names[0] ?? null} onResolved={refreshNames} />
     </div>
+  );
+}
+
+/** "Watching 2 folders" (or "Watching paused"), what's waiting and going
+ * up, and Pause or Resume; with the large batches waiting for a go-ahead.
+ * Only once there's a watched folder. */
+function WatchRow() {
+  const { t, locale } = useI18n();
+  const [overview] = useWatched();
+  if (!overview || overview.folders.length === 0) return null;
+  const waiting = overview.folders.reduce((sum, folder) => sum + folder.waiting, 0);
+  const uploading = overview.folders.reduce((sum, folder) => sum + folder.uploading, 0);
+  const counts = [];
+  if (waiting > 0) counts.push(t("{0} waiting", waiting));
+  if (uploading > 0) counts.push(t("{0} uploading", uploading));
+  return (
+    <>
+      <div className="watch-row">
+        <EyeRegular fontSize={18} className={overview.paused ? "secondary" : "accent"} />
+        <div className="recent-text">
+          <Text size={200} className="ellipsis" title={watchingStatus(overview, t, locale)}>
+            {overview.paused ? t("Watching paused") : watchingStatus(overview, t, locale)}
+          </Text>
+          {counts.length > 0 && (
+            <Text size={100} className="secondary ellipsis">
+              {counts.join(" · ")}
+            </Text>
+          )}
+        </div>
+        <PauseControl overview={overview} size="small" />
+      </div>
+      <LargeBatchBanners folders={overview.folders} />
+    </>
   );
 }
 
@@ -573,6 +610,11 @@ function JobRow({ job }: { job: Job }) {
         <Text size={200} className="ellipsis">
           {job.filename}
         </Text>
+        {job.source && (
+          <Text size={100} className="secondary ellipsis">
+            {t("Watched: {0}", job.source)}
+          </Text>
+        )}
         {job.state.kind === "uploading" || job.state.kind === "waiting" ? (
           <>
             <ProgressBar thickness="medium" value={job.state.kind === "uploading" && job.state.progress > 0 ? job.state.progress : undefined} />

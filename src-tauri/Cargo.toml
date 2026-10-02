@@ -6,7 +6,7 @@ authors = ["Mert Topuz"]
 license = "MIT"
 repository = "https://github.com/getaktar/windows"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [lib]
 name = "aktar_lib"
@@ -28,7 +28,7 @@ tauri-plugin-updater = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time", "process"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 thiserror = "2"
@@ -72,16 +72,25 @@ url = "2"
 # opinion (see `image_metadata`), and zips folders.
 exif = { package = "kamadak-exif", version = "0.6" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Watched folders. 9.0 because 8.x's Windows backend drops a buffer
+# overflow without a word, and a missed event would be a missed upload.
+notify = "9.0.0-rc.5"
+# "Move to Recycle Bin" after a watched folder's upload (IFileOperation on
+# Windows), never a permanent delete.
+trash = "5"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry", "Win32_Globalization", "Win32_Networking_WinSock", "Win32_Storage_Packaging_Appx"] }
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry", "Win32_Globalization", "Win32_Networking_WinSock", "Win32_Storage_Packaging_Appx", "Win32_System_Power", "Win32_Storage_FileSystem"] }
 # WinRT, for the Microsoft Store (MSIX) build: its startup task, how it was
 # launched, and notifications under the package's own identity. The same
 # version Tauri already builds, so nothing extra is compiled.
-windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom", "Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com"] }
+windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom", "Networking_Connectivity", "Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
+# For `#[implement]`: the Store package's File Explorer menu is a COM
+# server (see src/explorer_command.rs).
+windows-core = "0.61"
 
 [profile.release]
 codegen-units = 1

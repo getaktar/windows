@@ -5,6 +5,11 @@
 //!                            while Aktar is already running)
 //! aktar://library            open the Library window
 //! aktar://settings           open Settings
+//! aktar://watch              open Settings on Watched Folders
+//! aktar://watch/pause?minutes=60
+//!                            pause watched folders (for good without
+//!                            minutes)
+//! aktar://watch/resume       resume them
 //! aktar://connect?callback=raycast://extensions/<author>/<extension>/<command>
 //! ```
 //!
@@ -43,12 +48,29 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
         "upload-clipboard" if !launched_app => crate::uploads::upload_clipboard_in_background(core, false),
         "library" => crate::windows::open(&core.app, AppWindow::Library),
         "settings" => crate::windows::open(&core.app, AppWindow::Settings),
+        "watch" => match url.path().trim_matches('/').to_ascii_lowercase().as_str() {
+            // Off the UI thread: they write the folder list.
+            "pause" => {
+                let (core, minutes) = (core.clone(), minutes(&url));
+                tauri::async_runtime::spawn_blocking(move || crate::watched::pause(&core, minutes));
+            }
+            "resume" => {
+                let core = core.clone();
+                tauri::async_runtime::spawn_blocking(move || crate::watched::resume(&core));
+            }
+            _ => crate::watched::show_settings(core),
+        },
         "connect" => {
             let core = core.clone();
             tauri::async_runtime::spawn(async move { connect(&core, &url).await });
         }
         _ => {}
     }
+}
+
+/// `minutes=` of aktar://watch/pause, when it's a whole number.
+fn minutes(url: &Url) -> Option<u64> {
+    url.query_pairs().find(|(name, _)| name == "minutes").and_then(|(_, value)| value.trim().parse().ok())
 }
 
 /// The launch link can show up both in the launch arguments and as an
@@ -194,6 +216,13 @@ mod tests {
         assert_eq!(callback.query_pairs().next().unwrap().1, "abc");
         let bad = Url::parse("aktar://connect?callback=https%3A%2F%2Fevil.example%2Fmerttopuz%2Faktar%2Fconnect").unwrap();
         assert!(allowed_callback(&bad).is_none());
+    }
+
+    #[test]
+    fn reads_pause_minutes() {
+        assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=60").unwrap()), Some(60));
+        assert_eq!(minutes(&Url::parse("aktar://watch/pause").unwrap()), None);
+        assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=soon").unwrap()), None);
     }
 
     #[test]

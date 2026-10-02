@@ -46,23 +46,39 @@ import { DestinationForm } from "../components/DestinationForm";
 import { ProviderIcon } from "../components/FileVisuals";
 import { Card, CardRow, SettingsPage, SettingsSection, ToggleRow } from "../components/SettingsLayout";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
-import { api, errorMessage, type DestinationConfig, type OutputMode } from "../lib/api";
+import { api, errorMessage, events, type DestinationConfig, type OutputMode } from "../lib/api";
 import { providerName } from "../lib/format";
-import { useDestinations, useFlag, useLocalApi, useSettings, useUpdateStatus } from "../lib/hooks";
+import { useDestinations, useFlag, useLocalApi, useSettings, useTauriEvent, useUpdateStatus } from "../lib/hooks";
 import { useI18n, websiteURL } from "../lib/i18n";
 import { links } from "../lib/links";
 import appIcon from "../../src-tauri/icons/128x128.png";
+import { WatchedFoldersSettings } from "./settings/WatchedFolders";
 
-type TabName = "general" | "destinations" | "output" | "integrations" | "about";
-
+type TabName = "general" | "destinations" | "watched" | "output" | "integrations" | "about";
 
 export default function SettingsWindow() {
   const { t, info } = useI18n();
   const [tab, setTab] = useState<TabName>("general");
+  const [watchPath, setWatchPath] = useState<string | null>(null);
+
+  // aktar://watch and File Explorer's "Watch with Aktar" open a tab (and
+  // add a folder there), whether this window was open already or not.
+  const takeRequest = () => {
+    api
+      .takeSettingsRequest()
+      .then((request) => {
+        if (request.tab === "watched") setTab("watched");
+        if (request.watchPath) setWatchPath(request.watchPath);
+      })
+      .catch(() => {});
+  };
+  useEffect(takeRequest, []);
+  useTauriEvent(events.settingsRequest, takeRequest);
 
   const tabs: { name: TabName; title: string; icon: ReactElement }[] = [
     { name: "general", title: t("General"), icon: <SettingsRegular /> },
     { name: "destinations", title: t("Destinations"), icon: <CloudRegular /> },
+    { name: "watched", title: t("Watched Folders"), icon: <EyeRegular /> },
     { name: "output", title: t("Output"), icon: <DocumentCopyRegular /> },
     { name: "integrations", title: t("Integrations"), icon: <PuzzlePieceRegular /> },
     { name: "about", title: t("About"), icon: <InfoRegular /> },
@@ -91,6 +107,7 @@ export default function SettingsWindow() {
       <main className="settings-main">
         {tab === "general" && <GeneralSettings />}
         {tab === "destinations" && <DestinationsSettings />}
+        {tab === "watched" && <WatchedFoldersSettings pendingPath={watchPath} onPendingHandled={() => setWatchPath(null)} />}
         {tab === "output" && <OutputSettings />}
         {tab === "integrations" && <IntegrationsSettings />}
         {tab === "about" && <AboutSettings />}

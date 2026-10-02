@@ -78,16 +78,40 @@ pub fn uses_hashes(template: &str) -> bool {
     template.contains("{md5}") || template.contains("{sha256}")
 }
 
+/// Where a file came from, for the `{folder}` and `{subpath}` tokens: a
+/// watched folder's name, and the file's folder inside it ("" at its
+/// root). Both are "" for every other upload.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeyPlace {
+    pub folder: String,
+    pub subpath: String,
+    /// "Include, keep folder structure": the subpath goes in before the
+    /// key's last component when the template doesn't place it itself.
+    pub keep_structure: bool,
+}
+
 /// A key from the template. `hashes` fill `{md5}` and `{sha256}`; without
 /// them (a folder's prefix) those come out empty.
 pub fn generate_key(template: &str, original_filename: &str, hashes: Option<&ContentHashes>) -> String {
-    generate_key_at(template, original_filename, hashes, Local::now())
+    generate_key_at(template, original_filename, hashes, &KeyPlace::default(), Local::now())
 }
 
-pub fn generate_key_at(template: &str, original_filename: &str, hashes: Option<&ContentHashes>, date: DateTime<Local>) -> String {
+/// A key for a file from a watched folder.
+pub fn generate_key_in(template: &str, original_filename: &str, hashes: Option<&ContentHashes>, place: &KeyPlace) -> String {
+    generate_key_at(template, original_filename, hashes, place, Local::now())
+}
+
+pub fn generate_key_at(
+    template: &str,
+    original_filename: &str,
+    hashes: Option<&ContentHashes>,
+    place: &KeyPlace,
+    date: DateTime<Local>,
+) -> String {
     let (name, ext) = split_extension(original_filename);
     let uuid = uuid::Uuid::new_v4().to_string();
     let random: String = uuid::Uuid::new_v4().to_string().chars().take(8).collect();
+    let subpath = place.subpath.trim_matches('/').to_string();
     let replacements = [
         ("{year}", format!("{:04}", date.year())),
         ("{month}", format!("{:02}", date.month())),
@@ -100,12 +124,27 @@ pub fn generate_key_at(template: &str, original_filename: &str, hashes: Option<&
         ("{ext}", ext.to_string()),
         ("{md5}", hashes.map(|hashes| hashes.md5.clone()).unwrap_or_default()),
         ("{sha256}", hashes.map(|hashes| hashes.sha256.clone()).unwrap_or_default()),
+        // A folder's name is one segment, like a file's.
+        ("{folder}", place.folder.replace(['/', '\\'], "-")),
+        ("{subpath}", subpath.clone()),
     ];
     let mut result = template.to_string();
     for (token, value) in replacements {
         result = result.replace(token, &value);
     }
-    result
+    if place.keep_structure && !subpath.is_empty() && !template.contains("{subpath}") {
+        result = match result.rfind('/') {
+            Some(slash) => format!("{}/{subpath}/{}", &result[..slash], &result[slash + 1..]),
+            None => format!("{subpath}/{result}"),
+        };
+    }
+    collapse_empty_segments(&result)
+}
+
+/// "a//b" is "a/b", and a key never starts with "/": tokens that come out
+/// empty (`{subpath}` at a folder's root) leave no gaps.
+fn collapse_empty_segments(key: &str) -> String {
+    key.split('/').filter(|segment| !segment.is_empty()).collect::<Vec<_>>().join("/")
 }
 
 /// Everything Foundation's `.urlPathAllowed` would escape, plus "+": S3
@@ -199,9 +238,10 @@ mod tests {
     #[test]
     fn generates_keys_from_templates() {
         let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
-        let key = generate_key_at("{year}/{month}/{day}/{date}-{time}-{filename}.{ext}", "shot.final.png", None, date);
+        let none = KeyPlace::default();
+        let key = generate_key_at("{year}/{month}/{day}/{date}-{time}-{filename}.{ext}", "shot.final.png", None, &none, date);
         assert_eq!(key, "2026/03/07/2026-03-07-090501-shot.final.png");
-        let random = generate_key_at("{random}", "x", None, date);
+        let random = generate_key_at("{random}", "x", None, &none, date);
         assert_eq!(random.len(), 8);
     }
 
@@ -209,10 +249,31 @@ mod tests {
     fn fills_content_hashes() {
         let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
         let hashes = ContentHashes { md5: "9e10".into(), sha256: "ab12".into() };
-        assert_eq!(generate_key_at("{md5}/{sha256}.{ext}", "a.webp", Some(&hashes), date), "9e10/ab12.webp");
-        assert_eq!(generate_key_at("x{md5}.{ext}", "a.webp", None, date), "x.webp");
+        let none = KeyPlace::default();
+        assert_eq!(generate_key_at("{md5}/{sha256}.{ext}", "a.webp", Some(&hashes), &none, date), "9e10/ab12.webp");
+        assert_eq!(generate_key_at("x{md5}.{ext}", "a.webp", None, &none, date), "x.webp");
         assert!(uses_hashes("{year}/{sha256}.{ext}"));
         assert!(uses_hashes("{md5}"));
         assert!(!uses_hashes("{year}/{uuid}.{ext}"));
+    }
+
+    #[test]
+    fn fills_watched_folder_tokens() {
+        let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
+        let none = KeyPlace::default();
+        // Outside watched folders both are empty, and leave no gaps.
+        assert_eq!(generate_key_at("{folder}/{subpath}/{filename}.{ext}", "a.png", None, &none, date), "a.png");
+        let root = KeyPlace { folder: "Screen/Shots".into(), subpath: String::new(), keep_structure: true };
+        assert_eq!(generate_key_at("{folder}/{subpath}/{filename}.{ext}", "a.png", None, &root, date), "Screen-Shots/a.png");
+        let nested = KeyPlace { folder: "Shots".into(), subpath: "2026/march".into(), keep_structure: false };
+        assert_eq!(generate_key_at("{folder}/{subpath}/{filename}.{ext}", "a.png", None, &nested, date), "Shots/2026/march/a.png");
+        // Not in the template, so flattened...
+        assert_eq!(generate_key_at("{year}/{filename}.{ext}", "a.png", None, &nested, date), "2026/a.png");
+        // ...unless the structure is kept: before the last component.
+        let kept = KeyPlace { keep_structure: true, ..nested.clone() };
+        assert_eq!(generate_key_at("{year}/{filename}.{ext}", "a.png", None, &kept, date), "2026/2026/march/a.png");
+        assert_eq!(generate_key_at("{filename}.{ext}", "a.png", None, &kept, date), "2026/march/a.png");
+        assert_eq!(generate_key_at("{subpath}/{filename}.{ext}", "a.png", None, &kept, date), "2026/march/a.png");
+        assert_eq!(generate_key_at("/x//{md5}/{filename}.{ext}", "a.png", None, &none, date), "x/a.png");
     }
 }

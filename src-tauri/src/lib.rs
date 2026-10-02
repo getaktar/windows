@@ -9,6 +9,8 @@ mod credentials;
 mod deeplink;
 mod destinations;
 mod expiry;
+#[cfg(windows)]
+mod explorer_command;
 mod folder_upload;
 mod history;
 mod hotkey;
@@ -30,6 +32,7 @@ mod tray;
 mod updater;
 mod uploads;
 mod util;
+mod watched;
 mod windows;
 
 use tauri::{App, AppHandle, Manager, RunEvent};
@@ -43,6 +46,18 @@ use crate::windows::AppWindow;
 /// instead of opening the panel.
 const AUTOSTART_FLAG: &str = "--autostart";
 
+/// File Explorer started this copy as the Microsoft Store package's menu
+/// handler (see `explorer_command`): it serves that, and exits, instead of
+/// running the app. Returns whether it did.
+pub fn serve_explorer_command() -> bool {
+    #[cfg(windows)]
+    if std::env::args().any(|arg| arg == explorer_command::SERVER_FLAG) {
+        explorer_command::serve();
+        return true;
+    }
+    false
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default();
 
@@ -54,6 +69,11 @@ pub fn run() {
             // Files from File Explorer's "Upload with Aktar" or "Send to".
             if shell::is_upload(&argv) {
                 shell::handle(&core::core(app), &argv, std::path::Path::new(&cwd));
+                return;
+            }
+            // A folder from File Explorer's "Watch with Aktar".
+            if shell::is_watch(&argv) {
+                shell::handle_watch(&core::core(app), &argv, std::path::Path::new(&cwd));
                 return;
             }
             // Links are delivered through the deep-link plugin's
@@ -143,6 +163,24 @@ pub fn run() {
             commands::update_status,
             commands::check_for_updates,
             commands::install_update,
+            commands::watched_folders,
+            commands::check_watch_folder,
+            commands::add_watched_folder,
+            commands::add_screenshots_folder,
+            commands::save_watched_folder,
+            commands::remove_watched_folder,
+            commands::reset_watched_folder,
+            commands::set_watched_folder_enabled,
+            commands::confirm_watched_batch,
+            commands::confirm_watched_deletions,
+            commands::upload_watched_pending,
+            commands::retry_watched_failed,
+            commands::pause_watching,
+            commands::resume_watching,
+            commands::set_watch_pause_conditions,
+            commands::test_watch_hook,
+            commands::show_folder,
+            commands::take_settings_request,
         ])
         .build(tauri::generate_context!());
     let app = match app {
@@ -188,6 +226,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     updater::schedule(&core);
     expiry::schedule_sweep(&core);
     multipart::clean_up(&core);
+    watched::start(&core);
 
     // The installer registers aktar:// for installed builds; a dev build
     // registers itself so links can be tested.
@@ -211,12 +250,15 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // upload panel afterwards. Launches at sign-in stay quiet.
     let autostarted = std::env::args().any(|arg| arg == AUTOSTART_FLAG) || package::launched_at_sign_in();
     // Started by File Explorer's "Upload with Aktar" or "Send to": upload
-    // and stay in the tray, like the shortcut does.
+    // and stay in the tray, like the shortcut does. "Watch with Aktar"
+    // opens Settings instead.
     let args: Vec<String> = std::env::args().collect();
-    let explorer_upload = shell::is_upload(&args);
-    if explorer_upload {
-        let cwd = std::env::current_dir().unwrap_or_default();
+    let explorer_upload = shell::is_upload(&args) || shell::is_watch(&args);
+    let cwd = std::env::current_dir().unwrap_or_default();
+    if shell::is_upload(&args) {
         shell::handle(&core, &args, &cwd);
+    } else if shell::is_watch(&args) {
+        shell::handle_watch(&core, &args, &cwd);
     }
     // Restarted by an update installed while the user was away.
     let after_update = settings.quiet_next_launch;

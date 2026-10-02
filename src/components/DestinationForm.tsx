@@ -434,6 +434,8 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                       {t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}")}
                       <br />
                       {"{md5}"}: {t("MD5 of the file’s contents")} · {"{sha256}"}: {t("SHA-256 of the file’s contents")}
+                      <br />
+                      {"{folder}"}: {t("the watched folder’s name")} · {"{subpath}"}: {t("the file’s folder inside it")}
                     </>
                   }
                 >

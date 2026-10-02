@@ -15,6 +15,10 @@
 //! POST   /v1/destinations/{id}/objects/move                {"from", "to"}
 //! POST   /v1/destinations/{id}/folders                     {"prefix", "name"}
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
+//! GET    /v1/watched-folders
+//! POST   /v1/watched-folders/pause                         {"minutes"} (none: until resumed)
+//! POST   /v1/watched-folders/resume
+//! POST   /v1/watched-folders/{id}                          {"enabled"}
 //! ```
 //!
 //! An upload's response is `{"upload": {..., "reused": false}, "reused": false}`; `reused`
@@ -59,6 +63,37 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
         ("POST", ["uploads"]) => upload_body(core, &request).await,
         ("POST", ["uploads", "clipboard"]) => upload_clipboard(core, &request).await,
         ("DELETE", ["uploads", id]) => delete_upload(core, id).await,
+        ("GET", ["watched-folders"]) => Response::json(200, watched_dto(core)),
+        ("POST", ["watched-folders", "pause"]) => {
+            let body: PauseBody = match decode_optional(&request) {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            let (blocking_core, minutes) = (core.clone(), body.minutes.filter(|minutes| *minutes > 0));
+            let _ = tauri::async_runtime::spawn_blocking(move || crate::watched::pause(&blocking_core, minutes)).await;
+            Response::json(200, watched_dto(core))
+        }
+        ("POST", ["watched-folders", "resume"]) => {
+            let blocking_core = core.clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || crate::watched::resume(&blocking_core)).await;
+            Response::json(200, watched_dto(core))
+        }
+        ("POST", ["watched-folders", id]) => {
+            let body: EnabledBody = match decode(&request) {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
+            if core.watched.engine.store.folder(id).is_none() {
+                return Response::error(404, "No watched folder with that ID.");
+            }
+            let (blocking_core, folder_id, enabled) = (core.clone(), id.to_string(), body.enabled);
+            let _ = tauri::async_runtime::spawn_blocking(move || blocking_core.watched.engine.set_enabled(&folder_id, enabled)).await;
+            core.watched.wake();
+            match watched_dto(core).folders.into_iter().find(|folder| folder.id.eq_ignore_ascii_case(id)) {
+                Some(folder) => Response::json(200, folder),
+                None => Response::error(404, "No watched folder with that ID."),
+            }
+        }
         (_, ["destinations", id, rest @ ..]) if !rest.is_empty() => {
             let Some(destination) = core.destinations.find(Some(id)) else {
                 return Response::error(404, "No destination with that ID.");
@@ -85,6 +120,10 @@ fn status(core: &SharedCore) -> Response {
             default_destination_id: core.destinations.default_destination().map(|d| d.id),
             output_format: settings.output_mode.raw_value(),
             platform: "windows",
+            watching: {
+                let overview = core.watched.overview();
+                WatchingDto { paused: overview.paused, folders: overview.folders.len() }
+            },
         },
     )
 }
@@ -388,6 +427,84 @@ fn decode<T: for<'de> Deserialize<'de>>(request: &Request) -> Result<T, Response
     serde_json::from_slice(&request.body).map_err(|error| Response::error(400, format!("Invalid request body: {error}")))
 }
 
+/// Like `decode`, with an empty body counting as `{}`.
+fn decode_optional<T: for<'de> Deserialize<'de> + Default>(request: &Request) -> Result<T, Response> {
+    if request.body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(T::default());
+    }
+    decode(request)
+}
+
+// MARK: - Watched folders
+
+#[derive(Deserialize, Default)]
+struct PauseBody {
+    minutes: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct EnabledBody {
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WatchedDto {
+    paused: bool,
+    paused_until: Option<String>,
+    folders: Vec<WatchedFolderDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WatchedFolderDto {
+    id: String,
+    name: String,
+    path: String,
+    enabled: bool,
+    status: crate::watched::engine::Status,
+    #[serde(rename = "destinationID")]
+    destination_id: Option<String>,
+    waiting: usize,
+    uploading: usize,
+    failed: usize,
+    awaiting_confirmation: usize,
+    on_delete: crate::watched::model::OnDelete,
+    confirm_delete: bool,
+    deleting: usize,
+    awaiting_delete_confirmation: usize,
+    last_upload_at: Option<String>,
+}
+
+fn watched_dto(core: &SharedCore) -> WatchedDto {
+    let overview = core.watched.overview();
+    WatchedDto {
+        paused: overview.paused,
+        paused_until: overview.paused_until.iso(),
+        folders: overview
+            .folders
+            .into_iter()
+            .map(|info| WatchedFolderDto {
+                id: info.folder.id,
+                name: info.folder.name,
+                path: info.folder.path.to_string_lossy().into_owned(),
+                enabled: info.folder.enabled,
+                status: info.status,
+                destination_id: info.folder.destination_id,
+                waiting: info.waiting,
+                uploading: info.uploading,
+                failed: info.failed,
+                awaiting_confirmation: info.awaiting_confirmation,
+                on_delete: info.folder.on_delete,
+                confirm_delete: info.folder.confirm_delete,
+                deleting: info.deleting,
+                awaiting_delete_confirmation: info.awaiting_delete_confirmation,
+                last_upload_at: info.last_upload_at.map(iso8601),
+            })
+            .collect(),
+    }
+}
+
 fn credential_failure(error: CredentialError) -> Response {
     match error {
         CredentialError::NotFound => Response::error(409, error.to_string()),
@@ -409,6 +526,13 @@ struct StatusDto {
     default_destination_id: Option<String>,
     output_format: &'static str,
     platform: &'static str,
+    watching: WatchingDto,
+}
+
+#[derive(Serialize)]
+struct WatchingDto {
+    paused: bool,
+    folders: usize,
 }
 
 #[derive(Serialize)]

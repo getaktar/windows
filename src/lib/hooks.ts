@@ -10,6 +10,7 @@ import {
   type Settings,
   type UpdateStatus,
   type UploadRecord,
+  type WatchOverview,
 } from "./api";
 
 /** Subscribes to a Rust event for the lifetime of the component. */
@@ -64,6 +65,9 @@ export const useHistory = () => useLive<UploadRecord[]>(api.listHistory, [events
 export const useSettings = () => useLive<Settings | null>(api.getSettings, [events.settingsChanged], null);
 
 export const useLocalApi = () => useLive<LocalApiState | null>(api.localApiState, [events.localApiChanged], null);
+
+export const useWatched = () =>
+  useLive<WatchOverview | null>(api.watchedFolders, [events.watchedChanged, events.destinationsChanged], null);
 
 export const useUpdateStatus = () => useLive<UpdateStatus>(api.updateStatus, [events.updateChanged], { kind: "idle" });
 

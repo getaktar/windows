@@ -28,6 +28,10 @@ clipboard. This is the Windows version of [Aktar for Mac](https://github.com/get
 - Browse each bucket folder by folder, including files uploaded elsewhere:
   search the whole bucket, preview, copy links or temporary links, upload
   into a folder, create folders, rename, move, and delete
+- Watched folders: files that land in a folder you pick (or Windows'
+  Screenshots folder) upload on their own, with that folder's destination,
+  path, link, filters, and what happens to the original; webhooks and
+  scripts can run after each upload
 - `aktar://` links and the same local API as the Mac app, for the Raycast
   extension (opt-in, see Settings > Integrations)
 - Launch at sign-in, automatic updates, light and dark mode
@@ -43,7 +47,8 @@ only other request it makes is the update check, which downloads
 `latest.json` from this repository's latest GitHub release and sends no
 information about you or your PC; you can turn it off in Settings. Every
 update is verified against a public key built into the app before it's
-installed.
+installed. A watched folder's webhooks only send upload details to the URLs
+you add to it.
 
 If you turn on Settings > Integrations > Allow local connections (off by
 default, and what the Raycast extension uses), Aktar also listens on

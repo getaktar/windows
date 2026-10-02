@@ -21,6 +21,8 @@ use crate::settings::{Settings, SettingsPatch};
 use crate::storage::{BucketListing, ConnectionResult, S3Provider};
 use crate::updater::{self, UpdateStatus};
 use crate::uploads::{self, JobSnapshot, NameRequest, UploadInput};
+use crate::watched::engine::Now;
+use crate::watched::model::{Hook, WatchedFolder};
 use crate::windows::AppWindow;
 use crate::{bucket, i18n, panel, t};
 
@@ -708,4 +710,166 @@ pub async fn install_update(core: Core<'_>) -> Result<(), String> {
     let core: SharedCore = core.inner().clone();
     updater::install(&core).await;
     Ok(())
+}
+
+// MARK: - Watched folders
+
+#[tauri::command]
+pub async fn watched_folders(core: Core<'_>) -> Result<crate::watched::engine::Overview, String> {
+    blocking(&core, |core| Ok(core.watched.overview())).await
+}
+
+/// Checks a folder picked to be watched; refused folders come back as the
+/// reason.
+#[tauri::command]
+pub async fn check_watch_folder(core: Core<'_>, path: String) -> Result<crate::watched::FolderCheck, String> {
+    blocking(&core, move |core| crate::watched::check(&core, &path)).await
+}
+
+/// `upload_existing`: "Upload Them" rather than "Skip Existing Files".
+#[tauri::command]
+pub async fn add_watched_folder(core: Core<'_>, path: String, upload_existing: bool) -> Result<WatchedFolder, String> {
+    blocking(&core, move |core| crate::watched::add(&core, &path, upload_existing)).await
+}
+
+#[tauri::command]
+pub async fn add_screenshots_folder(core: Core<'_>) -> Result<WatchedFolder, String> {
+    blocking(&core, |core| crate::watched::add_screenshots(&core)).await
+}
+
+#[tauri::command]
+pub async fn save_watched_folder(core: Core<'_>, folder: WatchedFolder) -> Result<(), String> {
+    blocking(&core, move |core| crate::watched::save(&core, folder)).await
+}
+
+/// Walking a folder takes a moment, so it's done off the async runtime's
+/// workers (and the UI thread).
+async fn blocking<T: Send + 'static>(
+    core: &Core<'_>,
+    work: impl FnOnce(SharedCore) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let core: SharedCore = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || work(core)).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_watched_folder(core: Core<'_>, id: String) -> Result<(), String> {
+    blocking(&core, move |core| {
+        core.watched.engine.remove(&id);
+        core.watched.wake();
+        Ok(())
+    })
+    .await
+}
+
+/// "Reset": forgets what the folder handled.
+#[tauri::command]
+pub async fn reset_watched_folder(core: Core<'_>, id: String) -> Result<(), String> {
+    blocking(&core, move |core| {
+        core.watched.engine.reset(&id);
+        core.watched.wake();
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_watched_folder_enabled(core: Core<'_>, id: String, enabled: bool) -> Result<(), String> {
+    blocking(&core, move |core| {
+        core.watched.engine.set_enabled(&id, enabled);
+        core.watched.wake();
+        Ok(())
+    })
+    .await
+}
+
+/// "Upload" (true) or "Skip" on a large batch waiting for the go-ahead.
+#[tauri::command]
+pub async fn confirm_watched_batch(core: Core<'_>, id: String, upload: bool) -> Result<(), String> {
+    let core: SharedCore = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || core.watched.engine.confirm(&id, upload)).await.map_err(|error| error.to_string())
+}
+
+/// "Delete from Bucket" (true) or "Keep Uploaded Files" on a large
+/// deletion.
+#[tauri::command]
+pub async fn confirm_watched_deletions(core: Core<'_>, id: String, delete: bool) -> Result<(), String> {
+    blocking(&core, move |core| {
+        core.watched.engine.confirm_deletions(&id, delete);
+        core.watched.wake();
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn upload_watched_pending(core: Core<'_>, id: String) -> Result<(), String> {
+    let core: SharedCore = core.inner().clone();
+    let engine_core = core.clone();
+    tauri::async_runtime::spawn_blocking(move || engine_core.watched.engine.upload_pending_now(&id, Now::current()))
+        .await
+        .map_err(|error| error.to_string())?;
+    core.watched.wake();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn retry_watched_failed(core: Core<'_>, id: String) -> Result<(), String> {
+    let core: SharedCore = core.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || core.watched.engine.retry_failed(&id, Now::current()))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Pauses every folder for `minutes`, or until resumed when it's none.
+/// `untilTomorrow` pauses until midnight instead.
+#[tauri::command]
+pub async fn pause_watching(core: Core<'_>, minutes: Option<u64>, until_tomorrow: Option<bool>) -> Result<(), String> {
+    let minutes = if until_tomorrow == Some(true) { Some(crate::watched::minutes_until_tomorrow()) } else { minutes };
+    blocking(&core, move |core| {
+        crate::watched::pause(&core, minutes);
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn resume_watching(core: Core<'_>) -> Result<(), String> {
+    blocking(&core, |core| {
+        crate::watched::resume(&core);
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_watch_pause_conditions(core: Core<'_>, on_battery: Option<bool>, on_metered: Option<bool>) -> Result<(), String> {
+    blocking(&core, move |core| {
+        core.watched.engine.set_pause_conditions(on_battery, on_metered);
+        core.watched.wake();
+        Ok(())
+    })
+    .await
+}
+
+/// A hook's "Test": sends a sample upload through it.
+#[tauri::command]
+pub async fn test_watch_hook(core: Core<'_>, folder: WatchedFolder, hook: Hook) -> Result<(), String> {
+    let core: SharedCore = core.inner().clone();
+    crate::watched::test_hook(&core, folder, hook).await
+}
+
+/// "Show in Explorer" for a watched folder.
+#[tauri::command]
+pub fn show_folder(app: AppHandle, path: String) -> Result<(), String> {
+    if !std::path::Path::new(&path).is_dir() {
+        return Err(t!("That folder doesn’t exist."));
+    }
+    app.opener().open_path(path, None::<&str>).map_err(|error| error.to_string())
+}
+
+/// What Settings should do on opening: a tab to show, a folder to add.
+#[tauri::command]
+pub fn take_settings_request(core: Core) -> crate::watched::SettingsRequest {
+    crate::watched::take_request(&core)
 }

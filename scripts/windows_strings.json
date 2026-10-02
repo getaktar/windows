@@ -917,5 +917,1302 @@
     "pt-BR": "Este atalho já está em uso. Tente um diferente.",
     "ja": "このショートカットはすでに使用されています。別のショートカットを試してください。",
     "zh-Hans": "此快捷键已在使用中，请换一个。"
+  },
+  "// Watched folders": "Settings > Watched Folders, the panel's watching row, the tray's Pause Watching, and their notifications. English keys match the shared Mac/Windows spec, so the Mac catalog's translations can replace these once it has them.",
+  "A whole drive can’t be watched. Pick a folder on it.": {
+    "tr": "Bir sürücünün tamamı izlenemez. İçinden bir klasör seç.",
+    "de": "Ein ganzes Laufwerk kann nicht überwacht werden. Wähle einen Ordner darauf.",
+    "fr": "Un lecteur entier ne peut pas être surveillé. Choisissez un dossier sur ce lecteur.",
+    "es": "No se puede vigilar una unidad entera. Elige una carpeta dentro de ella.",
+    "pt-BR": "Não é possível monitorar uma unidade inteira. Escolha uma pasta nela.",
+    "ja": "ドライブ全体は監視できません。ドライブ内のフォルダを選択してください。",
+    "zh-Hans": "无法监视整个驱动器。请选择其中的一个文件夹。"
+  },
+  "Access needed": {
+    "tr": "Erişim gerekli",
+    "de": "Zugriff erforderlich",
+    "fr": "Accès requis",
+    "es": "Se necesita acceso",
+    "pt-BR": "Acesso necessário",
+    "ja": "アクセスが必要",
+    "zh-Hans": "需要访问权限"
+  },
+  "Add": {
+    "tr": "Ekle",
+    "de": "Hinzufügen",
+    "fr": "Ajouter",
+    "es": "Añadir",
+    "pt-BR": "Adicionar",
+    "ja": "追加",
+    "zh-Hans": "添加"
+  },
+  "Add Folder…": {
+    "tr": "Klasör Ekle…",
+    "de": "Ordner hinzufügen …",
+    "fr": "Ajouter un dossier…",
+    "es": "Añadir carpeta…",
+    "pt-BR": "Adicionar pasta…",
+    "ja": "フォルダを追加…",
+    "zh-Hans": "添加文件夹…"
+  },
+  "Add Script…": {
+    "tr": "Betik Ekle…",
+    "de": "Skript hinzufügen …",
+    "fr": "Ajouter un script…",
+    "es": "Añadir script…",
+    "pt-BR": "Adicionar script…",
+    "ja": "スクリプトを追加…",
+    "zh-Hans": "添加脚本…"
+  },
+  "Add Webhook": {
+    "tr": "Webhook Ekle",
+    "de": "Webhook hinzufügen",
+    "fr": "Ajouter un webhook",
+    "es": "Añadir webhook",
+    "pt-BR": "Adicionar webhook",
+    "ja": "Webhookを追加",
+    "zh-Hans": "添加 Webhook"
+  },
+  "Add Webhook…": {
+    "tr": "Webhook Ekle…",
+    "de": "Webhook hinzufügen …",
+    "fr": "Ajouter un webhook…",
+    "es": "Añadir webhook…",
+    "pt-BR": "Adicionar webhook…",
+    "ja": "Webhookを追加…",
+    "zh-Hans": "添加 Webhook…"
+  },
+  "After each upload from this folder, webhooks get its details as JSON, and scripts get them on standard input.": {
+    "tr": "Bu klasörden yapılan her yüklemeden sonra webhook'lar ayrıntıları JSON olarak, betikler ise standart girdiden alır.",
+    "de": "Nach jedem Upload aus diesem Ordner erhalten Webhooks die Details als JSON und Skripte über die Standardeingabe.",
+    "fr": "Après chaque envoi depuis ce dossier, les webhooks en reçoivent les détails en JSON, et les scripts sur l’entrée standard.",
+    "es": "Después de cada subida desde esta carpeta, los webhooks reciben sus detalles en JSON y los scripts por la entrada estándar.",
+    "pt-BR": "Após cada envio desta pasta, os webhooks recebem os detalhes em JSON e os scripts pela entrada padrão.",
+    "ja": "このフォルダからアップロードするたびに、WebhookにはJSONで、スクリプトには標準入力で詳細が渡されます。",
+    "zh-Hans": "每次从此文件夹上传后，Webhook 会以 JSON 收到详情，脚本则通过标准输入收到。"
+  },
+  "After upload": {
+    "tr": "Yüklemeden sonra",
+    "de": "Nach dem Upload",
+    "fr": "Après l’envoi",
+    "es": "Después de subir",
+    "pt-BR": "Após o envio",
+    "ja": "アップロード後",
+    "zh-Hans": "上传后"
+  },
+  "Aktar sends a POST request with the upload’s details as JSON after each upload.": {
+    "tr": "Aktar her yüklemeden sonra yüklemenin ayrıntılarını JSON olarak bir POST isteğiyle gönderir.",
+    "de": "Aktar sendet nach jedem Upload eine POST-Anfrage mit den Details als JSON.",
+    "fr": "Après chaque envoi, Aktar envoie une requête POST avec ses détails en JSON.",
+    "es": "Aktar envía una solicitud POST con los detalles de la subida en JSON después de cada subida.",
+    "pt-BR": "O Aktar envia uma solicitação POST com os detalhes do envio em JSON após cada envio.",
+    "ja": "Aktarはアップロードのたびに、その詳細をJSONにしてPOSTリクエストで送信します。",
+    "zh-Hans": "每次上传后，Aktar 会发送一个包含上传详情 JSON 的 POST 请求。"
+  },
+  "Aktar’s own folders can’t be watched.": {
+    "tr": "Aktar'ın kendi klasörleri izlenemez.",
+    "de": "Aktars eigene Ordner können nicht überwacht werden.",
+    "fr": "Les dossiers d’Aktar ne peuvent pas être surveillés.",
+    "es": "No se pueden vigilar las carpetas de Aktar.",
+    "pt-BR": "As pastas do próprio Aktar não podem ser monitoradas.",
+    "ja": "Aktar自身のフォルダは監視できません。",
+    "zh-Hans": "无法监视 Aktar 自己的文件夹。"
+  },
+  "All files": {
+    "tr": "Tüm dosyalar",
+    "de": "Alle Dateien",
+    "fr": "Tous les fichiers",
+    "es": "Todos los archivos",
+    "pt-BR": "Todos os arquivos",
+    "ja": "すべてのファイル",
+    "zh-Hans": "所有文件"
+  },
+  "Automation": {
+    "tr": "Otomasyon",
+    "de": "Automatisierung",
+    "fr": "Automatisation",
+    "es": "Automatización",
+    "pt-BR": "Automação",
+    "ja": "自動化",
+    "zh-Hans": "自动化"
+  },
+  "Can’t watch this folder": {
+    "tr": "Bu klasör izlenemiyor",
+    "de": "Ordner kann nicht überwacht werden",
+    "fr": "Impossible de surveiller ce dossier",
+    "es": "No se puede vigilar esta carpeta",
+    "pt-BR": "Não é possível monitorar esta pasta",
+    "ja": "このフォルダを監視できません",
+    "zh-Hans": "无法监视此文件夹"
+  },
+  "Change…": {
+    "tr": "Değiştir…",
+    "de": "Ändern …",
+    "fr": "Modifier…",
+    "es": "Cambiar…",
+    "pt-BR": "Alterar…",
+    "ja": "変更…",
+    "zh-Hans": "更改…"
+  },
+  "Clipboard": {
+    "tr": "Pano",
+    "de": "Zwischenablage",
+    "fr": "Presse-papiers",
+    "es": "Portapapeles",
+    "pt-BR": "Área de transferência",
+    "ja": "クリップボード",
+    "zh-Hans": "剪贴板"
+  },
+  "Copy the link": {
+    "tr": "Bağlantıyı kopyala",
+    "de": "Link kopieren",
+    "fr": "Copier le lien",
+    "es": "Copiar el enlace",
+    "pt-BR": "Copiar o link",
+    "ja": "リンクをコピー",
+    "zh-Hans": "复制链接"
+  },
+  "Couldn’t find the Screenshots folder.": {
+    "tr": "Ekran Görüntüleri klasörü bulunamadı.",
+    "de": "Der Ordner „Screenshots“ wurde nicht gefunden.",
+    "fr": "Le dossier Captures d’écran est introuvable.",
+    "es": "No se encontró la carpeta Capturas de pantalla.",
+    "pt-BR": "Não foi possível encontrar a pasta Capturas de tela.",
+    "ja": "スクリーンショットフォルダが見つかりませんでした。",
+    "zh-Hans": "找不到“屏幕截图”文件夹。"
+  },
+  "Couldn’t move {0} into the Uploaded folder. {1}": {
+    "tr": "{0}, Uploaded klasörüne taşınamadı. {1}",
+    "de": "{0} konnte nicht in den Ordner „Uploaded“ verschoben werden. {1}",
+    "fr": "Impossible de déplacer {0} dans le dossier Uploaded. {1}",
+    "es": "No se pudo mover {0} a la carpeta Uploaded. {1}",
+    "pt-BR": "Não foi possível mover {0} para a pasta Uploaded. {1}",
+    "ja": "{0}をUploadedフォルダに移動できませんでした。{1}",
+    "zh-Hans": "无法将 {0} 移到 Uploaded 文件夹。{1}"
+  },
+  "Couldn’t move {0} to the Recycle Bin. {1}": {
+    "tr": "{0} Geri Dönüşüm Kutusu'na taşınamadı. {1}",
+    "de": "{0} konnte nicht in den Papierkorb verschoben werden. {1}",
+    "fr": "Impossible de placer {0} dans la Corbeille. {1}",
+    "es": "No se pudo mover {0} a la Papelera de reciclaje. {1}",
+    "pt-BR": "Não foi possível mover {0} para a Lixeira. {1}",
+    "ja": "{0}をごみ箱に移動できませんでした。{1}",
+    "zh-Hans": "无法将 {0} 移到回收站。{1}"
+  },
+  "Default destination": {
+    "tr": "Varsayılan hedef",
+    "de": "Standardziel",
+    "fr": "Destination par défaut",
+    "es": "Destino predeterminado",
+    "pt-BR": "Destino padrão",
+    "ja": "デフォルトのアップロード先",
+    "zh-Hans": "默认上传目标"
+  },
+  "Default destination ({0})": {
+    "tr": "Varsayılan hedef ({0})",
+    "de": "Standardziel ({0})",
+    "fr": "Destination par défaut ({0})",
+    "es": "Destino predeterminado ({0})",
+    "pt-BR": "Destino padrão ({0})",
+    "ja": "デフォルトのアップロード先（{0}）",
+    "zh-Hans": "默认上传目标（{0}）"
+  },
+  "Destination default": {
+    "tr": "Hedefin ayarı",
+    "de": "Wie beim Ziel",
+    "fr": "Selon la destination",
+    "es": "Lo que diga el destino",
+    "pt-BR": "Conforme o destino",
+    "ja": "アップロード先の設定",
+    "zh-Hans": "沿用上传目标设置"
+  },
+  "Don’t touch the clipboard": {
+    "tr": "Panoya dokunma",
+    "de": "Zwischenablage nicht ändern",
+    "fr": "Ne pas toucher au presse-papiers",
+    "es": "No tocar el portapapeles",
+    "pt-BR": "Não mexer na área de transferência",
+    "ja": "クリップボードを変更しない",
+    "zh-Hans": "不改动剪贴板"
+  },
+  "Edit Watched Folder": {
+    "tr": "İzlenen Klasörü Düzenle",
+    "de": "Überwachten Ordner bearbeiten",
+    "fr": "Modifier le dossier surveillé",
+    "es": "Editar carpeta vigilada",
+    "pt-BR": "Editar pasta monitorada",
+    "ja": "監視フォルダを編集",
+    "zh-Hans": "编辑监视文件夹"
+  },
+  "Either way, Aktar uploads every new file that lands in “{0}” from now on.": {
+    "tr": "Her iki durumda da Aktar bundan sonra “{0}” klasörüne gelen her yeni dosyayı yükler.",
+    "de": "So oder so lädt Aktar ab jetzt jede neue Datei hoch, die in „{0}“ landet.",
+    "fr": "Dans tous les cas, Aktar enverra désormais chaque nouveau fichier qui arrive dans « {0} ».",
+    "es": "En cualquier caso, Aktar subirá desde ahora cada archivo nuevo que llegue a “{0}”.",
+    "pt-BR": "De qualquer forma, o Aktar enviará a partir de agora todo arquivo novo que chegar em “{0}”.",
+    "ja": "どちらを選んでも、今後「{0}」に入る新しいファイルはすべてアップロードされます。",
+    "zh-Hans": "无论如何，Aktar 今后都会上传进入“{0}”的每个新文件。"
+  },
+  "Every file in the folder counts as new again, and Aktar asks before uploading many at once.": {
+    "tr": "Klasördeki her dosya yeniden yeni sayılır; Aktar çok sayıda dosyayı bir kerede yüklemeden önce sorar.",
+    "de": "Jede Datei im Ordner gilt wieder als neu, und Aktar fragt, bevor viele auf einmal hochgeladen werden.",
+    "fr": "Chaque fichier du dossier est de nouveau considéré comme nouveau, et Aktar demande avant d’en envoyer beaucoup à la fois.",
+    "es": "Cada archivo de la carpeta vuelve a contar como nuevo, y Aktar pregunta antes de subir muchos a la vez.",
+    "pt-BR": "Todos os arquivos da pasta voltam a contar como novos, e o Aktar pergunta antes de enviar muitos de uma vez.",
+    "ja": "フォルダ内のすべてのファイルが再び新規扱いになります。一度に多くをアップロードする前には確認が表示されます。",
+    "zh-Hans": "文件夹中的每个文件都会重新算作新文件，一次上传很多文件前 Aktar 会先询问。"
+  },
+  "Exclude patterns": {
+    "tr": "Hariç tutma kalıpları",
+    "de": "Ausschlussmuster",
+    "fr": "Motifs d’exclusion",
+    "es": "Patrones de exclusión",
+    "pt-BR": "Padrões de exclusão",
+    "ja": "除外パターン",
+    "zh-Hans": "排除规则"
+  },
+  "Files": {
+    "tr": "Dosyalar",
+    "de": "Dateien",
+    "fr": "Fichiers",
+    "es": "Archivos",
+    "pt-BR": "Arquivos",
+    "ja": "ファイル",
+    "zh-Hans": "文件"
+  },
+  "Folder": {
+    "tr": "Klasör",
+    "de": "Ordner",
+    "fr": "Dossier",
+    "es": "Carpeta",
+    "pt-BR": "Pasta",
+    "ja": "フォルダ",
+    "zh-Hans": "文件夹"
+  },
+  "Folder not found": {
+    "tr": "Klasör bulunamadı",
+    "de": "Ordner nicht gefunden",
+    "fr": "Dossier introuvable",
+    "es": "Carpeta no encontrada",
+    "pt-BR": "Pasta não encontrada",
+    "ja": "フォルダが見つかりません",
+    "zh-Hans": "找不到文件夹"
+  },
+  "For 1 Hour": {
+    "tr": "1 Saatliğine",
+    "de": "Für 1 Stunde",
+    "fr": "Pendant 1 heure",
+    "es": "Durante 1 hora",
+    "pt-BR": "Por 1 hora",
+    "ja": "1時間",
+    "zh-Hans": "1 小时"
+  },
+  "Forget what “{0}” uploaded?": {
+    "tr": "“{0}” klasörünün yüklediği dosyalar unutulsun mu?",
+    "de": "Vergessen, was „{0}“ hochgeladen hat?",
+    "fr": "Oublier ce que « {0} » a envoyé ?",
+    "es": "¿Olvidar lo que subió “{0}”?",
+    "pt-BR": "Esquecer o que “{0}” enviou?",
+    "ja": "「{0}」のアップロード済みの記録を消去しますか？",
+    "zh-Hans": "要忘记“{0}”已上传的内容吗？"
+  },
+  "Ignore changes": {
+    "tr": "Değişiklikleri yok say",
+    "de": "Änderungen ignorieren",
+    "fr": "Ignorer les modifications",
+    "es": "Ignorar los cambios",
+    "pt-BR": "Ignorar alterações",
+    "ja": "変更を無視",
+    "zh-Hans": "忽略更改"
+  },
+  "Ignore subfolders": {
+    "tr": "Alt klasörleri yok say",
+    "de": "Unterordner ignorieren",
+    "fr": "Ignorer les sous-dossiers",
+    "es": "Ignorar subcarpetas",
+    "pt-BR": "Ignorar subpastas",
+    "ja": "サブフォルダを無視",
+    "zh-Hans": "忽略子文件夹"
+  },
+  "Images": {
+    "tr": "Görseller",
+    "de": "Bilder",
+    "fr": "Images",
+    "es": "Imágenes",
+    "pt-BR": "Imagens",
+    "ja": "画像",
+    "zh-Hans": "图片"
+  },
+  "Include patterns": {
+    "tr": "Dahil etme kalıpları",
+    "de": "Einschlussmuster",
+    "fr": "Motifs d’inclusion",
+    "es": "Patrones de inclusión",
+    "pt-BR": "Padrões de inclusão",
+    "ja": "対象パターン",
+    "zh-Hans": "包含规则"
+  },
+  "Include, keep folder structure": {
+    "tr": "Dahil et, klasör yapısını koru",
+    "de": "Einbeziehen, Ordnerstruktur beibehalten",
+    "fr": "Inclure, garder la structure",
+    "es": "Incluir, mantener la estructura",
+    "pt-BR": "Incluir, manter a estrutura",
+    "ja": "含める（フォルダ構造を保持）",
+    "zh-Hans": "包含，保留文件夹结构"
+  },
+  "Include, upload flat": {
+    "tr": "Dahil et, düz yükle",
+    "de": "Einbeziehen, flach hochladen",
+    "fr": "Inclure, tout envoyer au même niveau",
+    "es": "Incluir, subir sin carpetas",
+    "pt-BR": "Incluir, enviar sem pastas",
+    "ja": "含める（フラットにアップロード）",
+    "zh-Hans": "包含，平铺上传"
+  },
+  "It exited with code {0}.": {
+    "tr": "{0} koduyla çıktı.",
+    "de": "Es wurde mit Code {0} beendet.",
+    "fr": "Il s’est terminé avec le code {0}.",
+    "es": "Terminó con el código {0}.",
+    "pt-BR": "Terminou com o código {0}.",
+    "ja": "終了コード{0}で終了しました。",
+    "zh-Hans": "以代码 {0} 退出。"
+  },
+  "It took longer than 10 seconds.": {
+    "tr": "10 saniyeden uzun sürdü.",
+    "de": "Es hat länger als 10 Sekunden gedauert.",
+    "fr": "Cela a pris plus de 10 secondes.",
+    "es": "Tardó más de 10 segundos.",
+    "pt-BR": "Demorou mais de 10 segundos.",
+    "ja": "10秒以上かかりました。",
+    "zh-Hans": "耗时超过 10 秒。"
+  },
+  "It worked.": {
+    "tr": "Çalıştı.",
+    "de": "Hat funktioniert.",
+    "fr": "Ça a fonctionné.",
+    "es": "Funcionó.",
+    "pt-BR": "Funcionou.",
+    "ja": "成功しました。",
+    "zh-Hans": "成功了。"
+  },
+  "Its files and what’s already uploaded stay where they are.": {
+    "tr": "Dosyaları ve önceden yüklenenler oldukları yerde kalır.",
+    "de": "Die Dateien und alles bereits Hochgeladene bleiben, wo sie sind.",
+    "fr": "Ses fichiers et ce qui a déjà été envoyé restent en place.",
+    "es": "Sus archivos y lo que ya se subió se quedan donde están.",
+    "pt-BR": "Os arquivos e o que já foi enviado continuam onde estão.",
+    "ja": "フォルダ内のファイルとアップロード済みのファイルはそのまま残ります。",
+    "zh-Hans": "其中的文件和已上传的内容都保持不变。"
+  },
+  "Keep it": {
+    "tr": "Olduğu gibi bırak",
+    "de": "Behalten",
+    "fr": "Le garder",
+    "es": "Conservarlo",
+    "pt-BR": "Manter",
+    "ja": "そのまま残す",
+    "zh-Hans": "保留"
+  },
+  "Last upload {0}": {
+    "tr": "Son yükleme {0}",
+    "de": "Letzter Upload {0}",
+    "fr": "Dernier envoi : {0}",
+    "es": "Última subida: {0}",
+    "pt-BR": "Último envio: {0}",
+    "ja": "最終アップロード：{0}",
+    "zh-Hans": "上次上传：{0}"
+  },
+  "Maximum size": {
+    "tr": "En büyük boyut",
+    "de": "Maximale Größe",
+    "fr": "Taille maximale",
+    "es": "Tamaño máximo",
+    "pt-BR": "Tamanho máximo",
+    "ja": "最大サイズ",
+    "zh-Hans": "最大大小"
+  },
+  "Minimum size": {
+    "tr": "En küçük boyut",
+    "de": "Minimale Größe",
+    "fr": "Taille minimale",
+    "es": "Tamaño mínimo",
+    "pt-BR": "Tamanho mínimo",
+    "ja": "最小サイズ",
+    "zh-Hans": "最小大小"
+  },
+  "Move to Recycle Bin": {
+    "tr": "Geri Dönüşüm Kutusu'na taşı",
+    "de": "In den Papierkorb verschieben",
+    "fr": "Placer dans la Corbeille",
+    "es": "Mover a la Papelera de reciclaje",
+    "pt-BR": "Mover para a Lixeira",
+    "ja": "ごみ箱に移動",
+    "zh-Hans": "移到回收站"
+  },
+  "Move to “Uploaded” subfolder": {
+    "tr": "“Uploaded” alt klasörüne taşı",
+    "de": "In den Unterordner „Uploaded“ verschieben",
+    "fr": "Déplacer dans le sous-dossier « Uploaded »",
+    "es": "Mover a la subcarpeta “Uploaded”",
+    "pt-BR": "Mover para a subpasta “Uploaded”",
+    "ja": "「Uploaded」サブフォルダに移動",
+    "zh-Hans": "移到“Uploaded”子文件夹"
+  },
+  "Name": {
+    "tr": "Ad",
+    "de": "Name",
+    "fr": "Nom",
+    "es": "Nombre",
+    "pt-BR": "Nome",
+    "ja": "名前",
+    "zh-Hans": "名称"
+  },
+  "No watched folders yet": {
+    "tr": "Henüz izlenen klasör yok",
+    "de": "Noch keine überwachten Ordner",
+    "fr": "Aucun dossier surveillé pour l’instant",
+    "es": "Aún no hay carpetas vigiladas",
+    "pt-BR": "Nenhuma pasta monitorada ainda",
+    "ja": "監視フォルダはまだありません",
+    "zh-Hans": "还没有监视文件夹"
+  },
+  "Notifications": {
+    "tr": "Bildirimler",
+    "de": "Mitteilungen",
+    "fr": "Notifications",
+    "es": "Notificaciones",
+    "pt-BR": "Notificações",
+    "ja": "通知",
+    "zh-Hans": "通知"
+  },
+  "One per batch": {
+    "tr": "Her toplu yükleme için bir tane",
+    "de": "Eine pro Stapel",
+    "fr": "Une par lot",
+    "es": "Una por lote",
+    "pt-BR": "Uma por lote",
+    "ja": "まとめて1件",
+    "zh-Hans": "每批一条"
+  },
+  "One per file": {
+    "tr": "Her dosya için bir tane",
+    "de": "Eine pro Datei",
+    "fr": "Une par fichier",
+    "es": "Una por archivo",
+    "pt-BR": "Uma por arquivo",
+    "ja": "ファイルごとに1件",
+    "zh-Hans": "每个文件一条"
+  },
+  "Only failures": {
+    "tr": "Yalnızca hatalar",
+    "de": "Nur Fehler",
+    "fr": "Seulement les échecs",
+    "es": "Solo los errores",
+    "pt-BR": "Só as falhas",
+    "ja": "失敗のみ",
+    "zh-Hans": "仅失败时"
+  },
+  "Only once auto-delete is set up for the destination.": {
+    "tr": "Yalnızca hedef için otomatik silme kurulduysa geçerlidir.",
+    "de": "Nur, wenn automatisches Löschen für das Ziel eingerichtet ist.",
+    "fr": "Seulement une fois la suppression automatique configurée pour la destination.",
+    "es": "Solo cuando la eliminación automática está configurada en el destino.",
+    "pt-BR": "Só depois que a exclusão automática estiver configurada no destino.",
+    "ja": "アップロード先で自動削除を設定した場合のみ有効です。",
+    "zh-Hans": "仅在上传目标设置了自动删除后生效。"
+  },
+  "Open Aktar to upload or skip them.": {
+    "tr": "Yüklemek ya da atlamak için Aktar'ı aç.",
+    "de": "Öffne Aktar, um sie hochzuladen oder zu überspringen.",
+    "fr": "Ouvrez Aktar pour les envoyer ou les ignorer.",
+    "es": "Abre Aktar para subirlos u omitirlos.",
+    "pt-BR": "Abra o Aktar para enviá-los ou ignorá-los.",
+    "ja": "Aktarを開いて、アップロードするかスキップするか選んでください。",
+    "zh-Hans": "打开 Aktar 选择上传或跳过。"
+  },
+  "Original file": {
+    "tr": "Asıl dosya",
+    "de": "Originaldatei",
+    "fr": "Fichier d’origine",
+    "es": "Archivo original",
+    "pt-BR": "Arquivo original",
+    "ja": "元のファイル",
+    "zh-Hans": "原文件"
+  },
+  "Pause": {
+    "tr": "Duraklat",
+    "de": "Pausieren",
+    "fr": "Suspendre",
+    "es": "Pausar",
+    "pt-BR": "Pausar",
+    "ja": "一時停止",
+    "zh-Hans": "暂停"
+  },
+  "Pause on battery power": {
+    "tr": "Pille çalışırken duraklat",
+    "de": "Im Akkubetrieb pausieren",
+    "fr": "Suspendre sur batterie",
+    "es": "Pausar con batería",
+    "pt-BR": "Pausar na bateria",
+    "ja": "バッテリー駆動中は一時停止",
+    "zh-Hans": "使用电池时暂停"
+  },
+  "Pause on metered networks": {
+    "tr": "Tarifeli bağlantılarda duraklat",
+    "de": "In getakteten Netzwerken pausieren",
+    "fr": "Suspendre sur les connexions limitées",
+    "es": "Pausar en conexiones de uso medido",
+    "pt-BR": "Pausar em conexões limitadas",
+    "ja": "従量制課金接続では一時停止",
+    "zh-Hans": "使用按流量计费的网络时暂停"
+  },
+  "Pause Watching": {
+    "tr": "İzlemeyi Duraklat",
+    "de": "Überwachung pausieren",
+    "fr": "Suspendre la surveillance",
+    "es": "Pausar la vigilancia",
+    "pt-BR": "Pausar monitoramento",
+    "ja": "監視を一時停止",
+    "zh-Hans": "暂停监视"
+  },
+  "Paused": {
+    "tr": "Duraklatıldı",
+    "de": "Pausiert",
+    "fr": "Suspendu",
+    "es": "En pausa",
+    "pt-BR": "Pausado",
+    "ja": "一時停止中",
+    "zh-Hans": "已暂停"
+  },
+  "Paused on a metered network": {
+    "tr": "Tarifeli bağlantı nedeniyle duraklatıldı",
+    "de": "Pausiert im getakteten Netzwerk",
+    "fr": "Suspendu sur une connexion limitée",
+    "es": "En pausa por conexión de uso medido",
+    "pt-BR": "Pausado em conexão limitada",
+    "ja": "従量制課金接続のため一時停止中",
+    "zh-Hans": "因按流量计费的网络而暂停"
+  },
+  "Paused on battery power": {
+    "tr": "Pille çalıştığı için duraklatıldı",
+    "de": "Pausiert im Akkubetrieb",
+    "fr": "Suspendu sur batterie",
+    "es": "En pausa por usar batería",
+    "pt-BR": "Pausado na bateria",
+    "ja": "バッテリー駆動のため一時停止中",
+    "zh-Hans": "因使用电池而暂停"
+  },
+  "Paused until {0}": {
+    "tr": "{0} saatine kadar duraklatıldı",
+    "de": "Pausiert bis {0}",
+    "fr": "Suspendu jusqu’à {0}",
+    "es": "En pausa hasta {0}",
+    "pt-BR": "Pausado até {0}",
+    "ja": "{0}まで一時停止中",
+    "zh-Hans": "已暂停至 {0}"
+  },
+  "Removed destination": {
+    "tr": "Kaldırılmış hedef",
+    "de": "Entferntes Ziel",
+    "fr": "Destination supprimée",
+    "es": "Destino eliminado",
+    "pt-BR": "Destino removido",
+    "ja": "削除されたアップロード先",
+    "zh-Hans": "已移除的上传目标"
+  },
+  "Replace the uploaded file (keeps the link)": {
+    "tr": "Yüklenen dosyanın yerine koy (bağlantı aynı kalır)",
+    "de": "Hochgeladene Datei ersetzen (Link bleibt gleich)",
+    "fr": "Remplacer le fichier envoyé (le lien reste le même)",
+    "es": "Reemplazar el archivo subido (mantiene el enlace)",
+    "pt-BR": "Substituir o arquivo enviado (mantém o link)",
+    "ja": "アップロード済みのファイルを置き換える（リンクはそのまま）",
+    "zh-Hans": "替换已上传的文件（链接不变）"
+  },
+  "Reset": {
+    "tr": "Sıfırla",
+    "de": "Zurücksetzen",
+    "fr": "Réinitialiser",
+    "es": "Restablecer",
+    "pt-BR": "Redefinir",
+    "ja": "リセット",
+    "zh-Hans": "重置"
+  },
+  "Reset…": {
+    "tr": "Sıfırla…",
+    "de": "Zurücksetzen …",
+    "fr": "Réinitialiser…",
+    "es": "Restablecer…",
+    "pt-BR": "Redefinir…",
+    "ja": "リセット…",
+    "zh-Hans": "重置…"
+  },
+  "Resume": {
+    "tr": "Sürdür",
+    "de": "Fortsetzen",
+    "fr": "Reprendre",
+    "es": "Reanudar",
+    "pt-BR": "Retomar",
+    "ja": "再開",
+    "zh-Hans": "恢复"
+  },
+  "Resume Watching": {
+    "tr": "İzlemeyi Sürdür",
+    "de": "Überwachung fortsetzen",
+    "fr": "Reprendre la surveillance",
+    "es": "Reanudar la vigilancia",
+    "pt-BR": "Retomar monitoramento",
+    "ja": "監視を再開",
+    "zh-Hans": "恢复监视"
+  },
+  "Retry Failed": {
+    "tr": "Başarısızları Tekrar Dene",
+    "de": "Fehlgeschlagene erneut versuchen",
+    "fr": "Réessayer les échecs",
+    "es": "Reintentar los fallidos",
+    "pt-BR": "Tentar falhas novamente",
+    "ja": "失敗したものを再試行",
+    "zh-Hans": "重试失败的文件"
+  },
+  "Screenshots only": {
+    "tr": "Yalnızca ekran görüntüleri",
+    "de": "Nur Bildschirmfotos",
+    "fr": "Captures d’écran uniquement",
+    "es": "Solo capturas de pantalla",
+    "pt-BR": "Só capturas de tela",
+    "ja": "スクリーンショットのみ",
+    "zh-Hans": "仅截图"
+  },
+  "Script {0} failed: {1}": {
+    "tr": "{0} betiği başarısız oldu: {1}",
+    "de": "Skript {0} fehlgeschlagen: {1}",
+    "fr": "Échec du script {0} : {1}",
+    "es": "Falló el script {0}: {1}",
+    "pt-BR": "O script {0} falhou: {1}",
+    "ja": "スクリプト{0}が失敗しました：{1}",
+    "zh-Hans": "脚本 {0} 失败：{1}"
+  },
+  "Scripts": {
+    "tr": "Betikler",
+    "de": "Skripte",
+    "fr": "Scripts",
+    "es": "Scripts",
+    "pt-BR": "Scripts",
+    "ja": "スクリプト",
+    "zh-Hans": "脚本"
+  },
+  "Sending…": {
+    "tr": "Gönderiliyor…",
+    "de": "Wird gesendet …",
+    "fr": "Envoi…",
+    "es": "Enviando…",
+    "pt-BR": "Enviando…",
+    "ja": "送信中…",
+    "zh-Hans": "正在发送…"
+  },
+  "Separated by commas, for example *.png, *.jpg": {
+    "tr": "Virgülle ayrılmış, örneğin *.png, *.jpg",
+    "de": "Durch Kommas getrennt, zum Beispiel *.png, *.jpg",
+    "fr": "Séparés par des virgules, par exemple *.png, *.jpg",
+    "es": "Separados por comas, por ejemplo *.png, *.jpg",
+    "pt-BR": "Separados por vírgulas, por exemplo *.png, *.jpg",
+    "ja": "カンマ区切り（例：*.png, *.jpg）",
+    "zh-Hans": "用逗号分隔，例如 *.png, *.jpg"
+  },
+  "Show in Explorer": {
+    "tr": "Dosya Gezgini'nde Göster",
+    "de": "Im Explorer anzeigen",
+    "fr": "Afficher dans l’Explorateur",
+    "es": "Mostrar en el Explorador",
+    "pt-BR": "Mostrar no Explorador",
+    "ja": "エクスプローラーで表示",
+    "zh-Hans": "在资源管理器中显示"
+  },
+  "Skip": {
+    "tr": "Atla",
+    "de": "Überspringen",
+    "fr": "Ignorer",
+    "es": "Omitir",
+    "pt-BR": "Ignorar",
+    "ja": "スキップ",
+    "zh-Hans": "跳过"
+  },
+  "Skip Existing Files": {
+    "tr": "Mevcut Dosyaları Atla",
+    "de": "Vorhandene Dateien überspringen",
+    "fr": "Ignorer les fichiers existants",
+    "es": "Omitir los archivos existentes",
+    "pt-BR": "Ignorar arquivos existentes",
+    "ja": "既存のファイルをスキップ",
+    "zh-Hans": "跳过现有文件"
+  },
+  "Source": {
+    "tr": "Kaynak",
+    "de": "Quelle",
+    "fr": "Source",
+    "es": "Origen",
+    "pt-BR": "Origem",
+    "ja": "ソース",
+    "zh-Hans": "来源"
+  },
+  "Stop watching “{0}”?": {
+    "tr": "“{0}” izlenmesin mi?",
+    "de": "„{0}“ nicht mehr überwachen?",
+    "fr": "Arrêter de surveiller « {0} » ?",
+    "es": "¿Dejar de vigilar “{0}”?",
+    "pt-BR": "Parar de monitorar “{0}”?",
+    "ja": "「{0}」の監視をやめますか？",
+    "zh-Hans": "要停止监视“{0}”吗？"
+  },
+  "Subfolders": {
+    "tr": "Alt klasörler",
+    "de": "Unterordner",
+    "fr": "Sous-dossiers",
+    "es": "Subcarpetas",
+    "pt-BR": "Subpastas",
+    "ja": "サブフォルダ",
+    "zh-Hans": "子文件夹"
+  },
+  "System folders can’t be watched.": {
+    "tr": "Sistem klasörleri izlenemez.",
+    "de": "Systemordner können nicht überwacht werden.",
+    "fr": "Les dossiers système ne peuvent pas être surveillés.",
+    "es": "No se pueden vigilar las carpetas del sistema.",
+    "pt-BR": "Pastas do sistema não podem ser monitoradas.",
+    "ja": "システムフォルダは監視できません。",
+    "zh-Hans": "无法监视系统文件夹。"
+  },
+  "Temporary and partly downloaded files are always left out.": {
+    "tr": "Geçici ve yarım inmiş dosyalar her zaman hariç tutulur.",
+    "de": "Temporäre und unvollständig geladene Dateien werden immer ausgelassen.",
+    "fr": "Les fichiers temporaires et partiellement téléchargés sont toujours exclus.",
+    "es": "Los archivos temporales y las descargas a medias siempre se excluyen.",
+    "pt-BR": "Arquivos temporários e downloads incompletos ficam sempre de fora.",
+    "ja": "一時ファイルやダウンロード途中のファイルは常に除外されます。",
+    "zh-Hans": "临时文件和未下载完的文件始终会被排除。"
+  },
+  "Test": {
+    "tr": "Dene",
+    "de": "Testen",
+    "fr": "Tester",
+    "es": "Probar",
+    "pt-BR": "Testar",
+    "ja": "テスト",
+    "zh-Hans": "测试"
+  },
+  "That folder doesn’t exist.": {
+    "tr": "Bu klasör yok.",
+    "de": "Diesen Ordner gibt es nicht.",
+    "fr": "Ce dossier n’existe pas.",
+    "es": "Esa carpeta no existe.",
+    "pt-BR": "Essa pasta não existe.",
+    "ja": "そのフォルダは存在しません。",
+    "zh-Hans": "该文件夹不存在。"
+  },
+  "the file’s folder inside it": {
+    "tr": "içindeki dosyanın klasörü",
+    "de": "der Ordner der Datei darin",
+    "fr": "le dossier du fichier à l’intérieur",
+    "es": "la carpeta del archivo dentro de ella",
+    "pt-BR": "a pasta do arquivo dentro dela",
+    "ja": "その中でのファイルのフォルダ",
+    "zh-Hans": "文件在其中所在的文件夹"
+  },
+  "The URL must start with https:// or http://.": {
+    "tr": "URL https:// veya http:// ile başlamalı.",
+    "de": "Die URL muss mit https:// oder http:// beginnen.",
+    "fr": "L’URL doit commencer par https:// ou http://.",
+    "es": "La URL debe empezar por https:// o http://.",
+    "pt-BR": "A URL precisa começar com https:// ou http://.",
+    "ja": "URLはhttps://またはhttp://で始まる必要があります。",
+    "zh-Hans": "URL 必须以 https:// 或 http:// 开头。"
+  },
+  "the watched folder’s name": {
+    "tr": "izlenen klasörün adı",
+    "de": "der Name des überwachten Ordners",
+    "fr": "le nom du dossier surveillé",
+    "es": "el nombre de la carpeta vigilada",
+    "pt-BR": "o nome da pasta monitorada",
+    "ja": "監視フォルダの名前",
+    "zh-Hans": "监视文件夹的名称"
+  },
+  "This folder already has 1 file. Upload it now?": {
+    "tr": "Bu klasörde zaten 1 dosya var. Şimdi yüklensin mi?",
+    "de": "Dieser Ordner enthält schon 1 Datei. Jetzt hochladen?",
+    "fr": "Ce dossier contient déjà 1 fichier. L’envoyer maintenant ?",
+    "es": "Esta carpeta ya tiene 1 archivo. ¿Subirlo ahora?",
+    "pt-BR": "Esta pasta já tem 1 arquivo. Enviar agora?",
+    "ja": "このフォルダにはすでに1個のファイルがあります。今すぐアップロードしますか？",
+    "zh-Hans": "此文件夹中已有 1 个文件。现在上传吗？"
+  },
+  "This folder already has {0} files. Upload them now?": {
+    "tr": "Bu klasörde zaten {0} dosya var. Şimdi yüklensin mi?",
+    "de": "Dieser Ordner enthält schon {0} Dateien. Jetzt hochladen?",
+    "fr": "Ce dossier contient déjà {0} fichiers. Les envoyer maintenant ?",
+    "es": "Esta carpeta ya tiene {0} archivos. ¿Subirlos ahora?",
+    "pt-BR": "Esta pasta já tem {0} arquivos. Enviar agora?",
+    "ja": "このフォルダにはすでに{0}個のファイルがあります。今すぐアップロードしますか？",
+    "zh-Hans": "此文件夹中已有 {0} 个文件。现在上传吗？"
+  },
+  "This folder overlaps “{0}”, which is already watched.": {
+    "tr": "Bu klasör zaten izlenen “{0}” ile iç içe.",
+    "de": "Dieser Ordner überschneidet sich mit „{0}“, das bereits überwacht wird.",
+    "fr": "Ce dossier chevauche « {0} », qui est déjà surveillé.",
+    "es": "Esta carpeta se superpone con “{0}”, que ya está vigilada.",
+    "pt-BR": "Esta pasta se sobrepõe a “{0}”, que já é monitorada.",
+    "ja": "このフォルダは、すでに監視中の「{0}」と重なっています。",
+    "zh-Hans": "此文件夹与已在监视的“{0}”重叠。"
+  },
+  "Turn On": {
+    "tr": "Aç",
+    "de": "Einschalten",
+    "fr": "Activer",
+    "es": "Activar",
+    "pt-BR": "Ativar",
+    "ja": "オンにする",
+    "zh-Hans": "打开"
+  },
+  "Turn on Open at Login so watching continues after a restart": {
+    "tr": "Yeniden başlatmadan sonra izleme sürsün diye “Oturum açılışında başlat”ı aç",
+    "de": "Schalte „Bei der Anmeldung starten“ ein, damit die Überwachung nach einem Neustart weiterläuft",
+    "fr": "Activez le lancement à l’ouverture de session pour que la surveillance continue après un redémarrage",
+    "es": "Activa “Abrir al iniciar sesión” para que la vigilancia siga tras reiniciar",
+    "pt-BR": "Ative “Abrir ao iniciar sessão” para o monitoramento continuar depois de reiniciar",
+    "ja": "再起動後も監視を続けるには「ログイン時に起動」をオンにしてください",
+    "zh-Hans": "打开“登录时启动”，重启后也能继续监视"
+  },
+  "Until I Resume": {
+    "tr": "Ben sürdürene kadar",
+    "de": "Bis ich fortsetze",
+    "fr": "Jusqu’à ce que je reprenne",
+    "es": "Hasta que lo reanude",
+    "pt-BR": "Até eu retomar",
+    "ja": "再開するまで",
+    "zh-Hans": "直到我恢复"
+  },
+  "Until Tomorrow": {
+    "tr": "Yarına kadar",
+    "de": "Bis morgen",
+    "fr": "Jusqu’à demain",
+    "es": "Hasta mañana",
+    "pt-BR": "Até amanhã",
+    "ja": "明日まで",
+    "zh-Hans": "直到明天"
+  },
+  "Upload again with a new link": {
+    "tr": "Yeni bir bağlantıyla tekrar yükle",
+    "de": "Mit neuem Link erneut hochladen",
+    "fr": "Renvoyer avec un nouveau lien",
+    "es": "Volver a subir con un enlace nuevo",
+    "pt-BR": "Enviar de novo com um novo link",
+    "ja": "新しいリンクで再アップロード",
+    "zh-Hans": "以新链接重新上传"
+  },
+  "Upload files the moment they land in a folder.": {
+    "tr": "Dosyaları bir klasöre düştükleri anda yükle.",
+    "de": "Lade Dateien hoch, sobald sie in einem Ordner landen.",
+    "fr": "Envoyez les fichiers dès qu’ils arrivent dans un dossier.",
+    "es": "Sube los archivos en cuanto llegan a una carpeta.",
+    "pt-BR": "Envie arquivos assim que chegarem a uma pasta.",
+    "ja": "フォルダに入った瞬間にファイルをアップロードします。",
+    "zh-Hans": "文件一进入文件夹就立即上传。"
+  },
+  "Upload online-only files (downloads them first)": {
+    "tr": "Yalnızca çevrimiçi dosyaları da yükle (önce indirir)",
+    "de": "Nur online verfügbare Dateien hochladen (lädt sie zuerst herunter)",
+    "fr": "Envoyer les fichiers uniquement en ligne (les télécharge d’abord)",
+    "es": "Subir archivos solo en línea (los descarga primero)",
+    "pt-BR": "Enviar arquivos somente online (baixa-os antes)",
+    "ja": "オンライン専用のファイルもアップロード（先にダウンロードします）",
+    "zh-Hans": "上传仅联机文件（会先下载）"
+  },
+  "Upload Pending Now": {
+    "tr": "Bekleyenleri Şimdi Yükle",
+    "de": "Wartende jetzt hochladen",
+    "fr": "Envoyer les fichiers en attente",
+    "es": "Subir ahora los pendientes",
+    "pt-BR": "Enviar pendentes agora",
+    "ja": "保留中のファイルを今すぐアップロード",
+    "zh-Hans": "立即上传待处理文件"
+  },
+  "Upload Screenshots Automatically": {
+    "tr": "Ekran Görüntülerini Otomatik Yükle",
+    "de": "Bildschirmfotos automatisch hochladen",
+    "fr": "Envoyer les captures d’écran automatiquement",
+    "es": "Subir capturas de pantalla automáticamente",
+    "pt-BR": "Enviar capturas de tela automaticamente",
+    "ja": "スクリーンショットを自動でアップロード",
+    "zh-Hans": "自动上传截图"
+  },
+  "Upload Them": {
+    "tr": "Yükle",
+    "de": "Hochladen",
+    "fr": "Les envoyer",
+    "es": "Subirlos",
+    "pt-BR": "Enviar",
+    "ja": "アップロードする",
+    "zh-Hans": "上传"
+  },
+  "Uploaded {0} files from {1}": {
+    "tr": "{1} klasöründen {0} dosya yüklendi",
+    "de": "{0} Dateien aus {1} hochgeladen",
+    "fr": "{0} fichiers envoyés depuis {1}",
+    "es": "Se subieron {0} archivos de {1}",
+    "pt-BR": "{0} arquivos de {1} enviados",
+    "ja": "{1}から{0}個のファイルをアップロードしました",
+    "zh-Hans": "已从 {1} 上传 {0} 个文件"
+  },
+  "Uploading {0}": {
+    "tr": "{0} yükleniyor",
+    "de": "{0} werden hochgeladen",
+    "fr": "Envoi de {0}",
+    "es": "Subiendo {0}",
+    "pt-BR": "Enviando {0}",
+    "ja": "{0}件アップロード中",
+    "zh-Hans": "正在上传 {0} 个"
+  },
+  "Use destination’s path": {
+    "tr": "Hedefin yolunu kullan",
+    "de": "Pfad des Ziels verwenden",
+    "fr": "Utiliser le chemin de la destination",
+    "es": "Usar la ruta del destino",
+    "pt-BR": "Usar o caminho do destino",
+    "ja": "アップロード先のパスを使用",
+    "zh-Hans": "使用上传目标的路径"
+  },
+  "Videos": {
+    "tr": "Videolar",
+    "de": "Videos",
+    "fr": "Vidéos",
+    "es": "Vídeos",
+    "pt-BR": "Vídeos",
+    "ja": "動画",
+    "zh-Hans": "视频"
+  },
+  "Wait for a connection that isn’t metered, like your home Wi-Fi.": {
+    "tr": "Ev Wi-Fi'ın gibi tarifesiz bir bağlantıyı bekle.",
+    "de": "Warte auf eine nicht getaktete Verbindung, etwa dein WLAN zu Hause.",
+    "fr": "Attendre une connexion non limitée, comme votre Wi-Fi à la maison.",
+    "es": "Espera a una conexión sin uso medido, como el Wi-Fi de casa.",
+    "pt-BR": "Aguarda uma conexão não limitada, como o Wi-Fi de casa.",
+    "ja": "自宅のWi-Fiなど、従量制課金でない接続になるまで待ちます。",
+    "zh-Hans": "等待不按流量计费的网络，例如家里的 Wi-Fi。"
+  },
+  "Wait until this PC is plugged in.": {
+    "tr": "Bu bilgisayar prize takılana kadar bekle.",
+    "de": "Warte, bis dieser PC am Strom hängt.",
+    "fr": "Attendre que ce PC soit branché.",
+    "es": "Espera a que este PC esté enchufado.",
+    "pt-BR": "Aguarda até este PC estar na tomada.",
+    "ja": "このPCが電源に接続されるまで待ちます。",
+    "zh-Hans": "等待这台电脑接通电源。"
+  },
+  "Waiting for 1 file": {
+    "tr": "1 dosya bekleniyor",
+    "de": "Warte auf 1 Datei",
+    "fr": "1 fichier en attente",
+    "es": "Esperando 1 archivo",
+    "pt-BR": "Aguardando 1 arquivo",
+    "ja": "1個のファイルを待機中",
+    "zh-Hans": "正在等待 1 个文件"
+  },
+  "Waiting for {0} files": {
+    "tr": "{0} dosya bekleniyor",
+    "de": "Warte auf {0} Dateien",
+    "fr": "{0} fichiers en attente",
+    "es": "Esperando {0} archivos",
+    "pt-BR": "Aguardando {0} arquivos",
+    "ja": "{0}個のファイルを待機中",
+    "zh-Hans": "正在等待 {0} 个文件"
+  },
+  "Watch with Aktar": {
+    "tr": "Aktar ile İzle",
+    "de": "Mit Aktar überwachen",
+    "fr": "Surveiller avec Aktar",
+    "es": "Vigilar con Aktar",
+    "pt-BR": "Monitorar com o Aktar",
+    "ja": "Aktarで監視",
+    "zh-Hans": "用 Aktar 监视"
+  },
+  "Watched Folders": {
+    "tr": "İzlenen Klasörler",
+    "de": "Überwachte Ordner",
+    "fr": "Dossiers surveillés",
+    "es": "Carpetas vigiladas",
+    "pt-BR": "Pastas monitoradas",
+    "ja": "監視フォルダ",
+    "zh-Hans": "监视文件夹"
+  },
+  "Watched folders": {
+    "tr": "İzlenen klasörler",
+    "de": "Überwachte Ordner",
+    "fr": "Dossiers surveillés",
+    "es": "Carpetas vigiladas",
+    "pt-BR": "Pastas monitoradas",
+    "ja": "監視フォルダ",
+    "zh-Hans": "监视文件夹"
+  },
+  "Watched: {0}": {
+    "tr": "İzlenen: {0}",
+    "de": "Überwacht: {0}",
+    "fr": "Surveillé : {0}",
+    "es": "Vigilada: {0}",
+    "pt-BR": "Monitorada: {0}",
+    "ja": "監視：{0}",
+    "zh-Hans": "监视：{0}"
+  },
+  "Watching": {
+    "tr": "İzleniyor",
+    "de": "Wird überwacht",
+    "fr": "Surveillé",
+    "es": "Vigilando",
+    "pt-BR": "Monitorando",
+    "ja": "監視中",
+    "zh-Hans": "正在监视"
+  },
+  "Watching 1 folder": {
+    "tr": "1 klasör izleniyor",
+    "de": "1 Ordner wird überwacht",
+    "fr": "1 dossier surveillé",
+    "es": "Vigilando 1 carpeta",
+    "pt-BR": "Monitorando 1 pasta",
+    "ja": "1個のフォルダを監視中",
+    "zh-Hans": "正在监视 1 个文件夹"
+  },
+  "Watching paused": {
+    "tr": "İzleme duraklatıldı",
+    "de": "Überwachung pausiert",
+    "fr": "Surveillance suspendue",
+    "es": "Vigilancia en pausa",
+    "pt-BR": "Monitoramento pausado",
+    "ja": "監視を一時停止中",
+    "zh-Hans": "监视已暂停"
+  },
+  "Watching {0} folders": {
+    "tr": "{0} klasör izleniyor",
+    "de": "{0} Ordner werden überwacht",
+    "fr": "{0} dossiers surveillés",
+    "es": "Vigilando {0} carpetas",
+    "pt-BR": "Monitorando {0} pastas",
+    "ja": "{0}個のフォルダを監視中",
+    "zh-Hans": "正在监视 {0} 个文件夹"
+  },
+  "Webhook {0} failed: {1}": {
+    "tr": "{0} webhook'u başarısız oldu: {1}",
+    "de": "Webhook {0} fehlgeschlagen: {1}",
+    "fr": "Échec du webhook {0} : {1}",
+    "es": "Falló el webhook {0}: {1}",
+    "pt-BR": "O webhook {0} falhou: {1}",
+    "ja": "Webhook {0}が失敗しました：{1}",
+    "zh-Hans": "Webhook {0} 失败：{1}"
+  },
+  "When a file changes": {
+    "tr": "Bir dosya değiştiğinde",
+    "de": "Wenn sich eine Datei ändert",
+    "fr": "Quand un fichier change",
+    "es": "Cuando un archivo cambia",
+    "pt-BR": "Quando um arquivo muda",
+    "ja": "ファイルが変更されたとき",
+    "zh-Hans": "文件更改时"
+  },
+  "Your whole user folder can’t be watched. Pick a folder inside it.": {
+    "tr": "Kullanıcı klasörünün tamamı izlenemez. İçinden bir klasör seç.",
+    "de": "Dein ganzer Benutzerordner kann nicht überwacht werden. Wähle einen Ordner darin.",
+    "fr": "Votre dossier utilisateur entier ne peut pas être surveillé. Choisissez un dossier à l’intérieur.",
+    "es": "No se puede vigilar toda tu carpeta de usuario. Elige una carpeta dentro de ella.",
+    "pt-BR": "Não é possível monitorar sua pasta de usuário inteira. Escolha uma pasta dentro dela.",
+    "ja": "ユーザーフォルダ全体は監視できません。その中のフォルダを選択してください。",
+    "zh-Hans": "无法监视整个用户文件夹。请选择其中的一个文件夹。"
+  },
+  "{0} failed": {
+    "tr": "{0} başarısız",
+    "de": "{0} fehlgeschlagen",
+    "fr": "{0} en échec",
+    "es": "{0} fallidos",
+    "pt-BR": "{0} com falha",
+    "ja": "{0}件失敗",
+    "zh-Hans": "{0} 个失败"
+  },
+  "{0} files from {1} couldn’t be uploaded.": {
+    "tr": "{1} klasöründen {0} dosya yüklenemedi.",
+    "de": "{0} Dateien aus {1} konnten nicht hochgeladen werden.",
+    "fr": "{0} fichiers de {1} n’ont pas pu être envoyés.",
+    "es": "No se pudieron subir {0} archivos de {1}.",
+    "pt-BR": "Não foi possível enviar {0} arquivos de {1}.",
+    "ja": "{1}の{0}個のファイルをアップロードできませんでした。",
+    "zh-Hans": "{1} 中有 {0} 个文件无法上传。"
+  },
+  "{0} new files in {1}": {
+    "tr": "{1} klasöründe {0} yeni dosya",
+    "de": "{0} neue Dateien in {1}",
+    "fr": "{0} nouveaux fichiers dans {1}",
+    "es": "{0} archivos nuevos en {1}",
+    "pt-BR": "{0} arquivos novos em {1}",
+    "ja": "{1}に{0}個の新しいファイル",
+    "zh-Hans": "{1} 中有 {0} 个新文件"
+  },
+  "{0} uploading": {
+    "tr": "{0} yükleniyor",
+    "de": "{0} werden hochgeladen",
+    "fr": "{0} en cours d’envoi",
+    "es": "{0} subiendo",
+    "pt-BR": "{0} enviando",
+    "ja": "{0}件アップロード中",
+    "zh-Hans": "{0} 个正在上传"
+  },
+  "{0} waiting": {
+    "tr": "{0} bekliyor",
+    "de": "{0} warten",
+    "fr": "{0} en attente",
+    "es": "{0} en espera",
+    "pt-BR": "{0} aguardando",
+    "ja": "{0}件待機中",
+    "zh-Hans": "{0} 个等待中"
+  },
+  "{0} was uploaded, but Aktar couldn’t confirm it in the bucket, so the original was kept.": {
+    "tr": "{0} yüklendi, ancak Aktar bucket'ta doğrulayamadığı için asıl dosya yerinde bırakıldı.",
+    "de": "{0} wurde hochgeladen, aber Aktar konnte sie im Bucket nicht bestätigen, daher wurde das Original behalten.",
+    "fr": "{0} a été envoyé, mais Aktar n’a pas pu le confirmer dans le bucket : l’original a été conservé.",
+    "es": "{0} se subió, pero Aktar no pudo confirmarlo en el bucket, así que se conservó el original.",
+    "pt-BR": "{0} foi enviado, mas o Aktar não conseguiu confirmá-lo no bucket, então o original foi mantido.",
+    "ja": "{0}はアップロードされましたが、バケット内で確認できなかったため、元のファイルは残しました。",
+    "zh-Hans": "{0} 已上传，但 Aktar 无法在存储桶中确认，因此保留了原文件。"
+  },
+  "Couldn't delete {0} from the bucket": {
+    "tr": "{0} bucket'tan silinemedi",
+    "de": "{0} konnte nicht aus dem Bucket gelöscht werden",
+    "fr": "Impossible de supprimer {0} du bucket",
+    "es": "No se pudo eliminar {0} del bucket",
+    "pt-BR": "Não foi possível excluir {0} do bucket",
+    "ja": "{0}をバケットから削除できませんでした",
+    "zh-Hans": "无法从存储桶删除 {0}"
+  },
+  "Delete from Bucket": {
+    "tr": "Bucket'tan Sil",
+    "de": "Aus dem Bucket löschen",
+    "fr": "Supprimer du bucket",
+    "es": "Eliminar del bucket",
+    "pt-BR": "Excluir do bucket",
+    "ja": "バケットから削除",
+    "zh-Hans": "从存储桶删除"
+  },
+  "Delete it from the bucket too": {
+    "tr": "Bucket'tan da sil",
+    "de": "Auch aus dem Bucket löschen",
+    "fr": "Le supprimer aussi du bucket",
+    "es": "Eliminarlo también del bucket",
+    "pt-BR": "Excluí-lo também do bucket",
+    "ja": "バケットからも削除する",
+    "zh-Hans": "也从存储桶中删除"
+  },
+  "Deleted {0} files from the bucket": {
+    "tr": "{0} dosya bucket'tan silindi",
+    "de": "{0} Dateien wurden aus dem Bucket gelöscht",
+    "fr": "{0} fichiers ont été supprimés du bucket",
+    "es": "Se eliminaron {0} archivos del bucket",
+    "pt-BR": "{0} arquivos foram excluídos do bucket",
+    "ja": "{0}個のファイルをバケットから削除しました",
+    "zh-Hans": "已从存储桶删除 {0} 个文件"
+  },
+  "Deleted {0} from the bucket": {
+    "tr": "{0} bucket'tan silindi",
+    "de": "{0} wurde aus dem Bucket gelöscht",
+    "fr": "{0} a été supprimé du bucket",
+    "es": "Se eliminó {0} del bucket",
+    "pt-BR": "{0} foi excluído do bucket",
+    "ja": "{0}をバケットから削除しました",
+    "zh-Hans": "已从存储桶删除 {0}"
+  },
+  "Deleting a file from this folder also deletes its upload. Links to it stop working.": {
+    "tr": "Bu klasörden bir dosyayı silmek yüklemesini de siler. Ona giden bağlantılar çalışmaz olur.",
+    "de": "Wenn du eine Datei aus diesem Ordner löschst, wird auch ihr Upload gelöscht. Links darauf funktionieren dann nicht mehr.",
+    "fr": "Supprimer un fichier de ce dossier supprime aussi son envoi. Les liens vers celui-ci cessent de fonctionner.",
+    "es": "Eliminar un archivo de esta carpeta también elimina su subida. Los enlaces dejan de funcionar.",
+    "pt-BR": "Excluir um arquivo desta pasta também exclui o envio dele. Os links param de funcionar.",
+    "ja": "このフォルダからファイルを削除すると、そのアップロードも削除されます。リンクは使えなくなります。",
+    "zh-Hans": "从此文件夹删除文件也会删除其上传内容，相关链接将失效。"
+  },
+  "Keep the uploaded file": {
+    "tr": "Yüklenen dosyayı koru",
+    "de": "Hochgeladene Datei behalten",
+    "fr": "Conserver le fichier envoyé",
+    "es": "Conservar el archivo subido",
+    "pt-BR": "Manter o arquivo enviado",
+    "ja": "アップロード済みのファイルを残す",
+    "zh-Hans": "保留已上传的文件"
+  },
+  "Keep Uploaded Files": {
+    "tr": "Yüklenen Dosyaları Koru",
+    "de": "Hochgeladene Dateien behalten",
+    "fr": "Conserver les fichiers envoyés",
+    "es": "Conservar los archivos subidos",
+    "pt-BR": "Manter arquivos enviados",
+    "ja": "アップロード済みのファイルを残す",
+    "zh-Hans": "保留已上传的文件"
+  },
+  "Only available when the original file stays in the folder.": {
+    "tr": "Yalnızca asıl dosya klasörde kaldığında kullanılabilir.",
+    "de": "Nur verfügbar, wenn die Originaldatei im Ordner bleibt.",
+    "fr": "Disponible uniquement si le fichier d’origine reste dans le dossier.",
+    "es": "Solo disponible cuando el archivo original se queda en la carpeta.",
+    "pt-BR": "Disponível só quando o arquivo original fica na pasta.",
+    "ja": "元のファイルがフォルダに残る場合のみ使用できます。",
+    "zh-Hans": "仅在原文件保留在文件夹中时可用。"
+  },
+  "When a file is deleted": {
+    "tr": "Bir dosya silindiğinde",
+    "de": "Wenn eine Datei gelöscht wird",
+    "fr": "Quand un fichier est supprimé",
+    "es": "Cuando se elimina un archivo",
+    "pt-BR": "Quando um arquivo é excluído",
+    "ja": "ファイルが削除されたとき",
+    "zh-Hans": "文件被删除时"
+  },
+  "{0} files were removed from {1}. Delete them from the bucket too?": {
+    "tr": "{1} klasöründen {0} dosya kaldırıldı. Bucket'tan da silinsinler mi?",
+    "de": "{0} Dateien wurden aus {1} entfernt. Auch aus dem Bucket löschen?",
+    "fr": "{0} fichiers ont été retirés de {1}. Les supprimer aussi du bucket ?",
+    "es": "Se quitaron {0} archivos de {1}. ¿Eliminarlos también del bucket?",
+    "pt-BR": "{0} arquivos foram removidos de {1}. Excluí-los também do bucket?",
+    "ja": "{1}から{0}個のファイルが削除されました。バケットからも削除しますか？",
+    "zh-Hans": "已从 {1} 中移除 {0} 个文件。也从存储桶中删除它们吗？"
+  },
+  "Open Aktar to delete or keep them.": {
+    "tr": "Silmek ya da korumak için Aktar'ı aç.",
+    "de": "Öffne Aktar, um sie zu löschen oder zu behalten.",
+    "fr": "Ouvrez Aktar pour les supprimer ou les conserver.",
+    "es": "Abre Aktar para eliminarlos o conservarlos.",
+    "pt-BR": "Abra o Aktar para excluí-los ou mantê-los.",
+    "ja": "Aktarを開いて、削除するか残すか選んでください。",
+    "zh-Hans": "打开 Aktar 选择删除或保留。"
+  },
+  "Ask before deleting": {
+    "tr": "Silmeden önce sor",
+    "de": "Vor dem Löschen fragen",
+    "fr": "Demander avant de supprimer",
+    "es": "Preguntar antes de eliminar",
+    "pt-BR": "Perguntar antes de excluir",
+    "ja": "削除する前に確認",
+    "zh-Hans": "删除前询问"
+  },
+  "Aktar asks before it deletes anything from the bucket.": {
+    "tr": "Aktar bucket'tan bir şey silmeden önce sorar.",
+    "de": "Aktar fragt, bevor etwas aus dem Bucket gelöscht wird.",
+    "fr": "Aktar demande avant de supprimer quoi que ce soit du bucket.",
+    "es": "Aktar pregunta antes de eliminar cualquier cosa del bucket.",
+    "pt-BR": "O Aktar pergunta antes de excluir qualquer coisa do bucket.",
+    "ja": "Aktarはバケットから何かを削除する前に確認します。",
+    "zh-Hans": "Aktar 从存储桶删除任何内容前都会先询问。"
+  },
+  "{0} was removed from {1}. Delete it from the bucket too?": {
+    "tr": "{0}, {1} klasöründen kaldırıldı. Bucket'tan da silinsin mi?",
+    "de": "{0} wurde aus {1} entfernt. Auch aus dem Bucket löschen?",
+    "fr": "{0} a été retiré de {1}. Le supprimer aussi du bucket ?",
+    "es": "Se quitó {0} de {1}. ¿Eliminarlo también del bucket?",
+    "pt-BR": "{0} foi removido de {1}. Excluí-lo também do bucket?",
+    "ja": "{1}から{0}が削除されました。バケットからも削除しますか？",
+    "zh-Hans": "已从 {1} 中移除 {0}。也从存储桶中删除它吗？"
   }
 }

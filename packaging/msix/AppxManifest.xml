@@ -9,8 +9,11 @@
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap3 desktop rescap">
+  IgnorableNamespaces="uap uap3 desktop desktop4 desktop5 com rescap">
 
   <Identity
     Name="{{IDENTITY_NAME}}"
@@ -67,6 +70,32 @@
         <desktop:Extension Category="windows.startupTask" Executable="aktar.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="AktarStartup" Enabled="false" DisplayName="Aktar" />
         </desktop:Extension>
+
+        <!-- File Explorer's right-click menu: "Upload with Aktar" for files
+             and folders, "Watch with Aktar" for folders. A package can't
+             write the registry entries the NSIS install uses, so these are
+             COM classes served by aktar.exe itself (src/explorer_command.rs),
+             which hands the paths on to Aktar like the NSIS menu does. The
+             class IDs must match the ones there. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="aktar.exe" Arguments="--explorer-command" DisplayName="Aktar">
+              <com:Class Id="6c2f6a5e-5b1d-4f0e-9a57-3d1c2b7a8e41" DisplayName="Upload with Aktar" />
+              <com:Class Id="0b8e4d73-92a6-4c55-8f1e-7a4d6c2e9b13" DisplayName="Watch with Aktar" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="AktarUpload" Clsid="6c2f6a5e-5b1d-4f0e-9a57-3d1c2b7a8e41" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="AktarUpload" Clsid="6c2f6a5e-5b1d-4f0e-9a57-3d1c2b7a8e41" />
+              <desktop5:Verb Id="AktarWatch" Clsid="0b8e4d73-92a6-4c55-8f1e-7a4d6c2e9b13" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
       </Extensions>
     </Application>
   </Applications>

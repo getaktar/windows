@@ -15,6 +15,7 @@ use crate::multipart::SessionStore;
 use crate::settings::SettingsStore;
 use crate::updater::UpdateService;
 use crate::uploads::UploadManager;
+use crate::watched::WatchService;
 
 pub mod events {
     pub const DESTINATIONS_CHANGED: &str = "destinations-changed";
@@ -30,6 +31,11 @@ pub mod events {
     pub const PANEL_SHOWN: &str = "panel-shown";
     /// Files are waiting in (or were taken out of) "Name This Upload".
     pub const NAMES_CHANGED: &str = "names-changed";
+    /// Watched folders, their status, or the pause changed.
+    pub const WATCHED_CHANGED: &str = "watched-changed";
+    /// Settings should switch tabs or add a watched folder (see
+    /// `watched::take_request`).
+    pub const SETTINGS_REQUEST: &str = "settings-request";
 }
 
 #[derive(Clone, Serialize)]
@@ -50,6 +56,7 @@ pub struct Core {
     pub upload_sessions: SessionStore,
     pub local_api: LocalApiService,
     pub updater: UpdateService,
+    pub watched: WatchService,
     pub thumbnails_dir: PathBuf,
     /// When the app started, to tell a deep link that launched Aktar from
     /// one sent to an already running copy.
@@ -71,16 +78,19 @@ impl Core {
         // stays on this PC. SQLite locks and WAL files don't survive a
         // roaming or redirected (network) AppData, common in companies.
         let history_dir = move_history(&data_dir, &local_data_dir);
+        let history = History::open(&history_dir, thumbnails_dir.clone())?;
+        let watched = WatchService::new(app, &data_dir, history.ledger()?);
 
         Ok(Arc::new(Core {
             app: app.clone(),
             settings: SettingsStore::load(&data_dir),
             destinations: DestinationStore::load(&data_dir),
-            history: History::open(&history_dir, thumbnails_dir.clone())?,
+            history,
             uploads: UploadManager::default(),
             upload_sessions: SessionStore::load(&local_data_dir),
             local_api: LocalApiService::default(),
             updater: UpdateService::default(),
+            watched,
             thumbnails_dir,
             launched_at: std::time::Instant::now(),
         }))

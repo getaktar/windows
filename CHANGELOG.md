@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Watched folders (Settings > Watched Folders): files that land in a folder
+  you pick upload on their own. "Upload Screenshots Automatically" watches
+  Windows' Screenshots folder and copies each screenshot's link. Each folder
+  has its own destination, path, link and "Delete after", which files it
+  takes (all, images, videos, or your own patterns, sizes, and subfolders),
+  what happens when a file changes (ignore it, upload it again, or replace
+  the upload and keep its link), what happens to the original afterwards
+  (keep it, move it to the Recycle Bin, or into an "Uploaded" subfolder),
+  and whether the link is copied and how you're notified. Aktar waits
+  until a file is completely written, skips partial downloads and
+  temporary files, notices renames, asks before uploading more than 50
+  files at once, retries uploads that failed on the network, and picks up
+  what arrived while it was closed or paused
+- Pause watching for an hour, until tomorrow, or until you resume, from
+  Settings, the panel, or the tray menu; or automatically on battery power
+  or a metered network
+- Webhooks and scripts for a watched folder, run after each upload with its
+  details as JSON
+- "When a file is deleted" for each watched folder: keep the uploaded file
+  (the default), or delete it from the bucket too, a few seconds after the
+  file is deleted from the folder. Not when the upload reused an earlier
+  upload's link or another file still uses it, never for Aktar's own moves
+  to the Recycle Bin or "Uploaded". "Ask before deleting" (on by default)
+  asks about every deletion in the panel, Settings, and a notification, and
+  nothing is deleted until you answer; with it off, deleting more than 50
+  files at once still asks first. A file saved in place by deleting and
+  writing it again, or renamed, keeps its upload
+- "Watch with Aktar" in File Explorer's right-click menu for folders. The
+  Microsoft Store version now has "Upload with Aktar" and "Watch with
+  Aktar" in the menu too
+- `{folder}` and `{subpath}` in the object path: the watched folder's name
+  and the file's folder inside it
+- The Library shows which watched folder an upload came from, with a
+  filter for them
+- Local API: `GET /v1/watched-folders`, `POST /v1/watched-folders/pause`,
+  `/resume` and `/{id}` (`{"enabled": false}`), and `watching` in
+  `/v1/status`. Links: `aktar://watch`, `aktar://watch/pause?minutes=60`,
+  `aktar://watch/resume`
+
 ### Changed
 
 - The local API's upload reply also has `reused` inside `upload`, where the Mac app puts it

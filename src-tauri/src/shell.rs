@@ -1,8 +1,9 @@
-//! "Upload with Aktar" from File Explorer. The right-click menu entry (added
-//! by `register_context_menu`) and the "Send to" shortcut (added by the
-//! installer, see `windows/installer-hooks.nsh`) start
-//! `aktar.exe --upload <paths>`. A running Aktar gets those arguments from
-//! the single-instance plugin; otherwise the launch they started uploads
+//! "Upload with Aktar" and "Watch with Aktar" from File Explorer. The
+//! right-click menu entries (added by `register_context_menu`) and the
+//! "Send to" shortcut (added by the installer, see
+//! `windows/installer-hooks.nsh`) start `aktar.exe --upload <paths>` or
+//! `aktar.exe --watch <folder>`. A running Aktar gets those arguments from
+//! the single-instance plugin; otherwise the launch they started handles
 //! them.
 
 use std::path::{Path, PathBuf};
@@ -11,10 +12,31 @@ use crate::core::SharedCore;
 use crate::uploads::{self, UploadInput};
 
 pub const UPLOAD_FLAG: &str = "--upload";
+pub const WATCH_FLAG: &str = "--watch";
 
 /// True when these launch arguments ask for an upload.
 pub fn is_upload(argv: &[String]) -> bool {
     argv.iter().any(|arg| arg == UPLOAD_FLAG)
+}
+
+/// True when these launch arguments ask to watch a folder.
+pub fn is_watch(argv: &[String]) -> bool {
+    argv.iter().any(|arg| arg == WATCH_FLAG)
+}
+
+/// Opens Settings on Watched Folders to add the folder named after
+/// `--watch`, which asks about the files already in it first.
+pub fn handle_watch(core: &SharedCore, argv: &[String], cwd: &Path) {
+    let Some(folder) = argv
+        .iter()
+        .position(|arg| arg == WATCH_FLAG)
+        .and_then(|flag| argv.get(flag + 1))
+        .map(|arg| cwd.join(arg))
+        .filter(|path| path.is_dir())
+    else {
+        return;
+    };
+    crate::watched::request_watch(core, folder);
 }
 
 /// Uploads the files and folders named after `--upload`, resolving
@@ -29,11 +51,12 @@ pub fn handle(core: &SharedCore, argv: &[String], cwd: &Path) {
 }
 
 /// Adds "Upload with Aktar" to File Explorer's right-click menu for files
-/// and folders,
-/// in the current language and pointing at this copy of aktar.exe, so it's
-/// run at launch and when the language changes. The uninstaller removes it.
+/// and folders, and "Watch with Aktar" for folders, in the current language
+/// and pointing at this copy of aktar.exe, so it's run at launch and when
+/// the language changes. The uninstaller removes it.
 /// A Microsoft Store (MSIX) install can't add it: a package's registry
-/// writes stay private to the package.
+/// writes stay private to the package. Its manifest declares the same
+/// entries instead, served by `explorer_command`.
 #[cfg(windows)]
 pub fn register_context_menu() {
     use windows_sys::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
@@ -69,6 +92,10 @@ pub fn register_context_menu() {
         set(key, Some("MultiSelectModel"), "Player");
         set(&format!(r"{key}\command"), None, &format!("\"{exe}\" {UPLOAD_FLAG} \"%1\""));
     }
+    let key = r"Software\Classes\Directory\shell\Aktar.Watch";
+    set(key, Some("MUIVerb"), &crate::t!("Watch with Aktar"));
+    set(key, Some("Icon"), &format!("\"{exe}\",0"));
+    set(&format!(r"{key}\command"), None, &format!("\"{exe}\" {WATCH_FLAG} \"%1\""));
 }
 
 #[cfg(not(windows))]
@@ -96,6 +123,8 @@ mod tests {
             .collect();
         assert_eq!(paths_after_flag(&argv, &dir), vec![dir.join("a.png"), dir.join("folder")]);
         assert!(paths_after_flag(&argv[..2], &dir).is_empty());
+        assert!(!is_watch(&argv));
+        assert!(is_watch(&["aktar.exe".to_string(), WATCH_FLAG.to_string(), "folder".to_string()]));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

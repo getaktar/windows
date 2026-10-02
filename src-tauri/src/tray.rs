@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Wry};
 
@@ -67,11 +67,31 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &MenuItem::with_id(app, "open-panel", t!("Upload"), true, None::<&str>)?,
             &MenuItem::with_id(app, "upload-clipboard", t!("Upload Clipboard"), true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "library", t!("Library"), true, None::<&str>)?,
-            &MenuItem::with_id(app, "settings", t!("Settings"), true, None::<&str>)?,
         ],
     )?;
+    // Once there's a folder to watch: pausing it, or resuming. (A pause on
+    // battery power or a metered network ends on its own.)
+    let core = crate::core::core(app);
+    let watching = core.watched.engine.store.get();
+    if !watching.folders.is_empty() {
+        if watching.paused_until.is_active(crate::util::now_millis()) {
+            menu.append(&MenuItem::with_id(app, "watch-resume", t!("Resume Watching"), true, None::<&str>)?)?;
+        } else {
+            menu.append(&Submenu::with_items(
+                app,
+                t!("Pause Watching"),
+                true,
+                &[
+                    &MenuItem::with_id(app, "watch-pause-hour", t!("For 1 Hour"), true, None::<&str>)?,
+                    &MenuItem::with_id(app, "watch-pause-tomorrow", t!("Until Tomorrow"), true, None::<&str>)?,
+                    &MenuItem::with_id(app, "watch-pause-forever", t!("Until I Resume"), true, None::<&str>)?,
+                ],
+            )?)?;
+        }
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "library", t!("Library"), true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "settings", t!("Settings"), true, None::<&str>)?)?;
     // The Store updates its own packages.
     if !crate::package::is_packaged() {
         menu.append(&MenuItem::with_id(app, "check-updates", t!("Check for Updates…"), true, None::<&str>)?)?;
@@ -88,9 +108,22 @@ fn handle_menu(app: &AppHandle, id: &str) {
         "library" => crate::windows::open(app, AppWindow::Library),
         "settings" => crate::windows::open(app, AppWindow::Settings),
         "check-updates" => crate::updater::check_now(app),
+        // Off the UI thread: they write the folder list.
+        "watch-pause-hour" => watch_pause(app, Some(60)),
+        "watch-pause-tomorrow" => watch_pause(app, Some(crate::watched::minutes_until_tomorrow())),
+        "watch-pause-forever" => watch_pause(app, None),
+        "watch-resume" => {
+            let core = crate::core::core(app);
+            tauri::async_runtime::spawn_blocking(move || crate::watched::resume(&core));
+        }
         "quit" => crate::quit(app),
         _ => {}
     }
+}
+
+fn watch_pause(app: &AppHandle, minutes: Option<u64>) {
+    let core = crate::core::core(app);
+    tauri::async_runtime::spawn_blocking(move || crate::watched::pause(&core, minutes));
 }
 
 /// Rebuilt after a language change.

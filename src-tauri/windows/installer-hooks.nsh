@@ -1,6 +1,6 @@
 ; File Explorer integration for the NSIS install (see src/shell.rs). The app
-; itself adds "Upload with Aktar" to the right-click menu, in the language
-; it runs in; the installer adds the "Send to" shortcut and the uninstaller
+; itself adds "Upload with Aktar" and "Watch with Aktar" to the right-click
+; menu, in the language it runs in; the installer adds the "Send to" shortcut and the uninstaller
 ; removes both. The Microsoft Store package doesn't use this file.
 
 !macro NSIS_HOOK_POSTINSTALL
@@ -14,5 +14,6 @@
     Delete "$SENDTO\Aktar.lnk"
     DeleteRegKey HKCU "Software\Classes\*\shell\Aktar.Upload"
     DeleteRegKey HKCU "Software\Classes\Directory\shell\Aktar.Upload"
+    DeleteRegKey HKCU "Software\Classes\Directory\shell\Aktar.Watch"
   ${EndIf}
 !macroend

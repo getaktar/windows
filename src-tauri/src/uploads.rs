@@ -50,6 +50,21 @@ pub struct UploadInput {
     /// The folder upload this file belongs to, so the links are copied
     /// together once the last one is done.
     pub group: Option<UploadGroup>,
+    /// A file from a watched folder, which copies and notifies as the
+    /// folder says instead.
+    pub watched: Option<WatchedSource>,
+}
+
+/// Where a watched folder's file came from, and how its key is made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchedSource {
+    pub folder_id: String,
+    pub folder_name: String,
+    pub relative_path: String,
+    pub batch_id: String,
+    pub key_place: output::KeyPlace,
+    /// The file's SHA-256, when the watched folder already worked it out.
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +100,7 @@ impl UploadInput {
             expiry: Expiry::FromSettings,
             folder_key: None,
             group: None,
+            watched: None,
         }
     }
 
@@ -139,6 +155,8 @@ pub struct JobSnapshot {
     pub destination_id: String,
     pub destination_name: String,
     pub state: JobState,
+    /// The watched folder it came from, by name.
+    pub source: Option<String>,
 }
 
 /// What a finished file from a folder left to copy: its link and name, by
@@ -190,6 +208,7 @@ impl UploadManager {
                 destination_id: job.destination.id.clone(),
                 destination_name: job.destination.name.clone(),
                 state: job.state.clone(),
+                source: job.input.watched.as_ref().map(|source| source.folder_name.clone()),
             })
             .collect()
     }
@@ -226,10 +245,14 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
             let (sender, receiver) = watch::channel(JobState::Waiting);
             let id = crate::util::new_id();
             queued.push(Queued { job_id: id.clone(), receiver });
-            jobs.insert(
-                offset,
-                Job { id, input, destination: destination.clone(), state: JobState::Waiting, sender, task: None },
-            );
+            let job = Job { id, input, destination: destination.clone(), state: JobState::Waiting, sender, task: None };
+            // A watched folder's files line up behind everything else, in
+            // order; the user's own uploads go to the front.
+            if job.input.watched.is_some() {
+                jobs.push(job);
+            } else {
+                jobs.insert(offset, job);
+            }
         }
     }
     drain(core);
@@ -385,6 +408,11 @@ fn named(original: &str, typed: &str) -> String {
     }
 }
 
+/// Whether the job is still in the list (not dismissed, not finished).
+pub fn has_job(core: &SharedCore, job_id: &str) -> bool {
+    core.uploads.jobs.lock().unwrap().iter().any(|job| job.id == job_id)
+}
+
 pub fn retry(core: &SharedCore, job_id: &str) {
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
@@ -400,6 +428,7 @@ pub fn retry(core: &SharedCore, job_id: &str) {
 
 pub fn cancel(core: &SharedCore, job_id: &str) {
     let mut cancelled = None;
+    let mut watched_cancelled = None;
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         if let Some(index) = jobs.iter().position(|job| job.id == job_id) {
@@ -410,7 +439,13 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
             job.input.remove_if_temporary();
             job.sender.send_replace(JobState::Cancelled);
             cancelled = job.input.group.clone();
+            if let Some(source) = &job.input.watched {
+                watched_cancelled = Some(source.clone());
+            }
         }
+    }
+    if let Some(source) = watched_cancelled {
+        crate::watched::upload_cancelled(core, &source);
     }
     // Its parts are thrown away; quitting, unlike this, keeps them.
     let session = core.uploads.job_sessions.lock().unwrap().remove(job_id);
@@ -446,7 +481,13 @@ fn drain(core: &SharedCore) {
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         let mut active = jobs.iter().filter(|job| matches!(job.state, JobState::Uploading { .. })).count();
-        for job in jobs.iter_mut() {
+        // The user's own uploads first, then watched folders' files: a drop
+        // of thousands into a watched folder never holds up a pasted
+        // screenshot.
+        let mut order: Vec<usize> = (0..jobs.len()).filter(|&index| jobs[index].input.watched.is_none()).collect();
+        order.extend((0..jobs.len()).filter(|&index| jobs[index].input.watched.is_some()));
+        for index in order {
+            let job = &mut jobs[index];
             if active >= MAX_CONCURRENT {
                 break;
             }
@@ -463,7 +504,7 @@ fn drain(core: &SharedCore) {
             job.task = Some(tauri::async_runtime::spawn(async move {
                 match run(&task_core, &job_id, &input, &destination).await {
                     Ok(outcome) => finish(&task_core, &job_id, &input, &destination, outcome).await,
-                    Err(message) => fail(&task_core, &job_id, &input, message),
+                    Err(failure) => fail(&task_core, &job_id, &input, failure),
                 }
             }));
         }
@@ -500,6 +541,8 @@ struct Outcome {
     filename: String,
     /// SHA-256 of what was uploaded, when it was worked out.
     content_hash: Option<String>,
+    /// SHA-256 of the file itself, when it went up unchanged and was hashed.
+    original_hash: Option<String>,
     /// The earlier upload of the same file whose link was used instead.
     reused: Option<UploadRecord>,
     /// The file that went up, for the thumbnail.
@@ -507,8 +550,27 @@ struct Outcome {
     _scratch: Scratch,
 }
 
+/// Why an upload failed, and whether it may work later on its own (the
+/// network dropped, the server had a problem).
+pub struct Failure {
+    pub message: String,
+    pub transient: bool,
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Self { message, transient: false }
+    }
+}
+
+impl From<StorageError> for Failure {
+    fn from(error: StorageError) -> Self {
+        Self { transient: error.is_transient(), message: error.to_string() }
+    }
+}
+
 /// Uploads the file, or finds it already uploaded.
-async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<Outcome, String> {
+async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<Outcome, Failure> {
     let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
     let provider = S3Provider::new(destination.clone(), credentials);
 
@@ -568,7 +630,17 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     // of the same file. A ZIP made on the spot is never quite the same.
     let generated_key = input.object_key.is_none() && input.folder_key.is_none();
     let reuse_links = core.settings.get().reuse_duplicate_links && !zipped;
-    let hashes = if reuse_links || (generated_key && output::uses_hashes(&destination.object_path_template)) {
+    // A watched folder's file may be hashed already; it's used as long as
+    // the bytes going up are the file's own (and {md5} isn't wanted).
+    let original_bytes = !zipped && scratch.cleaned.is_none();
+    let known = input
+        .watched
+        .as_ref()
+        .and_then(|source| source.sha256.clone())
+        .filter(|_| original_bytes && !destination.object_path_template.contains("{md5}"));
+    let hashes = if let Some(sha256) = known {
+        Some(ContentHashes { md5: String::new(), sha256 })
+    } else if reuse_links || (generated_key && output::uses_hashes(&destination.object_path_template)) {
         let hashed = path.clone();
         let hashes = tauri::async_runtime::spawn_blocking(move || crate::util::content_hashes(&hashed))
             .await
@@ -579,6 +651,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         None
     };
     let content_hash = hashes.as_ref().filter(|_| reuse_links).map(|hashes| hashes.sha256.clone());
+    let original_hash = hashes.as_ref().filter(|_| original_bytes).map(|hashes| hashes.sha256.clone());
 
     // Never for a file going to an exact key, or one of a folder keeping
     // its structure: its key is where it has to be.
@@ -594,6 +667,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 link,
                 filename,
                 content_hash,
+                original_hash,
                 reused: Some(record),
                 uploaded: path,
                 _scratch: scratch,
@@ -686,7 +760,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     loop {
         tokio::select! {
             result = &mut upload => {
-                result.map_err(|error: StorageError| error.to_string())?;
+                result?;
                 let public_url = output::resolve_public_url(&destination.public_base_url, &object_key);
                 let link = link_for(&provider, destination, &object_key, &public_url).await;
                 return Ok(Outcome {
@@ -694,6 +768,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     link,
                     filename,
                     content_hash,
+                    original_hash,
                     reused: None,
                     uploaded: path.clone(),
                     _scratch: scratch,
@@ -709,7 +784,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     }
                 }
                 if progress.idle_millis() > STALL_TIMEOUT_MS {
-                    return Err(StorageError::Network(t!("The connection stopped responding.")).to_string());
+                    return Err(StorageError::Network(t!("The connection stopped responding.")).into());
                 }
             }
         }
@@ -732,7 +807,10 @@ fn object_key_for(
     }
     let key = match &input.folder_key {
         Some(key) => with_extension(key, new_extension),
-        None => output::generate_key(&destination.object_path_template, filename, hashes),
+        None => match &input.watched {
+            Some(source) => output::generate_key_in(&destination.object_path_template, filename, hashes, &source.key_place),
+            None => output::generate_key(&destination.object_path_template, filename, hashes),
+        },
     };
     match input.expire_after_days() {
         Some(days) => crate::expiry::expiring_key(&key, days),
@@ -833,7 +911,7 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
 /// History keeps the public URL; `outcome.link` is what's copied. An
 /// earlier upload whose link is reused stays the one history entry.
 async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, outcome: Outcome) {
-    let Outcome { result, link, filename, content_hash, reused, uploaded, _scratch } = outcome;
+    let Outcome { result, link, filename, content_hash, original_hash, reused, uploaded, _scratch } = outcome;
     let was_reused = reused.is_some();
     let record = match reused {
         Some(record) => record,
@@ -848,6 +926,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
                 byte_size: result.byte_size,
                 expire_after_days: input.expire_after_days(),
                 content_hash: content_hash.as_deref(),
+                watched_folder: input.watched.as_ref().map(|source| (source.folder_id.as_str(), source.folder_name.as_str())),
             });
             // Before the job counts as finished: whoever started it (the
             // local API) may delete the file as soon as it has. A photo
@@ -888,6 +967,24 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
                 byte_size: result.byte_size,
             },
         );
+    }
+
+    // A watched folder copies and notifies as it's set to, once the
+    // original is taken care of, and never closes the panel.
+    if let Some(source) = &input.watched {
+        let uploaded = crate::watched::engine::Uploaded {
+            object_key: result.object_key.clone(),
+            url: result.public_url.clone(),
+            link: format_link(core, destination, &link, &filename),
+            filename: filename.clone(),
+            destination_id: destination.id.clone(),
+            reused: was_reused,
+            byte_size: result.byte_size,
+            content_hash: original_hash,
+        };
+        crate::watched::upload_succeeded(core, source, destination, uploaded).await;
+        drain(core);
+        return;
     }
 
     // A file from a folder waits for the rest of it: the links are copied
@@ -964,9 +1061,15 @@ fn finish_group_if_done(core: &SharedCore, group: &UploadGroup) {
     close_panel_if_wanted(core);
 }
 
-fn fail(core: &SharedCore, job_id: &str, input: &UploadInput, message: String) {
+fn fail(core: &SharedCore, job_id: &str, input: &UploadInput, failure: Failure) {
+    let Failure { message, transient } = failure;
     set_state(core, job_id, JobState::Failed { message: message.clone() });
-    show_notification(core, &t!("Upload failed"), &format!("{}: {message}", input.original_filename));
+    // A watched folder says so itself, a batch at a time, and tries again
+    // when it may work.
+    match &input.watched {
+        Some(source) => crate::watched::upload_failed(core, source, message, transient),
+        None => show_notification(core, &t!("Upload failed"), &format!("{}: {message}", input.original_filename)),
+    }
     if let Some(group) = &input.group {
         finish_group_if_done(core, group);
     }
@@ -1014,6 +1117,12 @@ pub async fn temporary_url(core: &SharedCore, record: &UploadRecord, seconds: u6
 /// remotely, so the entry is cleaned up silently. A real failure from the
 /// provider is returned so the caller can keep the record and offer a retry.
 pub async fn delete_remote(core: &SharedCore, record_id: &str) -> Result<(), String> {
+    delete_upload(core, record_id).await.map_err(|failure| failure.message)
+}
+
+/// `delete_remote`, saying whether a failure may go away on its own: a
+/// watched folder deleting the upload of a deleted file tries again then.
+pub async fn delete_upload(core: &SharedCore, record_id: &str) -> Result<(), Failure> {
     let Some(record) = core.history.get(record_id) else { return Ok(()) };
     let destination = core
         .destinations
@@ -1022,10 +1131,7 @@ pub async fn delete_remote(core: &SharedCore, record_id: &str) -> Result<(), Str
         .find(|destination| destination.id == record.destination_id);
     let credentials = destination.as_ref().and_then(|destination| credentials::load(&destination.id).ok());
     if let (Some(destination), Some(credentials)) = (destination, credentials) {
-        S3Provider::new(destination, credentials)
-            .delete(&record.object_key)
-            .await
-            .map_err(|error| error.to_string())?;
+        S3Provider::new(destination, credentials).delete(&record.object_key).await?;
     }
     core.history.delete(&record.id);
     core.notify(events::HISTORY_CHANGED);
@@ -1064,6 +1170,8 @@ mod tests {
             created_at: 0,
             expires_at,
             content_hash: Some("h".into()),
+            source: None,
+            source_name: None,
             has_thumbnail: false,
         }
     }
