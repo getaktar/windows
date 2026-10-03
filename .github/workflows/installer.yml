@@ -28,14 +28,22 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # scripts/build.ps1 keeps the runner's paths out of aktar.exe and
-      # checks that it did.
+      # checks that it did. Without the updater key (a fork, or a private
+      # test copy of the repo) the installer is built without the update
+      # files, which a test installer doesn't need.
       - name: Build the installer
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # The key has no password (GitHub secrets can't be empty).
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: ./scripts/build.ps1
+        run: |
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+            ./scripts/build.ps1
+          } else {
+            '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Path no-updater.json
+            ./scripts/build.ps1 --config no-updater.json
+          }
 
       - uses: actions/upload-artifact@v4
         with:
