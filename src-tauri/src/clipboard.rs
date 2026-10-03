@@ -15,6 +15,29 @@ pub fn copy(text: &str) {
     }
 }
 
+/// Copies a secret (a transfer link, the local API token), kept out of
+/// Windows' clipboard history and cloud clipboard.
+pub fn copy_concealed(text: &str) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|error| error.to_string())?;
+    #[cfg(windows)]
+    let result = {
+        use arboard::SetExtWindows;
+        clipboard.set().exclude_from_monitoring().text(text)
+    };
+    #[cfg(not(windows))]
+    let result = clipboard.set_text(text);
+    result.map_err(|error| error.to_string())
+}
+
+/// Empties the clipboard if it still holds `text`, and only then: what was
+/// copied since is left alone.
+pub fn clear_if_holding(text: &str) {
+    let Ok(mut clipboard) = Clipboard::new() else { return };
+    if clipboard.get_text().is_ok_and(|current| current == text) {
+        let _ = clipboard.clear();
+    }
+}
+
 /// Puts an image on the clipboard (a QR code).
 pub fn copy_image(image: &image::GrayImage) -> Result<(), String> {
     let rgba = image::DynamicImage::ImageLuma8(image.clone()).to_rgba8();

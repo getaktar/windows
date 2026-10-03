@@ -28,6 +28,10 @@ use crate::image_metadata;
 /// Bigger files aren't processed: decoding them would take more memory
 /// than a photo should.
 pub const MAX_SOURCE_BYTES: u64 = 200 * 1024 * 1024;
+/// Nor are images with more pixels than this, whatever the file's size: a
+/// small file can claim huge dimensions, and decoding it would take all
+/// the memory there is. Read from the header, before anything is decoded.
+pub const MAX_PIXELS: u64 = 100_000_000;
 /// The quality conversions use when no compression is picked.
 const DEFAULT_QUALITY: u8 = 90;
 /// rav1e's speed, 1 (slowest) to 10. Without NASM, 9 encodes a 12 MP
@@ -119,6 +123,11 @@ fn plan(source: Source, has_alpha: bool, settings: ImageProcessing, resizing: bo
             }
         }
     }
+}
+
+/// Whether an image of `width` x `height` may be decoded.
+pub fn within_pixel_limit(width: u32, height: u32) -> bool {
+    u64::from(width) * u64::from(height) <= MAX_PIXELS
 }
 
 /// A processed copy of `path`, or None when it's uploaded as it is (not a
@@ -233,6 +242,10 @@ fn decode(path: &Path, source: Source) -> Result<Option<Decoded>, String> {
         .map_err(|error| error.to_string())?
         .into_decoder()
         .map_err(failed)?;
+    let (width, height) = decoder.dimensions();
+    if !within_pixel_limit(width, height) {
+        return Ok(None);
+    }
     let icc = decoder.icc_profile().ok().flatten();
     let exif = decoder.exif_metadata().ok().flatten();
     let orientation = decoder.orientation().map_err(failed)?;
@@ -277,6 +290,11 @@ mod wic {
                 .CreateDecoderFromFilename(PCWSTR(wide.as_ptr()), None, GENERIC_READ, WICDecodeMetadataCacheOnDemand)
                 .ok()?;
             let frame = decoder.GetFrame(0).ok()?;
+            let (mut width, mut height) = (0u32, 0u32);
+            frame.GetSize(&mut width, &mut height).ok()?;
+            if !super::within_pixel_limit(width, height) {
+                return None;
+            }
             let converted = WICConvertBitmapSource(&GUID_WICPixelFormat32bppRGBA, &frame).ok()?;
             let (mut width, mut height) = (0u32, 0u32);
             converted.GetSize(&mut width, &mut height).ok()?;
@@ -609,6 +627,38 @@ mod tests {
     fn exif_block() -> Vec<u8> {
         let data = std::fs::read(Path::new(FIXTURES).join("location.jpg")).unwrap();
         exif::Reader::new().read_from_container(&mut Cursor::new(&data)).unwrap().buf().to_vec()
+    }
+
+    /// A BMP header claiming `width` x `height` pixels, without the pixels.
+    fn bmp_header(width: u32, height: u32) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"BM");
+        data.extend_from_slice(&54u32.to_le_bytes()); // file size
+        data.extend_from_slice(&0u32.to_le_bytes()); // reserved
+        data.extend_from_slice(&54u32.to_le_bytes()); // pixel data offset
+        data.extend_from_slice(&40u32.to_le_bytes()); // BITMAPINFOHEADER
+        data.extend_from_slice(&width.to_le_bytes());
+        data.extend_from_slice(&height.to_le_bytes());
+        data.extend_from_slice(&1u16.to_le_bytes()); // planes
+        data.extend_from_slice(&24u16.to_le_bytes()); // bits per pixel
+        data.extend_from_slice(&[0; 24]); // no compression, sizes, palette
+        data
+    }
+
+    #[test]
+    fn leaves_huge_images_alone() {
+        assert!(within_pixel_limit(10_000, 10_000));
+        assert!(!within_pixel_limit(10_000, 10_001));
+        assert!(!within_pixel_limit(u32::MAX, u32::MAX));
+
+        // 40,000 x 40,000 in 54 bytes: never decoded, uploaded as it is.
+        let directory = std::env::temp_dir().join(format!("aktar-processing-test-{}", crate::util::new_id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let bomb = directory.join("bomb.bmp");
+        std::fs::write(&bomb, bmp_header(40_000, 40_000)).unwrap();
+        let result = process(&bomb, settings(ImageFormat::Webp, Some(80), Some(1024)), ImageMetadataPolicy::RemoveAll);
+        assert!(matches!(result, Ok(None)), "{result:?}");
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]

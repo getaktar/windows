@@ -2,13 +2,14 @@
 //!
 //! ```text
 //! aktar://upload-clipboard   upload whatever is on the clipboard (only
-//!                            while Aktar is already running)
+//!                            while Aktar is already running, and once
+//!                            the user says so)
 //! aktar://library            open the Library window
 //! aktar://settings           open Settings
 //! aktar://watch              open Settings on Watched Folders
 //! aktar://watch/pause?minutes=60
 //!                            pause watched folders (for good without
-//!                            minutes)
+//!                            minutes), once the user says so
 //! aktar://watch/resume       resume them
 //! aktar://connect?callback=raycast://extensions/<author>/<extension>/<command>
 //! aktar://import#<data>      open "Import from Another Device" with this
@@ -47,14 +48,29 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
     }
     let action = url.host_str().unwrap_or_default().to_ascii_lowercase();
     match action.as_str() {
-        "upload-clipboard" if !launched_app => crate::uploads::upload_clipboard_in_background(core, false),
+        // Asked about every time: a web page can open these links.
+        "upload-clipboard" if !launched_app => {
+            let core = core.clone();
+            tauri::async_runtime::spawn(async move { upload_clipboard(&core).await });
+        }
         "library" => crate::windows::open(&core.app, AppWindow::Library),
         "settings" => crate::windows::open(&core.app, AppWindow::Settings),
         "watch" => match url.path().trim_matches('/').to_ascii_lowercase().as_str() {
-            // Off the UI thread: they write the folder list.
+            // Off the UI thread: they write the folder list. Pausing is
+            // asked about first; minutes that aren't a number from 1 up
+            // make the link do nothing.
             "pause" => {
-                let (core, minutes) = (core.clone(), minutes(&url));
-                tauri::async_runtime::spawn_blocking(move || crate::watched::pause(&core, minutes));
+                let Ok(minutes) = minutes(&url) else { return };
+                let core = core.clone();
+                tauri::async_runtime::spawn(async move {
+                    let message = match minutes {
+                        Some(minutes) => t!("A link asked Aktar to pause watched folders for {0} minutes.", minutes),
+                        None => t!("A link asked Aktar to pause watched folders until you resume them."),
+                    };
+                    if ask(&core.app, t!("Pause Watched Folders?"), message, t!("Pause")).await {
+                        let _ = tauri::async_runtime::spawn_blocking(move || crate::watched::pause(&core, minutes)).await;
+                    }
+                });
             }
             "resume" => {
                 let core = core.clone();
@@ -74,9 +90,41 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
     }
 }
 
-/// `minutes=` of aktar://watch/pause, when it's a whole number.
-fn minutes(url: &Url) -> Option<u64> {
-    url.query_pairs().find(|(name, _)| name == "minutes").and_then(|(_, value)| value.trim().parse().ok())
+/// `minutes=` of aktar://watch/pause: None without one (until resumed),
+/// a whole number from 1 (up to a year), or Err for anything else.
+fn minutes(url: &Url) -> Result<Option<u64>, ()> {
+    match url.query_pairs().find(|(name, _)| name == "minutes") {
+        None => Ok(None),
+        Some((_, value)) => crate::watched::pause_minutes_text(&value).map(Some).ok_or(()),
+    }
+}
+
+/// aktar://upload-clipboard: says what's on the clipboard and where it
+/// would go, and uploads it only once the user says so.
+async fn upload_clipboard(core: &SharedCore) {
+    let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
+    if inputs.is_empty() {
+        crate::uploads::show_notification(core, "Aktar", &t!("The clipboard has no file or image to upload."));
+        return;
+    }
+    let what = match inputs.as_slice() {
+        [input] if input.temporary => t!("an image from the clipboard"),
+        [input] => format!("“{}”", input.original_filename),
+        _ => t!("{0} files", inputs.len()),
+    };
+    let message = match core.destinations.default_destination() {
+        Some(destination) => t!("A link asked Aktar to upload {0} from the clipboard to “{1}”.", what, destination.name),
+        // Nowhere to upload to: `enqueue` says so and opens Welcome.
+        None => {
+            crate::uploads::enqueue(core, inputs, None);
+            return;
+        }
+    };
+    if ask(&core.app, t!("Upload the Clipboard?"), message, t!("Upload")).await {
+        crate::uploads::enqueue(core, inputs, None);
+    } else {
+        inputs.iter().for_each(crate::uploads::UploadInput::remove_if_temporary);
+    }
 }
 
 /// The launch link can show up both in the launch arguments and as an
@@ -130,6 +178,7 @@ async fn connect(core: &SharedCore, url: &Url) {
         &core.app,
         t!("Connect Raycast to Aktar?"),
         t!("The Raycast extension “{0}” wants to upload files, browse your buckets, and manage your upload history through Aktar. This turns on Aktar’s local API, which you can turn off any time in Settings > Integrations.", extension),
+        t!("Connect"),
     )
     .await;
     if !approved {
@@ -188,13 +237,15 @@ fn query_component(text: &str) -> String {
     percent_encoding::utf8_percent_encode(text, RESERVED).to_string()
 }
 
-async fn ask(app: &AppHandle, title: String, message: String) -> bool {
+/// A native dialog of the app's own, which no window can answer for the
+/// user. True when `action` was picked.
+async fn ask(app: &AppHandle, title: String, message: String, action: String) -> bool {
     let (sender, receiver) = tokio::sync::oneshot::channel();
     app.dialog()
         .message(message)
         .title(title)
         .kind(MessageDialogKind::Info)
-        .buttons(MessageDialogButtons::OkCancelCustom(t!("Connect"), t!("Cancel")))
+        .buttons(MessageDialogButtons::OkCancelCustom(action, t!("Cancel")))
         .show(move |approved| {
             let _ = sender.send(approved);
         });
@@ -226,9 +277,12 @@ mod tests {
 
     #[test]
     fn reads_pause_minutes() {
-        assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=60").unwrap()), Some(60));
-        assert_eq!(minutes(&Url::parse("aktar://watch/pause").unwrap()), None);
-        assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=soon").unwrap()), None);
+        assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=60").unwrap()), Ok(Some(60)));
+        assert_eq!(minutes(&Url::parse("aktar://watch/pause").unwrap()), Ok(None));
+        assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=99999999").unwrap()), Ok(Some(525_600)));
+        for invalid in ["soon", "0", "-5", ""] {
+            assert_eq!(minutes(&Url::parse(&format!("aktar://watch/pause?minutes={invalid}")).unwrap()), Err(()), "{invalid}");
+        }
     }
 
     #[test]

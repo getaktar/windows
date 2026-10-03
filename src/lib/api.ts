@@ -418,7 +418,7 @@ export interface TransferPayload {
 
 /** Why a transfer link couldn't be opened; `checkTransferLink` and
  * `openTransfer` reject with one of these. */
-export type TransferError = "notTransfer" | "newerVersion" | "wrongCode";
+export type TransferError = "notTransfer" | "newerVersion" | "wrongCode" | "expired";
 
 export type AppWindowName = "library" | "settings" | "onboarding" | "update";
 
@@ -494,7 +494,9 @@ export const api = {
 
   qrCode: (text: string) => invoke<QrMatrix>("qr_code", { text }),
   copyQrImage: (text: string) => invoke<void>("copy_qr_image", { text }),
-  saveQrImage: (text: string, path: string) => invoke<void>("save_qr_image", { text, path }),
+  /** Asks where to save in a save dialog of the app's own; false when
+   * it was cancelled. */
+  saveQrImage: (text: string, fileName: string) => invoke<boolean>("save_qr_image", { text, fileName }),
 
   getSettings: () => invoke<Settings>("get_settings"),
   updateSettings: (patch: SettingsPatch) => invoke<Settings>("update_settings", { patch }),
@@ -513,6 +515,10 @@ export const api = {
   regenerateApiToken: () => invoke<void>("regenerate_api_token"),
 
   copyText: (text: string) => invoke<void>("copy_text", { text }),
+  /** Copies a transfer link or the API token, kept out of clipboard history. */
+  copySecret: (text: string) => invoke<void>("copy_secret", { text }),
+  /** Empties the clipboard if it still holds `text`. */
+  clearClipboardIf: (text: string) => invoke<void>("clear_clipboard_if", { text }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   openWindow: (name: AppWindowName) => invoke<void>("open_window", { name }),
   closeWindow: (name: AppWindowName) => invoke<void>("close_window", { name }),
@@ -546,6 +552,11 @@ export const api = {
   setWatchPauseConditions: (onBattery: boolean | null, onMetered: boolean | null) =>
     invoke<void>("set_watch_pause_conditions", { onBattery, onMetered }),
   testWatchHook: (folder: WatchedFolder, hook: WatchHook) => invoke<void>("test_watch_hook", { folder, hook }),
+  /** "Add Script…": Rust opens the file dialog and makes the hook; null
+   * when it was cancelled. */
+  pickWatchScript: () => invoke<WatchHook | null>("pick_watch_script"),
+  /** Rejects with the reason a webhook address can't be used. */
+  checkWebhookUrl: (url: string) => invoke<void>("check_webhook_url", { url }),
   showFolder: (path: string) => invoke<void>("show_folder", { path }),
   takeSettingsRequest: () => invoke<SettingsRequest>("take_settings_request"),
 

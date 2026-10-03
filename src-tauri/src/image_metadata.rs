@@ -1,13 +1,16 @@
 //! Removes the location, or all metadata, from photos before they're
 //! uploaded (the destination's "Image metadata" setting), like the Mac
-//! app's ImageMetadataStripper. Covers JPEG, HEIC/HEIF, PNG and TIFF.
+//! app's ImageMetadataStripper. Covers JPEG, HEIC/HEIF, AVIF, PNG, TIFF,
+//! WebP and GIF. Videos aren't touched (see the destination form's note).
 //!
 //! The pixels are never decoded or re-encoded. JPEG, HEIC and TIFF are
 //! edited in place, without changing the size of anything, so every offset
 //! in the file (an iPhone photo's HDR gain map, HEIC's item locations) stays
 //! valid: removed EXIF entries and their values are zeroed, XMP properties
-//! are blanked with spaces, and other metadata blocks are zeroed. PNG
-//! chunks carry no offsets, so they're simply dropped or rewritten.
+//! are blanked with spaces, and other metadata blocks are zeroed. AVIF is
+//! the same box structure as HEIC and is edited the same way. PNG and WebP
+//! chunks and GIF blocks carry no offsets, so they're simply dropped or
+//! rewritten (with WebP's header flags and size brought up to date).
 //!
 //! The result is checked before it's used: if anything that should be gone
 //! is still there, the upload stops instead of sharing where a photo was
@@ -115,7 +118,10 @@ enum Format {
     Jpeg,
     Png,
     Tiff,
+    /// HEIC, HEIF and AVIF.
     Heif,
+    Webp,
+    Gif,
 }
 
 /// The file's format from its first bytes, so a photo named ".bin" is still
@@ -139,12 +145,18 @@ fn sniff(head: &[u8]) -> Option<Format> {
     if head.starts_with(b"II*\0") || head.starts_with(b"MM\0*") {
         return Some(Format::Tiff);
     }
-    // HEIC and HEIF by the major brand. AVIF is left alone, as on the Mac.
+    // HEIC, HEIF and AVIF by the major brand.
     if head.len() >= 12 && &head[4..8] == b"ftyp" {
         let brand = &head[8..12];
-        if [b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1"].iter().any(|b| brand == *b) {
+        if [b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b"msf1", b"avif", b"avis"].iter().any(|b| brand == *b) {
             return Some(Format::Heif);
         }
+    }
+    if head.len() >= 12 && head.starts_with(b"RIFF") && &head[8..12] == b"WEBP" {
+        return Some(Format::Webp);
+    }
+    if head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a") {
+        return Some(Format::Gif);
     }
     None
 }
@@ -165,6 +177,8 @@ fn strip(data: &mut Vec<u8>, format: Format, policy: ImageMetadataPolicy) -> Par
         }
         Format::Heif => strip_heif(data, policy),
         Format::Png => strip_png(data, policy),
+        Format::Webp => strip_webp(data, policy),
+        Format::Gif => strip_gif(data, policy),
     }
 }
 
@@ -181,9 +195,10 @@ fn still_has_metadata_to_remove(data: &[u8], format: Format, policy: ImageMetada
                 && (field.tag.context() == exif::Context::Gps
                     || (policy == ImageMetadataPolicy::RemoveAll && IDENTIFYING_EXIF.contains(&field.tag)))
         }),
-        // No EXIF at all is fine; one that can't be read isn't.
+        // No EXIF at all is fine; one that can't be read isn't. GIF has no
+        // EXIF the reader knows, and stripping again found nothing.
         Err(exif::Error::NotFound(_)) => false,
-        Err(_) => format != Format::Png && format != Format::Heif,
+        Err(_) => matches!(format, Format::Jpeg | Format::Tiff | Format::Webp),
     }
 }
 
@@ -881,6 +896,159 @@ fn strip_png(data: &mut Vec<u8>, policy: ImageMetadataPolicy) -> Parsed<bool> {
     Ok(changed)
 }
 
+// MARK: - WebP
+
+/// The VP8X header's flags for an EXIF and an XMP chunk.
+const WEBP_EXIF_FLAG: u8 = 0x08;
+const WEBP_XMP_FLAG: u8 = 0x04;
+
+/// A WebP's `EXIF` chunk is cleaned like PNG's eXIf (and dropped by "Remove
+/// all" unless it holds the orientation), its `XMP ` chunk blanked or
+/// dropped. The chunks are written out again, then the VP8X header's flags
+/// and the RIFF size are made to match what's left.
+fn strip_webp(data: &mut Vec<u8>, policy: ImageMetadataPolicy) -> Parsed<bool> {
+    const HEADER: usize = 12;
+    let riff_size = u32::from_le_bytes(data.get(4..8).ok_or(Malformed)?.try_into().unwrap()) as usize;
+    // A file cut short is read as far as it goes.
+    let end = riff_size.saturating_add(8).min(data.len());
+    if end < HEADER {
+        return Err(Malformed);
+    }
+    let mut output = data[..HEADER].to_vec();
+    let mut changed = false;
+    let (mut has_exif, mut has_xmp) = (false, false);
+    let mut at = HEADER;
+    while at < end {
+        let kind: [u8; 4] = data.get(at..at + 4).ok_or(Malformed)?.try_into().unwrap();
+        let length = u32::from_le_bytes(data.get(at + 4..at + 8).ok_or(Malformed)?.try_into().unwrap()) as usize;
+        let body_end = (at + 8).checked_add(length).ok_or(Malformed)?;
+        if body_end > end {
+            return Err(Malformed);
+        }
+        let mut body = data[at + 8..body_end].to_vec();
+        let keep = match &kind {
+            b"EXIF" => {
+                // Some writers keep JPEG's "Exif\0\0" in front of the TIFF.
+                let skip = if body.starts_with(EXIF_HEADER) { EXIF_HEADER.len() } else { 0 };
+                let mut tiff = Tiff::new(&mut body[skip..]).ok_or(Malformed)?;
+                changed |= tiff.strip(policy, false)?;
+                policy != ImageMetadataPolicy::RemoveAll || tiff_has_orientation(&body[skip..])
+            }
+            b"XMP " if policy == ImageMetadataPolicy::RemoveAll => false,
+            b"XMP " => {
+                changed |= blank_xmp_location(&mut body);
+                true
+            }
+            _ => true,
+        };
+        if keep {
+            has_exif |= &kind == b"EXIF";
+            has_xmp |= &kind == b"XMP ";
+            output.extend_from_slice(&kind);
+            output.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            output.extend_from_slice(&body);
+            if body.len() % 2 == 1 {
+                output.push(0);
+            }
+        } else {
+            changed = true;
+        }
+        at = body_end + length % 2;
+    }
+    if !changed {
+        return Ok(false);
+    }
+    // The extended header says which chunks follow.
+    if output.get(HEADER..HEADER + 4) == Some(b"VP8X") {
+        let flags = output.get_mut(HEADER + 8).ok_or(Malformed)?;
+        *flags &= !(WEBP_EXIF_FLAG | WEBP_XMP_FLAG);
+        if has_exif {
+            *flags |= WEBP_EXIF_FLAG;
+        }
+        if has_xmp {
+            *flags |= WEBP_XMP_FLAG;
+        }
+    }
+    let riff_size = u32::try_from(output.len() - 8).map_err(|_| Malformed)?;
+    output[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    *data = output;
+    Ok(true)
+}
+
+// MARK: - GIF
+
+const GIF_XMP_APPLICATION: &[u8] = b"XMP DataXMP";
+
+/// A GIF's XMP (an application extension) goes when it has a location, or
+/// always with "Remove all", which also drops comments. GIF has no other
+/// metadata. Its XMP is stored raw, with a trailer that makes it read as
+/// sub-blocks, so it's dropped whole rather than edited.
+fn strip_gif(data: &mut Vec<u8>, policy: ImageMetadataPolicy) -> Parsed<bool> {
+    let remove_all = policy == ImageMetadataPolicy::RemoveAll;
+    let packed = *data.get(10).ok_or(Malformed)?;
+    let mut at = 13 + if packed & 0x80 != 0 { 3 << ((packed & 7) + 1) } else { 0 };
+    let mut output = data.get(..at).ok_or(Malformed)?.to_vec();
+    let mut changed = false;
+    loop {
+        let start = at;
+        // A file that ends without its trailer ends there.
+        let Some(&introducer) = data.get(at) else { break };
+        match introducer {
+            // Extension: label, then sub-blocks.
+            0x21 => {
+                let label = *data.get(at + 1).ok_or(Malformed)?;
+                let end = skip_sub_blocks(data, at + 2)?;
+                let block = &data[start..end];
+                let drop = match label {
+                    0xFF if block.get(3..3 + GIF_XMP_APPLICATION.len()) == Some(GIF_XMP_APPLICATION) && block[2] == 11 => {
+                        remove_all || has_xmp_location(&block[3 + GIF_XMP_APPLICATION.len()..])
+                    }
+                    0xFE => remove_all,
+                    _ => false,
+                };
+                if drop {
+                    changed = true;
+                } else {
+                    output.extend_from_slice(block);
+                }
+                at = end;
+            }
+            // Image: descriptor, local color table, LZW code size, data.
+            0x2C => {
+                let packed = *data.get(at + 9).ok_or(Malformed)?;
+                let table = if packed & 0x80 != 0 { 3 << ((packed & 7) + 1) } else { 0 };
+                let end = skip_sub_blocks(data, at + 10 + table + 1)?;
+                output.extend_from_slice(&data[start..end]);
+                at = end;
+            }
+            // The trailer, and anything after it, as it was.
+            0x3B => {
+                output.extend_from_slice(&data[at..]);
+                break;
+            }
+            _ => return Err(Malformed),
+        }
+    }
+    if changed {
+        *data = output;
+    }
+    Ok(changed)
+}
+
+/// Where the sub-blocks starting at `at` end, past their 0 terminator.
+fn skip_sub_blocks(data: &[u8], mut at: usize) -> Parsed<usize> {
+    loop {
+        let size = *data.get(at).ok_or(Malformed)? as usize;
+        at += 1 + size;
+        if size == 0 {
+            return Ok(at);
+        }
+        if at > data.len() {
+            return Err(Malformed);
+        }
+    }
+}
+
 /// Where the text of an uncompressed iTXt chunk starts, or None when it's
 /// compressed.
 fn itxt_uncompressed_text(body: &[u8]) -> Option<usize> {
@@ -1029,6 +1197,159 @@ mod tests {
         assert!(strip(&mut all, Format::Jpeg, ImageMetadataPolicy::RemoveAll).unwrap());
         assert!(find(&all, b"Apple").is_none());
         assert_eq!(all.len(), jpeg.len());
+    }
+
+    /// The EXIF of the JPEG fixture (with a location) as a TIFF structure.
+    fn location_tiff() -> Vec<u8> {
+        exif::Reader::new().read_from_container(&mut std::io::Cursor::new(fixture("location.jpg"))).unwrap().buf().to_vec()
+    }
+
+    /// An XMP packet with a location and a camera maker.
+    fn xmp_with_location() -> Vec<u8> {
+        br#"<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description exif:GPSLatitude="41,0.492N" exif:GPSLongitude="28,58.7E" tiff:Make="Apple"/></rdf:RDF></x:xmpmeta><?xpacket end="w"?>"#.to_vec()
+    }
+
+    fn webp_chunk(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+        let mut chunk = kind.to_vec();
+        chunk.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        chunk.extend_from_slice(body);
+        if body.len() % 2 == 1 {
+            chunk.push(0);
+        }
+        chunk
+    }
+
+    /// A 2 x 2 extended WebP with EXIF (location included) and XMP chunks.
+    fn webp_with_location(exif_prefix: bool) -> Vec<u8> {
+        let mut simple = Vec::new();
+        let pixels = image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 30, 30, 255]));
+        image::codecs::webp::WebPEncoder::new_lossless(&mut simple)
+            .encode(pixels.as_raw(), 2, 2, image::ExtendedColorType::Rgba8)
+            .unwrap();
+        let mut vp8x = vec![WEBP_EXIF_FLAG | WEBP_XMP_FLAG, 0, 0, 0];
+        vp8x.extend_from_slice(&[1, 0, 0, 1, 0, 0]);
+        let mut exif = if exif_prefix { EXIF_HEADER.to_vec() } else { Vec::new() };
+        exif.extend_from_slice(&location_tiff());
+        let mut chunks = webp_chunk(b"VP8X", &vp8x);
+        chunks.extend_from_slice(&simple[12..]);
+        chunks.extend_from_slice(&webp_chunk(b"EXIF", &exif));
+        chunks.extend_from_slice(&webp_chunk(b"XMP ", &xmp_with_location()));
+        let mut webp = b"RIFF".to_vec();
+        webp.extend_from_slice(&((chunks.len() + 4) as u32).to_le_bytes());
+        webp.extend_from_slice(b"WEBP");
+        webp.extend_from_slice(&chunks);
+        webp
+    }
+
+    fn webp_flags(webp: &[u8]) -> u8 {
+        assert_eq!(&webp[12..16], b"VP8X");
+        webp[20]
+    }
+
+    fn decodes(data: &[u8]) -> bool {
+        image::load_from_memory(data).is_ok()
+    }
+
+    #[test]
+    fn cleans_webp() {
+        let original = webp_with_location(false);
+        assert_eq!(sniff(&original), Some(Format::Webp));
+        assert!(decodes(&original));
+        assert!(has_gps(&exif_fields(&original)));
+
+        let mut located = original.clone();
+        assert!(strip(&mut located, Format::Webp, ImageMetadataPolicy::RemoveLocation).unwrap());
+        assert!(!still_has_metadata_to_remove(&located, Format::Webp, ImageMetadataPolicy::RemoveLocation));
+        let after = exif_fields(&located);
+        assert!(!has_gps(&after) && after.contains(&exif::Tag::Model));
+        assert!(find(&located, b"GPS").is_none() && find(&located, b"Apple").is_some());
+        assert_eq!(webp_flags(&located), WEBP_EXIF_FLAG | WEBP_XMP_FLAG);
+        assert_eq!(u32::from_le_bytes(located[4..8].try_into().unwrap()) as usize, located.len() - 8);
+        assert!(decodes(&located));
+
+        let mut all = original.clone();
+        assert!(strip(&mut all, Format::Webp, ImageMetadataPolicy::RemoveAll).unwrap());
+        assert!(!still_has_metadata_to_remove(&all, Format::Webp, ImageMetadataPolicy::RemoveAll));
+        assert!(find(&all, b"Apple").is_none() && find(&all, b"XMP ").is_none());
+        let after = exif_fields(&all);
+        for tag in IDENTIFYING_EXIF {
+            assert!(!after.contains(&tag), "still has {tag}");
+        }
+        assert_eq!(webp_flags(&all) & WEBP_XMP_FLAG, 0);
+        assert_eq!(webp_flags(&all) & WEBP_EXIF_FLAG != 0, find(&all, b"EXIF").is_some());
+        assert_eq!(u32::from_le_bytes(all[4..8].try_into().unwrap()) as usize, all.len() - 8);
+        assert!(decodes(&all));
+
+        // EXIF with JPEG's "Exif\0\0" in front is cleaned too.
+        let mut prefixed = webp_with_location(true);
+        assert!(strip(&mut prefixed, Format::Webp, ImageMetadataPolicy::RemoveLocation).unwrap());
+        assert!(find(&prefixed, b"GPS").is_none());
+        assert!(!strip(&mut prefixed, Format::Webp, ImageMetadataPolicy::RemoveLocation).unwrap());
+
+        // A chunk that claims more than the file has can't be followed.
+        let mut broken = original.clone();
+        broken.truncate(60);
+        broken[4..8].copy_from_slice(&52u32.to_le_bytes());
+        broken[16..20].copy_from_slice(&1000u32.to_le_bytes());
+        assert!(strip(&mut broken, Format::Webp, ImageMetadataPolicy::RemoveLocation).is_err());
+    }
+
+    /// A 1 x 1 GIF with an XMP application extension (location included)
+    /// and a comment.
+    fn gif_with_location() -> Vec<u8> {
+        let mut gif = Vec::new();
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif);
+            encoder.encode(&[10, 20, 30, 255], 1, 1, image::ExtendedColorType::Rgba8).unwrap();
+        }
+        assert_eq!(gif.pop(), Some(0x3B));
+        let mut xmp = vec![0x21, 0xFF, 11];
+        xmp.extend_from_slice(GIF_XMP_APPLICATION);
+        xmp.extend_from_slice(&xmp_with_location());
+        // The XMP spec's "magic trailer", which makes the raw packet read
+        // as sub-blocks.
+        xmp.push(1);
+        xmp.extend((0..=255u8).rev());
+        xmp.push(0);
+        gif.extend_from_slice(&xmp);
+        gif.extend_from_slice(&[0x21, 0xFE, 5]);
+        gif.extend_from_slice(b"Hello");
+        gif.extend_from_slice(&[0, 0x3B]);
+        gif
+    }
+
+    #[test]
+    fn cleans_gif() {
+        let original = gif_with_location();
+        assert_eq!(sniff(&original), Some(Format::Gif));
+        assert!(decodes(&original));
+
+        let mut located = original.clone();
+        assert!(strip(&mut located, Format::Gif, ImageMetadataPolicy::RemoveLocation).unwrap());
+        assert!(!still_has_metadata_to_remove(&located, Format::Gif, ImageMetadataPolicy::RemoveLocation));
+        assert!(find(&located, b"GPS").is_none() && find(&located, b"Hello").is_some());
+        assert!(decodes(&located));
+
+        let mut all = original.clone();
+        assert!(strip(&mut all, Format::Gif, ImageMetadataPolicy::RemoveAll).unwrap());
+        assert!(find(&all, b"XMP").is_none() && find(&all, b"Hello").is_none());
+        assert!(decodes(&all));
+
+        // Nothing to do in a GIF without them.
+        assert!(!strip(&mut all, Format::Gif, ImageMetadataPolicy::RemoveAll).unwrap());
+    }
+
+    #[test]
+    fn cleans_avif_like_heic() {
+        // An AVIF is HEIC's box structure with another brand: the fixture
+        // with its brand changed stands in for one.
+        let mut avif = fixture("location.heic");
+        avif[8..12].copy_from_slice(b"avif");
+        assert_eq!(sniff(&avif), Some(Format::Heif));
+        let length = avif.len();
+        assert!(strip(&mut avif, Format::Heif, ImageMetadataPolicy::RemoveLocation).unwrap());
+        assert!(!still_has_metadata_to_remove(&avif, Format::Heif, ImageMetadataPolicy::RemoveLocation));
+        assert_eq!(avif.len(), length);
     }
 
     #[test]

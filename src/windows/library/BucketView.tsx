@@ -556,7 +556,7 @@ function BucketObjectDetail({
             {model.destination.bucket}/{parentOfKey(object.key)}
           </Text>
         </header>
-        <Preview url={previewURL} filename={name} browserURL={url} />
+        <Preview url={previewURL} filename={name} browserURL={url} size={object.size} />
         <LinkSection url={url} copied={copied} onCopy={copyURL} />
         <section className="detail-section">
           <Text weight="semibold" className="secondary">

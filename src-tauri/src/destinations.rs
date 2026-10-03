@@ -26,6 +26,12 @@ pub enum ProviderPreset {
 }
 
 impl ProviderPreset {
+    /// Whether uploads can be made conditional (If-None-Match: *), so a
+    /// file never lands on one that appeared at its key in the meantime.
+    pub fn supports_conditional_writes(self) -> bool {
+        matches!(self, ProviderPreset::AmazonS3 | ProviderPreset::CloudflareR2)
+    }
+
     /// The raw value the Mac app uses, which the local API reports as `provider`.
     pub fn raw_value(self) -> &'static str {
         match self {

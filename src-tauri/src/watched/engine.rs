@@ -521,8 +521,13 @@ fn scan_offset(folder_id: &str) -> Duration {
     Duration::from_secs(hasher.finish() % SCAN_SPREAD_SECS)
 }
 
+/// The moment `millis` (Unix milliseconds) is, never further off than a
+/// year and a day: a pause date from a file or a link can be anything, and
+/// an `Instant` that far would overflow.
 fn until(now: Now, millis: i64) -> Instant {
-    now.at + Duration::from_millis(millis.saturating_sub(now.millis).max(0) as u64)
+    const LONGEST: u64 = 366 * 24 * 60 * 60 * 1000;
+    let wait = Duration::from_millis((millis.saturating_sub(now.millis).max(0) as u64).min(LONGEST));
+    now.at.checked_add(wait).unwrap_or(now.at)
 }
 
 impl<H: Host> Engine<H> {

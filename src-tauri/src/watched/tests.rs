@@ -893,6 +893,32 @@ fn an_idle_folder_only_wakes_for_its_hourly_scan() {
     setup.engine.set_pause(Pause::Until(now.millis + 30 * 60_000));
     let next = setup.engine.tick(now.after(Duration::from_secs(2))).unwrap();
     assert!(next.duration_since(now.at) <= Duration::from_secs(30 * 60));
+    // A pause date from a file can be anything: no overflow, at most a
+    // year and a day of waiting.
+    setup.engine.set_pause(Pause::Until(i64::MAX));
+    let next = setup.engine.tick(now.after(Duration::from_secs(3))).unwrap();
+    assert!(next.duration_since(now.at) <= Duration::from_secs(367 * 24 * 60 * 60));
+}
+
+#[test]
+fn clamps_pause_minutes() {
+    assert_eq!(super::pause_for(Some(60), 1_000), Pause::Until(1_000 + 60 * 60_000));
+    assert_eq!(super::pause_for(Some(u64::MAX), 1_000), Pause::Until(1_000 + super::MAX_PAUSE_MINUTES as i64 * 60_000));
+    assert_eq!(super::pause_for(Some(10), i64::MAX - 5), Pause::Until(i64::MAX));
+    assert_eq!(super::pause_for(None, 0), Pause::Forever);
+    assert_eq!(super::pause_for(Some(0), 0), Pause::Forever);
+
+    assert_eq!(super::pause_minutes(&serde_json::json!(30)), Some(30));
+    assert_eq!(super::pause_minutes(&serde_json::json!(9_999_999)), Some(super::MAX_PAUSE_MINUTES));
+    for invalid in [serde_json::json!(0), serde_json::json!(-5), serde_json::json!(1.5), serde_json::json!("60"), serde_json::json!(true)] {
+        assert_eq!(super::pause_minutes(&invalid), None, "{invalid}");
+    }
+    assert_eq!(super::pause_minutes_text(" 15 "), Some(15));
+    assert_eq!(super::pause_minutes_text("99999999999999999999"), Some(super::MAX_PAUSE_MINUTES));
+    assert_eq!(super::pause_minutes_text("600000"), Some(super::MAX_PAUSE_MINUTES));
+    for invalid in ["", "0", "-1", "soon", "1.5"] {
+        assert_eq!(super::pause_minutes_text(invalid), None, "{invalid}");
+    }
 }
 
 #[test]

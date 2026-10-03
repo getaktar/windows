@@ -10,6 +10,10 @@
 //! AES-256-GCM, additional data "aktar-transfer-v1"
 //! ```
 //!
+//! The sealed JSON carries `expiresAt` (Unix seconds, an hour after the
+//! link was made); a link more than five minutes past it is refused, and
+//! one without it (from older apps) is taken.
+//!
 //! Deriving the key takes a moment on purpose, so `seal` and `open` run
 //! off the async runtime's threads. Nothing here is ever logged.
 
@@ -38,6 +42,11 @@ const TAG_LENGTH: usize = 16;
 const HEADER_LENGTH: usize = 1 + SALT_LENGTH + NONCE_LENGTH;
 const ADDITIONAL_DATA: &[u8] = b"aktar-transfer-v1";
 const DEFAULT_OBJECT_PATH: &str = "{year}/{month}/{uuid}.{ext}";
+/// How long a link can be imported: an hour. It goes in the sealed JSON as
+/// `expiresAt` (Unix seconds), which apps that don't know it ignore.
+const LIFETIME_SECONDS: i64 = 3600;
+/// How far the two devices' clocks may disagree.
+const CLOCK_SKEW_SECONDS: i64 = 300;
 
 /// base64url without padding, also read with it.
 const BASE64URL: GeneralPurpose = GeneralPurpose::new(
@@ -56,6 +65,8 @@ pub enum TransferError {
     NewerVersion,
     /// The transfer code didn't decrypt it, or isn't a valid code at all.
     WrongCode,
+    /// Made more than an hour ago (`expiresAt` has passed).
+    Expired,
 }
 
 /// What a link carries. `custom_template` is the app-level template, sent
@@ -111,7 +122,11 @@ pub fn seal(payload: &TransferPayload, code: &str) -> Result<String, String> {
     let mut nonce = [0u8; NONCE_LENGTH];
     rand::rngs::OsRng.fill_bytes(&mut salt);
     rand::rngs::OsRng.fill_bytes(&mut nonce);
-    seal_with(&encode_payload(payload), code, &salt, &nonce)
+    seal_with(&encode_payload(payload, now_seconds()), code, &salt, &nonce)
+}
+
+fn now_seconds() -> i64 {
+    chrono::Utc::now().timestamp()
 }
 
 fn seal_with(plaintext: &[u8], code: &str, salt: &[u8; SALT_LENGTH], nonce: &[u8; NONCE_LENGTH]) -> Result<String, String> {
@@ -136,7 +151,7 @@ pub fn open(input: &str, code: &str) -> Result<TransferPayload, TransferError> {
     let plaintext = cipher(&code, salt)
         .decrypt(&Nonce::from(nonce), AeadPayload { msg: &envelope[HEADER_LENGTH..], aad: ADDITIONAL_DATA })
         .map_err(|_| TransferError::WrongCode)?;
-    decode_payload(&plaintext)
+    decode_payload(&plaintext, now_seconds())
 }
 
 /// The encrypted bytes of a link, checked before any code is asked for,
@@ -169,8 +184,9 @@ fn cipher(code: &str, salt: &[u8]) -> Aes256Gcm {
 // MARK: - Payload
 
 /// The same field names destinations.json uses, without `isDefault` and
-/// with unset fields left out.
-fn encode_payload(payload: &TransferPayload) -> Vec<u8> {
+/// with unset fields left out, and when the link stops working (an hour
+/// from `now`, Unix seconds).
+fn encode_payload(payload: &TransferPayload, now: i64) -> Vec<u8> {
     let mut destination = serde_json::to_value(&payload.destination).unwrap_or(Value::Null);
     if let Value::Object(object) = &mut destination {
         object.remove("isDefault");
@@ -186,7 +202,12 @@ fn encode_payload(payload: &TransferPayload) -> Vec<u8> {
     if let Some(token) = payload.credentials.session_token.as_deref().filter(|token| !token.is_empty()) {
         credentials["sessionToken"] = token.into();
     }
-    let mut root = json!({ "v": FORMAT_VERSION, "destination": destination, "credentials": credentials });
+    let mut root = json!({
+        "v": FORMAT_VERSION,
+        "destination": destination,
+        "credentials": credentials,
+        "expiresAt": now + LIFETIME_SECONDS,
+    });
     if payload.destination.output_mode == Some(OutputMode::Custom) {
         if let Some(template) = &payload.custom_template {
             root["customTemplate"] = template.as_str().into();
@@ -208,11 +229,16 @@ fn remove_nulls(object: &mut Map<String, Value>) {
 /// this app doesn't know is left unset rather than failing the whole
 /// import. Only what a destination can't work without is required. Text
 /// fields are trimmed, as the destination form does, since the import
-/// saves them as they come.
-fn decode_payload(data: &[u8]) -> Result<TransferPayload, TransferError> {
+/// saves them as they come. A link past its `expiresAt` (by more than the
+/// clock skew allowed) is refused; one without it, from an app before it,
+/// is taken.
+fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferError> {
     let root: Value = serde_json::from_slice(data).map_err(|_| TransferError::NotTransfer)?;
     if integer(root.get("v")).is_some_and(|version| version > FORMAT_VERSION as i64) {
         return Err(TransferError::NewerVersion);
+    }
+    if integer(root.get("expiresAt")).is_some_and(|expires_at| now > expires_at.saturating_add(CLOCK_SKEW_SECONDS)) {
+        return Err(TransferError::Expired);
     }
     let object = root.get("destination").and_then(Value::as_object).ok_or(TransferError::NotTransfer)?;
     let keys = root.get("credentials").and_then(Value::as_object).ok_or(TransferError::NotTransfer)?;
@@ -368,6 +394,29 @@ mod tests {
     }
 
     #[test]
+    fn expires_after_an_hour() {
+        let payload = open(FULL, CODE).unwrap();
+        let created = 1_790_000_000;
+        let sealed = seal_with(&encode_payload(&payload, created), CODE, &[7; SALT_LENGTH], &[9; NONCE_LENGTH]).unwrap();
+        let plaintext = |link: &str| {
+            let envelope = envelope(link).unwrap();
+            let nonce: [u8; NONCE_LENGTH] = envelope[1 + SALT_LENGTH..HEADER_LENGTH].try_into().unwrap();
+            cipher(CODE, &envelope[1..1 + SALT_LENGTH])
+                .decrypt(&Nonce::from(nonce), AeadPayload { msg: &envelope[HEADER_LENGTH..], aad: ADDITIONAL_DATA })
+                .unwrap()
+        };
+        let data = plaintext(&sealed);
+        // Within the hour, and the five minutes the clocks may be apart.
+        assert!(decode_payload(&data, created).is_ok());
+        assert!(decode_payload(&data, created + 3600 + 300).is_ok());
+        assert_eq!(decode_payload(&data, created + 3600 + 301).unwrap_err(), TransferError::Expired);
+        // Links from apps before `expiresAt` have none, and still open.
+        assert!(decode_payload(&plaintext(FULL), i64::MAX).is_ok());
+        // A fresh link opens right away.
+        assert!(open(&seal(&payload, CODE).unwrap(), CODE).is_ok());
+    }
+
+    #[test]
     fn accepts_the_link_in_any_form() {
         let encoded = &FULL[LINK_PREFIX.len()..];
         assert!(envelope(encoded).is_ok());
@@ -427,8 +476,9 @@ mod tests {
             },
             custom_template: Some("<{url}>".into()),
         };
-        let json: Value = serde_json::from_slice(&encode_payload(&payload)).unwrap();
+        let json: Value = serde_json::from_slice(&encode_payload(&payload, 1_000)).unwrap();
         assert_eq!(json["v"], 1);
+        assert_eq!(json["expiresAt"], 4_600);
         assert!(json["destination"].get("isDefault").is_none());
         assert!(json["destination"]["imageProcessing"].get("quality").is_none());
 
@@ -445,7 +495,7 @@ mod tests {
         // The template only goes along with the custom output mode.
         let mut plain = payload.clone();
         plain.destination.output_mode = None;
-        let json: Value = serde_json::from_slice(&encode_payload(&plain)).unwrap();
+        let json: Value = serde_json::from_slice(&encode_payload(&plain, 1_000)).unwrap();
         assert!(json.get("customTemplate").is_none());
     }
 }

@@ -156,6 +156,8 @@ pub fn run() {
             commands::set_local_api_port,
             commands::regenerate_api_token,
             commands::copy_text,
+            commands::copy_secret,
+            commands::clear_clipboard_if,
             commands::open_url,
             commands::open_window,
             commands::close_window,
@@ -184,6 +186,8 @@ pub fn run() {
             commands::resume_watching,
             commands::set_watch_pause_conditions,
             commands::test_watch_hook,
+            commands::pick_watch_script,
+            commands::check_webhook_url,
             commands::show_folder,
             commands::take_settings_request,
         ])

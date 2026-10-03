@@ -140,14 +140,14 @@ export function WatchedFolderForm({
     if (typeof selection === "string") update({ path: selection });
   };
 
+  // Aktar opens the file dialog itself and makes the hook: a window can't
+  // name a program to run.
   const addScript = async () => {
-    const selection = await open({
-      multiple: false,
-      directory: false,
-      filters: [{ name: t("Scripts"), extensions: ["ps1", "bat", "cmd", "exe"] }],
-    });
-    if (typeof selection === "string") {
-      update({ hooks: [...current.hooks, { id: crypto.randomUUID().toUpperCase(), kind: "script", target: selection, enabled: true }] });
+    try {
+      const hook = await api.pickWatchScript();
+      if (hook) update({ hooks: [...current.hooks, hook] });
+    } catch (failure) {
+      setError(errorMessage(failure));
     }
   };
 
@@ -485,6 +485,7 @@ export function WatchedFolderForm({
         label="URL"
         initialValue="https://"
         confirmLabel={t("Add")}
+        validate={(url) => api.checkWebhookUrl(url.trim()).then(() => null, errorMessage)}
         onCancel={() => setAddingWebhook(false)}
         onConfirm={(url) => {
           setAddingWebhook(false);

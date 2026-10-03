@@ -62,11 +62,52 @@ async fn send(core: &SharedCore, hook: &Hook, payload: &serde_json::Value) -> Re
     }
 }
 
-async fn webhook(core: &SharedCore, url: &str, payload: &serde_json::Value) -> Result<(), String> {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(t!("The URL must start with https:// or http://."));
+/// Whether a webhook may be sent to `url`: https:// anywhere, plain
+/// http:// only to this PC or the local network, where nothing it sends
+/// crosses the internet unencrypted.
+pub fn check_webhook_url(url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url.trim()).map_err(|_| t!("The webhook address isn't a valid http or https URL."))?;
+    match parsed.scheme() {
+        "https" if parsed.host().is_some() => Ok(()),
+        "http" if parsed.host().is_some_and(|host| is_local(&host)) => Ok(()),
+        "http" if parsed.host().is_some() => Err(t!("Use https:// for this webhook. Plain http:// only works for this PC or your local network.")),
+        _ => Err(t!("The webhook address isn't a valid http or https URL.")),
     }
-    let client = reqwest::Client::builder().timeout(TIMEOUT).build().map_err(|error| error.to_string())?;
+}
+
+/// This PC or the local network: localhost, `.local` names, and loopback,
+/// private and link-local addresses.
+fn is_local(host: &url::Host<&str>) -> bool {
+    match host {
+        url::Host::Domain(name) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            name == "localhost" || name.ends_with(".localhost") || name.ends_with(".local")
+        }
+        url::Host::Ipv4(address) => address.is_loopback() || address.is_private() || address.is_link_local(),
+        url::Host::Ipv6(address) => {
+            let first = address.segments()[0];
+            address.is_loopback() || (first & 0xFE00) == 0xFC00 || (first & 0xFFC0) == 0xFE80
+        }
+    }
+}
+
+async fn webhook(core: &SharedCore, url: &str, payload: &serde_json::Value) -> Result<(), String> {
+    check_webhook_url(url)?;
+    // A redirect is only followed on the same host (and never to plain
+    // http:// on the internet), so the upload's details aren't sent on to
+    // somewhere else.
+    let client = reqwest::Client::builder()
+        .timeout(TIMEOUT)
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_host = attempt.previous().first().is_some_and(|first| first.host_str() == attempt.url().host_str());
+            if attempt.previous().len() > 5 || !same_host || check_webhook_url(attempt.url().as_str()).is_err() {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .map_err(|error| error.to_string())?;
     let response = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -130,5 +171,32 @@ async fn script(path: &str, payload: &serde_json::Value) -> Result<(), String> {
         (Some(code), true) => Err(t!("It exited with code {0}.", code)),
         (Some(code), false) => Err(format!("{} {detail}", t!("It exited with code {0}.", code))),
         (None, _) => Err(detail),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_sends_plain_http_nearby() {
+        for allowed in [
+            "https://hooks.example.com/x",
+            "http://localhost:8080/hook",
+            "http://127.0.0.1/hook",
+            "http://192.168.1.20/hook",
+            "http://10.0.0.5:3000",
+            "http://172.20.1.1",
+            "http://169.254.10.10",
+            "http://nas.local/hook",
+            "http://[::1]:9000/",
+            "http://[fd12::1]/",
+            "http://[fe80::1]/",
+        ] {
+            assert!(check_webhook_url(allowed).is_ok(), "{allowed}");
+        }
+        for refused in ["http://hooks.example.com/x", "http://8.8.8.8/", "http://172.32.0.1/", "http://[2001:db8::1]/", "ftp://x.dev", "hooks.example.com", "https://"] {
+            assert!(check_webhook_url(refused).is_err(), "{refused}");
+        }
     }
 }

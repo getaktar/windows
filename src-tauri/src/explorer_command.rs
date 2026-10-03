@@ -114,8 +114,10 @@ impl IExplorerCommand_Impl for Command_Impl {
         let items = items.ok()?;
         let mut paths = Vec::new();
         for index in 0..unsafe { items.GetCount()? } {
-            let item = unsafe { items.GetItemAt(index)? };
-            let name = unsafe { item.GetDisplayName(SIGDN_FILESYSPATH)? };
+            // Something without a file system path (a library, a phone's
+            // folder) is left out, not the whole selection with it.
+            let Ok(item) = (unsafe { items.GetItemAt(index) }) else { continue };
+            let Ok(name) = (unsafe { item.GetDisplayName(SIGDN_FILESYSPATH) }) else { continue };
             if let Ok(path) = unsafe { name.to_string() } {
                 paths.push(path);
             }

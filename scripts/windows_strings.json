@@ -2214,5 +2214,123 @@
     "pt-BR": "{0} foi removido de {1}. Excluí-lo também do bucket?",
     "ja": "{1}から{0}が削除されました。バケットからも削除しますか？",
     "zh-Hans": "已从 {1} 中移除 {0}。也从存储桶中删除它吗？"
+  },
+  "// Security fixes": "Strings from the security fixes of October 2026 (link confirmations, key checks, webhooks, transfer link expiry).",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": {
+    "tr": "“{0}” bucket'ta ad olarak kullanılamaz. Başta “/”, klasör adı olarak “.” ve “..”, boş klasör adları (“//”) ve kontrol karakterleri olmamalı.",
+    "de": "„{0}“ kann im Bucket nicht als Name verwendet werden. Lass ein „/“ am Anfang, „.“ und „..“ als Ordnernamen, leere Ordnernamen („//“) und Steuerzeichen weg.",
+    "fr": "« {0} » ne peut pas servir de nom dans le bucket. Évitez un « / » au début, « . » et « .. » comme noms de dossier, les noms de dossier vides (« // ») et les caractères de contrôle.",
+    "es": "«{0}» no se puede usar como nombre en el bucket. Quita la «/» del principio, «.» y «..» como nombres de carpeta, los nombres de carpeta vacíos («//») y los caracteres de control.",
+    "pt-BR": "“{0}” não pode ser usado como nome no bucket. Tire a “/” do início, “.” e “..” como nomes de pasta, nomes de pasta vazios (“//”) e caracteres de controle.",
+    "ja": "「{0}」はバケット内の名前として使えません。先頭の「/」、フォルダ名としての「.」と「..」、空のフォルダ名（「//」）、制御文字を含めないでください。",
+    "zh-Hans": "“{0}”不能用作存储桶中的名称。请去掉开头的“/”、作为文件夹名的“.”和“..”、空文件夹名（“//”）以及控制字符。"
+  },
+  "Something else was uploaded under this name at the same time.": {
+    "tr": "Aynı anda bu adla başka bir şey yüklendi.",
+    "de": "Gleichzeitig wurde etwas anderes unter diesem Namen hochgeladen.",
+    "fr": "Autre chose a été envoyé sous ce nom au même moment.",
+    "es": "Se subió otra cosa con este nombre al mismo tiempo.",
+    "pt-BR": "Outra coisa foi enviada com este nome ao mesmo tempo.",
+    "ja": "同時に別のものがこの名前でアップロードされました。",
+    "zh-Hans": "同一时间有其他内容以此名称上传。"
+  },
+  "A link asked Aktar to pause watched folders for {0} minutes.": {
+    "tr": "Bir bağlantı, Aktar'dan izlenen klasörleri {0} dakika duraklatmasını istedi.",
+    "de": "Ein Link möchte, dass Aktar überwachte Ordner für {0} Minuten pausiert.",
+    "fr": "Un lien demande à Aktar de mettre en pause les dossiers surveillés pendant {0} minutes.",
+    "es": "Un enlace ha pedido a Aktar que pause las carpetas vigiladas durante {0} minutos.",
+    "pt-BR": "Um link pediu ao Aktar para pausar as pastas monitoradas por {0} minutos.",
+    "ja": "リンクがAktarに監視フォルダを{0}分間一時停止するよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 将监视文件夹暂停 {0} 分钟。"
+  },
+  "A link asked Aktar to pause watched folders until you resume them.": {
+    "tr": "Bir bağlantı, Aktar'dan izlenen klasörleri sen devam ettirene kadar duraklatmasını istedi.",
+    "de": "Ein Link möchte, dass Aktar überwachte Ordner pausiert, bis du sie fortsetzt.",
+    "fr": "Un lien demande à Aktar de mettre en pause les dossiers surveillés jusqu’à ce que vous les repreniez.",
+    "es": "Un enlace ha pedido a Aktar que pause las carpetas vigiladas hasta que las reanudes.",
+    "pt-BR": "Um link pediu ao Aktar para pausar as pastas monitoradas até você retomá-las.",
+    "ja": "リンクがAktarに、再開するまで監視フォルダを一時停止するよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 暂停监视文件夹，直到你恢复。"
+  },
+  "Pause Watched Folders?": {
+    "tr": "İzlenen Klasörler Duraklatılsın mı?",
+    "de": "Überwachte Ordner pausieren?",
+    "fr": "Mettre en pause les dossiers surveillés ?",
+    "es": "¿Pausar las carpetas vigiladas?",
+    "pt-BR": "Pausar as pastas monitoradas?",
+    "ja": "監視フォルダを一時停止しますか？",
+    "zh-Hans": "暂停监视文件夹？"
+  },
+  "an image from the clipboard": {
+    "tr": "panodaki bir görüntü",
+    "de": "ein Bild aus der Zwischenablage",
+    "fr": "une image du presse-papiers",
+    "es": "una imagen del portapapeles",
+    "pt-BR": "uma imagem da área de transferência",
+    "ja": "クリップボードの画像",
+    "zh-Hans": "剪贴板中的一张图片"
+  },
+  "{0} files": {
+    "tr": "{0} dosya",
+    "de": "{0} Dateien",
+    "fr": "{0} fichiers",
+    "es": "{0} archivos",
+    "pt-BR": "{0} arquivos",
+    "ja": "{0}個のファイル",
+    "zh-Hans": "{0} 个文件"
+  },
+  "A link asked Aktar to upload {0} from the clipboard to “{1}”.": {
+    "tr": "Bir bağlantı, Aktar'dan panodaki {0} öğesini “{1}” hedefine yüklemesini istedi.",
+    "de": "Ein Link möchte, dass Aktar {0} aus der Zwischenablage nach „{1}“ hochlädt.",
+    "fr": "Un lien demande à Aktar d’envoyer {0} depuis le presse-papiers vers « {1} ».",
+    "es": "Un enlace ha pedido a Aktar que suba {0} del portapapeles a «{1}».",
+    "pt-BR": "Um link pediu ao Aktar para enviar {0} da área de transferência para “{1}”.",
+    "ja": "リンクがAktarに、クリップボードの{0}を「{1}」にアップロードするよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 将剪贴板中的{0}上传到“{1}”。"
+  },
+  "Upload the Clipboard?": {
+    "tr": "Pano Yüklensin mi?",
+    "de": "Zwischenablage hochladen?",
+    "fr": "Envoyer le presse-papiers ?",
+    "es": "¿Subir el portapapeles?",
+    "pt-BR": "Enviar a área de transferência?",
+    "ja": "クリップボードをアップロードしますか？",
+    "zh-Hans": "上传剪贴板？"
+  },
+  "Use https:// for this webhook. Plain http:// only works for this PC or your local network.": {
+    "tr": "Bu webhook için https:// kullan. Düz http:// yalnızca bu bilgisayar veya yerel ağın için çalışır.",
+    "de": "Verwende https:// für diesen Webhook. Einfaches http:// funktioniert nur für diesen PC oder dein lokales Netzwerk.",
+    "fr": "Utilisez https:// pour ce webhook. Le simple http:// ne fonctionne que pour ce PC ou votre réseau local.",
+    "es": "Usa https:// para este webhook. El http:// simple solo funciona para este PC o tu red local.",
+    "pt-BR": "Use https:// para este webhook. O http:// simples só funciona para este PC ou sua rede local.",
+    "ja": "このWebhookにはhttps://を使ってください。http://はこのPCまたはローカルネットワーク内でのみ使えます。",
+    "zh-Hans": "请为此 Webhook 使用 https://。普通的 http:// 仅适用于这台电脑或你的本地网络。"
+  },
+  "Pick the script with “Add Script…”.": {
+    "tr": "Betiği “Betik Ekle…” ile seç.",
+    "de": "Wähle das Skript mit „Skript hinzufügen …“ aus.",
+    "fr": "Choisissez le script avec « Ajouter un script… ».",
+    "es": "Elige el script con «Añadir script…».",
+    "pt-BR": "Escolha o script com “Adicionar script…”.",
+    "ja": "「スクリプトを追加…」でスクリプトを選んでください。",
+    "zh-Hans": "请通过“添加脚本…”选择脚本。"
+  },
+  "This transfer link has expired. Make a new one on the other device.": {
+    "tr": "Bu aktarım bağlantısının süresi doldu. Diğer cihazda yeni bir tane oluştur.",
+    "de": "Dieser Übertragungslink ist abgelaufen. Erstelle auf dem anderen Gerät einen neuen.",
+    "fr": "Ce lien de transfert a expiré. Créez-en un nouveau sur l’autre appareil.",
+    "es": "Este enlace de transferencia ha caducado. Crea uno nuevo en el otro dispositivo.",
+    "pt-BR": "Este link de transferência expirou. Crie um novo no outro dispositivo.",
+    "ja": "この転送リンクは期限切れです。もう一方のデバイスで新しく作成してください。",
+    "zh-Hans": "此传输链接已过期。请在另一台设备上重新生成。"
+  },
+  "Videos (MOV, MP4) are uploaded with their location.": {
+    "tr": "Videolar (MOV, MP4) konumlarıyla birlikte yüklenir.",
+    "de": "Videos (MOV, MP4) werden mit ihrem Standort hochgeladen.",
+    "fr": "Les vidéos (MOV, MP4) sont envoyées avec leur position.",
+    "es": "Los vídeos (MOV, MP4) se suben con su ubicación.",
+    "pt-BR": "Vídeos (MOV, MP4) são enviados com a localização.",
+    "ja": "動画（MOV、MP4）は位置情報付きでアップロードされます。",
+    "zh-Hans": "视频（MOV、MP4）会连同位置信息一起上传。"
   }
 }

@@ -21,12 +21,15 @@ use crate::folder_upload;
 use crate::history::{NewRecord, UploadRecord};
 use crate::multipart::{self, Candidate, Session, SourceFile};
 use crate::output::{self, ContentHashes};
-use crate::storage::{Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
+use crate::storage::{BucketObject, Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
 use crate::{image_metadata, image_processing};
 use crate::t;
 use crate::windows::AppWindow;
 
 const MAX_CONCURRENT: usize = 3;
+/// How many times an upload to a name picked as free looks for another
+/// one when the provider says it was taken in the meantime.
+const MAX_NAME_RETRIES: usize = 5;
 /// An upload that has sent nothing, and heard nothing back, for this long
 /// has stalled (Wi-Fi dropped mid-request, a proxy swallowed it) and is
 /// failed so it can be retried, instead of spinning forever.
@@ -53,6 +56,11 @@ pub struct UploadInput {
     /// A file from a watched folder, which copies and notifies as the
     /// folder says instead.
     pub watched: Option<WatchedSource>,
+    /// `object_key` is a free name picked for it (the bucket browser, the
+    /// local API's prefix=): where the provider can, it's only written
+    /// while nothing is there, and a name taken in the meantime makes way
+    /// for the next free one.
+    pub keep_existing: bool,
 }
 
 /// Where a watched folder's file came from, and how its key is made.
@@ -101,6 +109,7 @@ impl UploadInput {
             folder_key: None,
             group: None,
             watched: None,
+            keep_existing: false,
         }
     }
 
@@ -112,7 +121,7 @@ impl UploadInput {
         }
     }
 
-    fn remove_if_temporary(&self) {
+    pub(crate) fn remove_if_temporary(&self) {
         if self.temporary {
             let _ = std::fs::remove_file(&self.path);
         }
@@ -394,12 +403,12 @@ pub fn resolve_name(core: &SharedCore, id: &str, name: Option<String>) {
 }
 
 /// The file name for an upload named `typed`: it replaces the name and
-/// keeps the extension. Slashes and backslashes are taken out, and a name
-/// that's left empty keeps the original.
+/// keeps the extension. Slashes, backslashes and control characters are
+/// taken out, and a name that's left empty, "." or ".." keeps the original.
 fn named(original: &str, typed: &str) -> String {
-    let typed: String = typed.chars().filter(|c| *c != '/' && *c != '\\').collect();
+    let typed: String = typed.chars().filter(|c| *c != '/' && *c != '\\' && !c.is_control()).collect();
     let typed = typed.trim();
-    if typed.is_empty() {
+    if matches!(typed, "" | "." | "..") {
         return original.to_string();
     }
     match crate::util::split_extension(original).1 {
@@ -677,6 +686,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
 
     // A big file continues an upload of it left unfinished, under its key.
     let source = (!zipped).then(|| SourceFile::of(&input.path)).flatten();
+    let key_basis = generated_key.then(|| key_basis_for(input, destination, &filename));
     let mut resumed = None;
     if file_size > SINGLE_UPLOAD_LIMIT {
         if let Some(source) = &source {
@@ -693,10 +703,30 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
             sha256: hashes.as_ref().map(|hashes| hashes.sha256.as_str()),
         };
         let exact_key = (!generated_key).then(|| object_key_for(input, destination, &filename, hashes.as_ref(), new_extension));
-        resumed = core.upload_sessions.matching(&candidate, &busy).into_iter().find(|session| match &exact_key {
-            Some(key) => session.object_key == *key,
-            None => crate::expiry::days_in_key(&session.object_key) == input.expire_after_days(),
-        });
+        for session in core.upload_sessions.matching(&candidate, &busy) {
+            match &exact_key {
+                Some(key) => {
+                    if resumed.is_none() && session.object_key == *key {
+                        resumed = Some(session);
+                    }
+                }
+                // A key from the template is only kept while the template,
+                // the name, and the watched folder's subfolder it was made
+                // from are the same (and the "Delete after" folder). One
+                // made from something else would put the file where it no
+                // longer belongs, so it's thrown away.
+                None => {
+                    let same = session.key_basis.is_some()
+                        && session.key_basis == key_basis
+                        && crate::expiry::days_in_key(&session.object_key) == input.expire_after_days();
+                    if same && resumed.is_none() {
+                        resumed = Some(session);
+                    } else if !same {
+                        multipart::abort(&provider, &core.upload_sessions, &session).await;
+                    }
+                }
+            }
+        }
     }
     // An unfinished upload of this job that isn't the one continued now
     // (a folder's ZIP, made again) is thrown away.
@@ -723,9 +753,23 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     }
     let content_type = output::content_type(&filename);
     let progress = Arc::new(Progress::default());
+    // Only S3 and R2 are known to honor If-None-Match on uploads.
+    let only_if_new = input.keep_existing && input.object_key.is_some() && destination.preset.supports_conditional_writes();
     let upload = async {
         if file_size <= SINGLE_UPLOAD_LIMIT {
-            return provider.upload(&path, &object_key, &content_type, progress.clone()).await.map(|_| ());
+            let mut key = object_key.clone();
+            let mut taken = Vec::new();
+            loop {
+                match provider.upload(&path, &key, &content_type, progress.clone(), only_if_new).await {
+                    Err(StorageError::AlreadyExists) if taken.len() < MAX_NAME_RETRIES => {
+                        taken.push(key.clone());
+                        let (folder, _) = crate::bucket::split_key(&key);
+                        let name = crate::bucket::split_key(&object_key).1;
+                        key = crate::bucket::available_key(&provider, name, folder, &taken).await?;
+                    }
+                    result => return result.map(|_| key),
+                }
+            }
         }
         let resuming = resumed.is_some();
         let session: Session = match resumed {
@@ -741,6 +785,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     file_size,
                     source.clone(),
                     hashes.as_ref().map(|hashes| hashes.sha256.clone()),
+                    key_basis.clone(),
                 )
                 .await?
             }
@@ -751,7 +796,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         }
         multipart::upload(&provider, &core.upload_sessions, session, &path, &content_type, resuming, progress.clone()).await?;
         core.uploads.job_sessions.lock().unwrap().remove(job_id);
-        Ok(())
+        Ok(object_key.clone())
     };
     tokio::pin!(upload);
     let mut ticker = tokio::time::interval(Duration::from_millis(250));
@@ -760,7 +805,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     loop {
         tokio::select! {
             result = &mut upload => {
-                result?;
+                let object_key: String = result?;
                 let public_url = output::resolve_public_url(&destination.public_base_url, &object_key);
                 let link = link_for(&provider, destination, &object_key, &public_url).await;
                 return Ok(Outcome {
@@ -818,6 +863,15 @@ fn object_key_for(
     }
 }
 
+/// What a key from the destination's path template is made from, for
+/// telling whether an unfinished upload's key still fits: the template,
+/// the name the file goes by (after any format change), and a watched
+/// folder's subfolder.
+fn key_basis_for(input: &UploadInput, destination: &DestinationConfig, filename: &str) -> String {
+    let subpath = input.watched.as_ref().map_or("", |source| source.key_place.subpath.as_str());
+    multipart::key_basis(&destination.object_path_template, filename, subpath)
+}
+
 /// `key` with its last component's extension swapped for `extension`.
 fn with_extension(key: &str, extension: Option<&str>) -> String {
     let Some(extension) = extension else { return key.to_string() };
@@ -840,10 +894,15 @@ async fn link_for(provider: &S3Provider, destination: &DestinationConfig, object
     public_url.to_string()
 }
 
+/// How much later than its history record an uploaded object may be dated
+/// and still be that upload: clocks differ, and a multipart upload's object
+/// is dated when it's put together at the end.
+const REUSE_DATE_LEEWAY_MILLIS: i64 = 5 * 60_000;
+
 /// An earlier upload of the same bytes to this destination that's still
-/// in the bucket and expires like this one would: neither ever does, or
-/// both are in the same `tmp/{N}d/` folder and it hasn't yet. None when the
-/// bucket can't be asked: then the file is just uploaded.
+/// in the bucket, unchanged, and expires like this one would: neither ever
+/// does, or both are in the same `tmp/{N}d/` folder and it hasn't yet.
+/// None when the bucket can't be asked: then the file is just uploaded.
 async fn earlier_upload(
     core: &SharedCore,
     provider: &S3Provider,
@@ -856,13 +915,36 @@ async fn earlier_upload(
         if !expires_alike(&record, input.expire_after_days(), now) {
             continue;
         }
-        match provider.object_exists(&record.object_key).await {
-            Ok(true) => return Some(record),
-            Ok(false) => continue,
+        // Something else went to its key since ({filename} paths): the
+        // link serves that now.
+        if overwritten_later(&record, &core.history.with_object(&destination.id, &record.object_key)) {
+            continue;
+        }
+        match provider.object_info(&record.object_key).await {
+            Ok(Some(object)) if object_is_the_upload(&record, &object) => return Some(record),
+            Ok(_) => continue,
             Err(_) => return None,
         }
     }
     None
+}
+
+/// Whether a later upload to the record's key (`at_key`, all uploads to
+/// it) had other contents, or ones that weren't recorded.
+fn overwritten_later(record: &UploadRecord, at_key: &[UploadRecord]) -> bool {
+    at_key.iter().any(|other| {
+        other.id != record.id
+            && other.created_at > record.created_at
+            && (other.content_hash.is_none() || other.content_hash != record.content_hash)
+    })
+}
+
+/// Whether the object in the bucket is still the one the record uploaded:
+/// the same size, and not written after it (anything written by other
+/// means since would be).
+fn object_is_the_upload(record: &UploadRecord, object: &BucketObject) -> bool {
+    object.size == record.byte_size
+        && object.last_modified.is_some_and(|modified| modified <= record.created_at + REUSE_DATE_LEEWAY_MILLIS)
 }
 
 fn expires_alike(record: &UploadRecord, days: Option<u32>, now: i64) -> bool {
@@ -1129,9 +1211,15 @@ pub async fn delete_upload(core: &SharedCore, record_id: &str) -> Result<(), Fai
         .all()
         .into_iter()
         .find(|destination| destination.id == record.destination_id);
-    let credentials = destination.as_ref().and_then(|destination| credentials::load(&destination.id).ok());
-    if let (Some(destination), Some(credentials)) = (destination, credentials) {
-        S3Provider::new(destination, credentials).delete(&record.object_key).await?;
+    if let Some(destination) = destination {
+        // Only keys that are gone mean there's nothing to delete with; a
+        // Credential Manager that can't be read right now keeps the record,
+        // so the delete can be tried again.
+        match credentials::load(&destination.id) {
+            Ok(credentials) => S3Provider::new(destination, credentials).delete(&record.object_key).await?,
+            Err(credentials::CredentialError::NotFound) => {}
+            Err(error) => return Err(error.to_string().into()),
+        }
     }
     core.history.delete(&record.id);
     core.notify(events::HISTORY_CHANGED);
@@ -1148,6 +1236,8 @@ mod tests {
         assert_eq!(named("photo.jpg", "  a/b\\c  "), "abc.jpg");
         assert_eq!(named("photo.jpg", " / "), "photo.jpg");
         assert_eq!(named("README", "notes"), "notes");
+        assert_eq!(named("README", ".."), "README");
+        assert_eq!(named("a.png", "x\u{0}y\tz"), "xyz.png");
     }
 
     #[test]
@@ -1186,6 +1276,32 @@ mod tests {
         assert!(!expires_alike(&record("tmp/7d/a.png", Some(now)), Some(7), now));
         assert!(!expires_alike(&record("tmp/1d/a.png", Some(now + 1)), Some(7), now));
         assert!(!expires_alike(&record("2026/a.png", None), Some(7), now));
+    }
+
+    #[test]
+    fn reuses_only_what_is_still_at_its_key() {
+        let a = UploadRecord { created_at: 1_000, ..record("a.png", None) };
+        let later = |id: &str, created_at: i64, hash: Option<&str>| UploadRecord {
+            id: id.into(),
+            created_at,
+            content_hash: hash.map(str::to_string),
+            ..record("a.png", None)
+        };
+        assert!(!overwritten_later(&a, std::slice::from_ref(&a)));
+        // The same file uploaded to its key again changes nothing.
+        assert!(!overwritten_later(&a, &[later("S", 2_000, Some("h")), a.clone()]));
+        // Older uploads to the key don't matter.
+        assert!(!overwritten_later(&a, &[a.clone(), later("O", 500, Some("x"))]));
+        // A later one with other or unknown contents replaced it.
+        assert!(overwritten_later(&a, &[later("B", 2_000, Some("x")), a.clone()]));
+        assert!(overwritten_later(&a, &[later("B", 2_000, None), a.clone()]));
+
+        let object = |size: i64, last_modified: Option<i64>| BucketObject { key: "a.png".into(), size, last_modified };
+        assert!(object_is_the_upload(&a, &object(1, Some(1_000))));
+        assert!(object_is_the_upload(&a, &object(1, Some(1_000 + REUSE_DATE_LEEWAY_MILLIS))));
+        assert!(!object_is_the_upload(&a, &object(1, Some(1_001 + REUSE_DATE_LEEWAY_MILLIS))));
+        assert!(!object_is_the_upload(&a, &object(2, Some(1_000))));
+        assert!(!object_is_the_upload(&a, &object(1, None)));
     }
 
     #[test]

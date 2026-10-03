@@ -12,7 +12,6 @@
     "core:window:allow-set-content-protected",
     "dialog:allow-open",
     "dialog:allow-ask",
-    "dialog:allow-message",
-    "dialog:allow-save"
+    "dialog:allow-message"
   ]
 }

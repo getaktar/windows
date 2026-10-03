@@ -625,7 +625,7 @@ function IntegrationsSettings() {
               icon={<CopyRegular />}
               disabled={!state.token}
               onClick={() => {
-                api.copyText(state.token);
+                api.copySecret(state.token);
                 flashCopied();
               }}
             >

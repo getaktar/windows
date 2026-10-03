@@ -89,16 +89,21 @@ export function PromptDialog(props: {
   label: string;
   initialValue: string;
   confirmLabel: string;
+  /** Checked before `onConfirm`: the reason the value can't be used,
+   * shown under the field, or null. */
+  validate?: (value: string) => Promise<string | null>;
   onConfirm: (value: string) => void;
   onCancel: () => void;
 }) {
   const { t } = useI18n();
   const [value, setValue] = useState(props.initialValue);
+  const [invalid, setInvalid] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!props.open) return;
     setValue(props.initialValue);
+    setInvalid(null);
     // Select the file name without its extension, like File Explorer.
     window.setTimeout(() => {
       const field = input.current;
@@ -114,17 +119,26 @@ export function PromptDialog(props: {
     <Dialog open={props.open} onOpenChange={(_, data) => !data.open && props.onCancel()}>
       <DialogSurface>
         <form
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
-            props.onConfirm(value);
+            const reason = props.validate ? await props.validate(value) : null;
+            setInvalid(reason);
+            if (!reason) props.onConfirm(value);
           }}
         >
           <DialogBody>
             <DialogTitle>{props.title}</DialogTitle>
             <DialogContent className="dialog-stack">
               {props.message && <span>{props.message}</span>}
-              <Field label={props.label}>
-                <Input ref={input} value={value} onChange={(_, data) => setValue(data.value)} />
+              <Field label={props.label} validationMessage={invalid ?? undefined}>
+                <Input
+                  ref={input}
+                  value={value}
+                  onChange={(_, data) => {
+                    setValue(data.value);
+                    setInvalid(null);
+                  }}
+                />
               </Field>
             </DialogContent>
             <DialogActions>

@@ -17,10 +17,15 @@ interface PreviewProps {
   browserURL: string;
   /** A local thumbnail to show, dimmed, while the full image loads. */
   placeholder?: string | null;
+  /** The file's size in bytes, when known: past 25 MB, nothing is downloaded. */
+  size?: number;
   onZoom?: () => void;
 }
 
 type Loaded = { state: "loading" } | { state: "failed" } | { state: "ready"; data: ArrayBuffer };
+
+/** The biggest file downloaded for a preview; Rust stops there too. */
+const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
 
 /** Downloads a file for an inline preview (PDF, text, Markdown). The
  * uploaded file isn't kept locally, so this fetches it each time. */
@@ -65,13 +70,23 @@ function PdfFrame({ data }: { data: ArrayBuffer }) {
   return src ? <iframe className="preview-pdf" src={src} title="PDF" /> : null;
 }
 
-export function Preview({ url, filename, mimeType, browserURL, placeholder, onZoom }: PreviewProps) {
+export function Preview({ url, filename, mimeType, browserURL, placeholder, size, onZoom }: PreviewProps) {
   const { t } = useI18n();
   const kind = previewKind(filename, mimeType);
-  const file = useRemoteFile(url, kind.kind === "pdf" || kind.kind === "text");
+  const tooBig = size !== undefined && size > MAX_PREVIEW_BYTES;
+  const downloaded = (kind.kind === "pdf" || kind.kind === "text") && !tooBig;
+  const file = useRemoteFile(url, downloaded);
   const [imageState, setImageState] = useState<"loading" | "ready" | "failed">("loading");
 
   useEffect(() => setImageState("loading"), [url]);
+
+  if (tooBig && (kind.kind === "pdf" || kind.kind === "text")) {
+    return (
+      <div className="preview preview-text">
+        <Unavailable browserURL={browserURL} />
+      </div>
+    );
+  }
 
   switch (kind.kind) {
     case "image":

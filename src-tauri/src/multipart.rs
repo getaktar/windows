@@ -38,6 +38,12 @@ pub struct Session {
     pub source: Option<SourceFile>,
     /// SHA-256 of what's uploaded, when it was worked out.
     pub sha256: Option<String>,
+    /// What a key from the path template was made from (see `key_basis`),
+    /// so it's only kept while that's still the same. None for exact keys,
+    /// and for sessions saved by versions before it, which aren't resumed
+    /// for a generated key.
+    #[serde(default)]
+    pub key_basis: Option<String>,
     /// The parts sent so far, as the server acknowledged them.
     pub parts: Vec<UploadedPart>,
     /// Unix milliseconds.
@@ -81,6 +87,13 @@ impl Session {
     fn is_expired(&self, now: i64) -> bool {
         now - self.created_at > MAX_AGE_MILLIS
     }
+}
+
+/// The path template, the name the file goes by, and a watched folder's
+/// subfolder ("" for other uploads), joined with NUL, which none of them
+/// can contain.
+pub fn key_basis(template: &str, filename: &str, subpath: &str) -> String {
+    format!("{template}\0{filename}\0{subpath}")
 }
 
 /// What a new upload is matched against open ones with.
@@ -183,6 +196,7 @@ pub async fn start(
     file_size: u64,
     source: Option<SourceFile>,
     sha256: Option<String>,
+    key_basis: Option<String>,
 ) -> Result<Session, StorageError> {
     let upload_id = provider.create_multipart(object_key, content_type).await?;
     let session = Session {
@@ -195,6 +209,7 @@ pub async fn start(
         file_size,
         source,
         sha256,
+        key_basis,
         parts: Vec::new(),
         created_at: crate::util::now_millis(),
     };
@@ -316,9 +331,24 @@ mod tests {
             file_size,
             source: None,
             sha256: None,
+            key_basis: None,
             parts: Vec::new(),
             created_at: 0,
         }
+    }
+
+    #[test]
+    fn keeps_what_a_key_was_made_from() {
+        assert_eq!(key_basis("{filename}.{ext}", "a.png", ""), "{filename}.{ext}\0a.png\0");
+        assert_ne!(key_basis("{filename}.{ext}", "a.png", ""), key_basis("{filename}.{ext}", "a.webp", ""));
+        assert_ne!(key_basis("{filename}.{ext}", "a.png", ""), key_basis("{uuid}.{ext}", "a.png", ""));
+        assert_ne!(key_basis("{subpath}/{filename}", "a.png", "x"), key_basis("{subpath}/{filename}", "a.png", "y"));
+
+        // Sessions saved before it was kept load without one.
+        let mut json = serde_json::to_value(session(10)).unwrap();
+        json.as_object_mut().unwrap().remove("keyBasis");
+        let old: Session = serde_json::from_value(json).unwrap();
+        assert_eq!(old.key_basis, None);
     }
 
     #[test]

@@ -525,7 +525,10 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                     ))}
                   </Select>
                 </Field>
-                <Field label={t("Image metadata")}>
+                <Field
+                  label={t("Image metadata")}
+                  hint={imageMetadata === "keepAll" ? undefined : t("Videos (MOV, MP4) are uploaded with their location.")}
+                >
                   <Select value={imageMetadata} onChange={(_, data) => setImageMetadata(data.value as ImageMetadataPolicy)}>
                     {imageMetadataPolicies.map((policy) => (
                       <option key={policy} value={policy}>

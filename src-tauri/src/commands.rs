@@ -356,13 +356,33 @@ pub async fn remove_expiry_rules(
 
 // MARK: - Uploads
 
-fn inputs_from(paths: Vec<String>) -> Vec<UploadInput> {
+/// The files and folders a window asked to upload. Anything inside
+/// Aktar's own folders (settings, history, thumbnails, the files it stages
+/// for uploads) is left out: a window never uploads those.
+fn inputs_from(core: &SharedCore, paths: Vec<String>) -> Vec<UploadInput> {
+    let own: Vec<PathBuf> = crate::watched::app_dirs(core)
+        .into_iter()
+        .chain([std::env::temp_dir().join("Aktar"), std::env::temp_dir().join("AktarLocalAPI")])
+        .filter_map(|dir| canonical(&dir))
+        .collect();
     paths
         .into_iter()
         .map(PathBuf::from)
         .filter(|path| path.is_file() || path.is_dir())
+        .filter(|path| {
+            let inside = canonical(path).is_some_and(|path| own.iter().any(|dir| path.starts_with(dir)));
+            if inside {
+                log::warn!("Refused to upload {} from Aktar's own folders", path.display());
+            }
+            !inside
+        })
         .map(UploadInput::from_path)
         .collect()
+}
+
+/// The path with every link resolved, or None when it doesn't exist.
+fn canonical(path: &std::path::Path) -> Option<PathBuf> {
+    std::fs::canonicalize(path).ok()
 }
 
 /// Returns how many of `paths` are files or folders that could be queued.
@@ -371,7 +391,7 @@ fn inputs_from(paths: Vec<String>) -> Vec<UploadInput> {
 #[tauri::command]
 pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<String>, rename: Option<bool>) -> usize {
     let destination = destination_id.and_then(|id| core.destinations.find(Some(&id)));
-    let inputs = inputs_from(paths);
+    let inputs = inputs_from(&core, paths);
     let count = inputs.len();
     if count > 0 && rename == Some(true) && core.destinations.default_destination().is_some() {
         uploads::ask_for_names(&core, inputs, destination);
@@ -508,10 +528,11 @@ pub async fn bucket_delete(core: Core<'_>, destination_id: String, key: String) 
 /// folder part moves it. Returns the cleaned-up key it ended up at.
 #[tauri::command]
 pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, to: String) -> Result<String, String> {
-    let new_key = to.trim().trim_matches('/').to_string();
+    let new_key = to.trim().trim_end_matches('/').to_string();
     if new_key.is_empty() || new_key == from {
         return Ok(from);
     }
+    bucket::check_key(&new_key)?;
     let (destination, storage) = storage_for(&core, &destination_id)?;
     match bucket::move_object(&storage, &from, &new_key).await {
         Ok(()) => {
@@ -526,11 +547,12 @@ pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, t
 
 #[tauri::command]
 pub async fn bucket_create_folder(core: Core<'_>, destination_id: String, prefix: String, name: String) -> Result<String, String> {
-    let name = name.trim().trim_matches('/');
+    let name = name.trim().trim_end_matches('/');
     if name.is_empty() {
         return Err(t!("The folder name is required."));
     }
-    let folder = format!("{}{name}/", bucket::normalized_folder(&prefix));
+    bucket::check_key(name)?;
+    let folder = format!("{}{name}/", bucket::checked_folder(&prefix)?);
     let (_, storage) = storage_for(&core, &destination_id)?;
     storage.create_folder(&folder).await.map_err(|error| error.to_string())?;
     Ok(folder)
@@ -548,11 +570,11 @@ pub async fn bucket_presign(core: Core<'_>, destination_id: String, key: String,
 /// files were queued.
 #[tauri::command]
 pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<String>, prefix: String) -> Result<usize, String> {
+    let prefix = bucket::checked_folder(&prefix)?;
     let (destination, storage) = storage_for(&core, &destination_id)?;
-    let prefix = bucket::normalized_folder(&prefix);
     let mut claimed: Vec<String> = Vec::new();
     let mut inputs = Vec::new();
-    for input in inputs_from(paths) {
+    for input in inputs_from(&core, paths) {
         let files = if input.path.is_dir() {
             let root = format!("{prefix}{}/", crate::folder_upload::name(&input.path));
             crate::folder_upload::files(&input.path, Some(crate::folder_upload::MAX_FILES))
@@ -575,6 +597,8 @@ pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<St
                 .map_err(|error| error.to_string())?;
             claimed.push(key.clone());
             file.object_key = Some(key);
+            // Taken by something else in the meantime: another free name.
+            file.keep_existing = true;
             inputs.push(file);
         }
     }
@@ -585,25 +609,42 @@ pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<St
 
 /// Downloads a file for an inline preview (PDF, text, Markdown). Going
 /// through Rust avoids the CORS rules a fetch from the webview would hit.
+/// Kept in memory only, and never more than 25 MB: a bigger file (by its
+/// Content-Length, or as it arrives) is "Preview unavailable". Redirects
+/// are only followed on the same host.
 #[tauri::command]
 pub async fn fetch_remote(url: String) -> Result<tauri::ipc::Response, String> {
-    const MAX_BYTES: u64 = 25 * 1024 * 1024;
+    const MAX_BYTES: usize = 25 * 1024 * 1024;
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err("Unsupported URL".into());
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_host = attempt.previous().first().is_some_and(|first| first.host_str() == attempt.url().host_str());
+            if attempt.previous().len() > 5 || !same_host {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
         .build()
         .map_err(|error| error.to_string())?;
-    let response = client.get(&url).send().await.map_err(|error| error.to_string())?;
+    let mut response = client.get(&url).send().await.map_err(|error| error.to_string())?;
     if !response.status().is_success() {
         return Err(response.status().to_string());
     }
-    if response.content_length().is_some_and(|length| length > MAX_BYTES) {
+    if response.content_length().is_some_and(|length| length > MAX_BYTES as u64) {
         return Err(t!("Preview unavailable"));
     }
-    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
-    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
+        if bytes.len() + chunk.len() > MAX_BYTES {
+            return Err(t!("Preview unavailable"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 // MARK: - QR codes
@@ -618,11 +659,30 @@ pub fn copy_qr_image(text: String) -> Result<(), String> {
     crate::clipboard::copy_image(&crate::qr::image(&text)?)
 }
 
-/// Saves the QR code as a PNG where the user picked in the save dialog.
+/// Saves the QR code as a PNG where the user picks in a save dialog this
+/// opens itself, so the window never says where to write: it only suggests
+/// the file's name. False when the dialog was cancelled.
 #[tauri::command]
-pub async fn save_qr_image(text: String, path: String) -> Result<(), String> {
+pub async fn save_qr_image(window: tauri::WebviewWindow, text: String, file_name: String) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
     let data = crate::qr::png(&text)?;
-    tokio::fs::write(path, data).await.map_err(|error| error.to_string())
+    let file_name = std::path::Path::new(&file_name)
+        .file_name()
+        .map_or_else(|| "QR.png".to_string(), |name| name.to_string_lossy().into_owned());
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_file_name(file_name)
+        .add_filter("PNG", &["png"])
+        .save_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let Some(path) = receiver.await.map_err(|error| error.to_string())? else { return Ok(false) };
+    let path = path.into_path().map_err(|error| error.to_string())?;
+    tokio::fs::write(path, data).await.map_err(|error| error.to_string())?;
+    Ok(true)
 }
 
 // MARK: - Settings
@@ -734,6 +794,19 @@ pub fn regenerate_api_token(core: Core) {
 #[tauri::command]
 pub fn copy_text(text: String) {
     crate::clipboard::copy(&text);
+}
+
+/// Copies a transfer link or the API token, kept out of clipboard history.
+#[tauri::command]
+pub fn copy_secret(text: String) -> Result<(), String> {
+    crate::clipboard::copy_concealed(&text)
+}
+
+/// Empties the clipboard if it still holds `text` (a transfer link the
+/// closing window copied).
+#[tauri::command]
+pub fn clear_clipboard_if(text: String) {
+    crate::clipboard::clear_if_holding(&text);
 }
 
 #[tauri::command]
@@ -952,6 +1025,20 @@ pub async fn set_watch_pause_conditions(core: Core<'_>, on_battery: Option<bool>
 pub async fn test_watch_hook(core: Core<'_>, folder: WatchedFolder, hook: Hook) -> Result<(), String> {
     let core: SharedCore = core.inner().clone();
     crate::watched::test_hook(&core, folder, hook).await
+}
+
+/// "Add Script…": the script is picked in a file dialog this opens itself.
+/// The new hook, or None when the dialog was cancelled.
+#[tauri::command]
+pub async fn pick_watch_script(core: Core<'_>, window: tauri::WebviewWindow) -> Result<Option<Hook>, String> {
+    let core: SharedCore = core.inner().clone();
+    crate::watched::pick_script(&core, &window).await
+}
+
+/// Whether a webhook address can be used, for the "Add Webhook" dialog.
+#[tauri::command]
+pub fn check_webhook_url(url: String) -> Result<(), String> {
+    crate::watched::check_webhook_url(&url)
 }
 
 /// "Show in Explorer" for a watched folder.

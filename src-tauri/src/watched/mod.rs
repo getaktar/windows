@@ -5,6 +5,7 @@
 
 pub mod engine;
 mod hooks;
+pub use hooks::check_webhook_url;
 pub mod ledger;
 pub mod model;
 pub mod platform;
@@ -49,6 +50,10 @@ pub struct WatchService {
     /// When the windows were last told about a change, and whether a
     /// delayed telling is on its way.
     changed: Mutex<(Option<std::time::Instant>, bool)>,
+    /// Scripts the user picked in Aktar's own file dialog this session, by
+    /// hook ID, waiting for their folder to be saved. A script hook is only
+    /// saved or run when it's one of these or already saved as it is.
+    picked_scripts: Mutex<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -70,6 +75,7 @@ impl WatchService {
             request: Mutex::new(SettingsRequest::default()),
             tray_state: Mutex::new(None),
             changed: Mutex::new((None, false)),
+            picked_scripts: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -385,14 +391,42 @@ pub fn upload_cancelled(core: &SharedCore, source: &WatchedSource) {
 
 // MARK: - Pausing
 
-/// Pauses every folder for `minutes`, or until resumed.
+/// The longest pause with an end: a year.
+pub const MAX_PAUSE_MINUTES: u64 = 525_600;
+
+/// Pauses every folder for `minutes` (at most a year), or until resumed.
 pub fn pause(core: &SharedCore, minutes: Option<u64>) {
-    let pause = match minutes.filter(|minutes| *minutes > 0) {
-        Some(minutes) => Pause::Until(crate::util::now_millis() + minutes as i64 * 60_000),
-        None => Pause::Forever,
-    };
-    core.watched.engine.set_pause(pause);
+    core.watched.engine.set_pause(pause_for(minutes, crate::util::now_millis()));
     core.watched.wake();
+}
+
+/// The pause `minutes` from `now_millis` makes; none or 0 is until resumed.
+fn pause_for(minutes: Option<u64>, now_millis: i64) -> Pause {
+    match minutes.filter(|minutes| *minutes > 0) {
+        Some(minutes) => {
+            let millis = minutes.min(MAX_PAUSE_MINUTES) as i64 * 60_000;
+            Pause::Until(now_millis.saturating_add(millis))
+        }
+        None => Pause::Forever,
+    }
+}
+
+/// Pause minutes from the local API: a whole number, up to a year (more
+/// is a year). None when it's anything else, zero or negative included.
+pub fn pause_minutes(value: &serde_json::Value) -> Option<u64> {
+    let minutes = value.as_u64()?;
+    (minutes > 0).then(|| minutes.min(MAX_PAUSE_MINUTES))
+}
+
+/// The same from an aktar:// link's `minutes=`.
+pub fn pause_minutes_text(text: &str) -> Option<u64> {
+    let text = text.trim();
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    // Too many digits for a number is more than a year all the same.
+    let minutes: u64 = text.parse().unwrap_or(u64::MAX);
+    (minutes > 0).then(|| minutes.min(MAX_PAUSE_MINUTES))
 }
 
 pub fn resume(core: &SharedCore) {
@@ -433,8 +467,9 @@ pub struct FolderCheck {
     pub existing_files: usize,
 }
 
-/// Aktar's own data and cache folders, which can't be watched.
-fn app_dirs(core: &SharedCore) -> Vec<PathBuf> {
+/// Aktar's own data and cache folders, which can't be watched (nor
+/// uploaded from by the windows).
+pub(crate) fn app_dirs(core: &SharedCore) -> Vec<PathBuf> {
     let paths = core.app.path();
     [paths.app_data_dir(), paths.app_local_data_dir(), paths.app_cache_dir(), paths.app_config_dir()]
         .into_iter()
@@ -493,6 +528,9 @@ pub fn add_screenshots(core: &SharedCore) -> Result<WatchedFolder, String> {
 
 pub fn save(core: &SharedCore, folder: WatchedFolder) -> Result<(), String> {
     validate(core, &folder.path, Some(&folder.id))?;
+    for hook in &folder.hooks {
+        check_hook(core, hook)?;
+    }
     core.watched.engine.update(folder, Now::current());
     core.watched.wake();
     Ok(())
@@ -500,7 +538,52 @@ pub fn save(core: &SharedCore, folder: WatchedFolder) -> Result<(), String> {
 
 /// Sends a sample payload through a hook, for its "Test" button.
 pub async fn test_hook(core: &SharedCore, folder: WatchedFolder, hook: Hook) -> Result<(), String> {
+    check_hook(core, &hook)?;
     hooks::test(core, &folder, &hook).await
+}
+
+/// A script picked in a file dialog Aktar opens itself, as a new hook: the
+/// windows can't name a program to run, only ask for this dialog. None
+/// when it was cancelled.
+pub async fn pick_script(core: &SharedCore, window: &tauri::WebviewWindow) -> Result<Option<Hook>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .dialog()
+        .file()
+        .set_parent(window)
+        .add_filter(t!("Scripts"), &["ps1", "bat", "cmd", "exe"])
+        .pick_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let Some(path) = receiver.await.map_err(|error| error.to_string())? else { return Ok(None) };
+    let target = path.into_path().map_err(|error| error.to_string())?.to_string_lossy().into_owned();
+    let hook = Hook { id: crate::util::new_id(), kind: model::HookKind::Script, target: target.clone(), enabled: true };
+    core.watched.picked_scripts.lock().unwrap().insert(hook.id.clone(), target);
+    Ok(Some(hook))
+}
+
+/// Refuses a hook the windows made up: a script that wasn't picked in
+/// Aktar's own dialog (or saved before, exactly as it is), and a webhook
+/// that would send the upload's details over plain http:// across the
+/// internet.
+fn check_hook(core: &SharedCore, hook: &Hook) -> Result<(), String> {
+    match hook.kind {
+        model::HookKind::Webhook => hooks::check_webhook_url(&hook.target),
+        model::HookKind::Script => {
+            let picked = core.watched.picked_scripts.lock().unwrap().get(&hook.id) == Some(&hook.target);
+            let saved = || {
+                core.watched.engine.store.get().folders.iter().flat_map(|folder| &folder.hooks).any(|saved| {
+                    saved.id == hook.id && saved.kind == model::HookKind::Script && saved.target == hook.target
+                })
+            };
+            if picked || saved() {
+                Ok(())
+            } else {
+                Err(t!("Pick the script with “Add Script…”."))
+            }
+        }
+    }
 }
 
 /// "Watch with Aktar" in File Explorer: Settings opens on Watched Folders

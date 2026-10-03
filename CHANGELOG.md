@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- "Reuse links for duplicate files" no longer hands out a link that now
+  serves a different file. With a path like `{filename}.{ext}`, a file
+  uploaded under a name another file has since taken is uploaded again,
+  and so is one whose file in the bucket changed size or was written
+  after it was uploaded
+- A large upload that's picked up where it stopped no longer keeps its old
+  name in the bucket after you rename the file or change the destination's
+  path. It starts over under the new name, and the unfinished upload is
+  removed from the bucket
+- "Delete Remote File" no longer reports success while the file stays in
+  the bucket when Credential Manager can't be read. The entry is kept and
+  the error shown, so you can try again
+- "Remove location" and "Remove all" now also clean WebP, AVIF and GIF
+  images. A photo that can't be cleaned isn't uploaded, as before. The
+  destination form now says that videos keep their location
+- Requests to your bucket (listing, deleting, renaming, checking an
+  upload) now give up after a minute instead of waiting forever on a
+  connection that stopped answering
+- Uploads into a folder from the Library or the local API no longer
+  overwrite a file that appeared under the same name in the meantime, on
+  Amazon S3 and Cloudflare R2. They take the next free name instead, and a
+  name with a random suffix after " 999"
+- Opening several items in File Explorer's "Upload with Aktar" now uploads
+  the ones that are files even when one of them isn't (a library, a
+  phone's folder)
+- File names in HTML and Markdown output are now escaped, so a name with
+  `<`, `&` or brackets no longer breaks the copied markup
+
+### Security
+
+- Images over 100 megapixels are no longer converted, compressed, resized
+  or given a thumbnail, so a small file claiming huge dimensions can't use
+  up all memory. They go up as they are, still without the metadata the
+  destination removes
+- "Save Image…" for a QR code now saves only where you pick in its save
+  dialog, which Aktar opens itself
+- HTML, SVG, XML and JavaScript files are now uploaded to download when
+  their link is opened, instead of running as a page on your bucket's
+  domain. They still show in an `<img>` where that applies
+- `aktar://upload-clipboard` and `aktar://watch/pause` links now ask first,
+  saying what would be uploaded and where. Pause minutes from links and
+  the local API must be a whole number, up to a year
+- Scripts for watched folders can only be picked in Aktar's own file
+  dialog, and webhooks only use plain http:// for this PC or your local
+  network. Webhooks no longer follow redirects to another host. Scripts
+  you already set up keep working
+- The Library and the local API no longer accept names with `.` or `..`
+  folders, empty folder names, a leading `/` or control characters, and
+  file names can no longer add folders to a generated path
+- Transfer links now expire after an hour. Links made by older versions
+  still open
+- A transfer link copied from "Share to Another Device" is cleared from
+  the clipboard when the window closes, and it and the local API token
+  are kept out of Windows' clipboard history
+- Previews download at most 25 MB, only follow redirects on the same
+  host, and skip larger files up front
+- The local API refuses bodies over 5 GB and drops a connection that sends
+  nothing for a minute. Windows can't upload Aktar's own data files
+
 ## [0.5.0] - 2026-10-03
 
 ### Added

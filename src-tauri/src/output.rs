@@ -34,9 +34,10 @@ pub fn format(public_url: &str, mode: OutputMode, filename: &str, custom_templat
     match mode {
         OutputMode::Url => public_url.to_string(),
         OutputMode::Markdown if is_image(filename) => format!("![]({public_url})"),
-        OutputMode::Markdown => format!("[{filename}]({public_url})"),
+        OutputMode::Markdown => format!("[{}]({public_url})", markdown_escaped(filename)),
         OutputMode::Html if is_image(filename) => format!("<img src=\"{public_url}\" alt=\"\">"),
-        OutputMode::Html => format!("<a href=\"{public_url}\">{filename}</a>"),
+        OutputMode::Html => format!("<a href=\"{public_url}\">{}</a>", html_escaped(filename)),
+        // The template is the user's own, so nothing is escaped in it.
         OutputMode::Custom => {
             let (name, ext) = split_extension(filename);
             custom_template
@@ -46,6 +47,34 @@ pub fn format(public_url: &str, mode: OutputMode, filename: &str, custom_templat
                 .replace("{ext}", ext)
         }
     }
+}
+
+/// `text` safe inside an HTML element or a quoted attribute.
+fn html_escaped(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+/// `text` as Markdown link text that can't end the link early.
+fn markdown_escaped(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '\\' | '[' | ']' | '(' | ')') {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
 }
 
 /// Image files get embed markup (`![]()`, `<img>`); anything else gets a
@@ -64,6 +93,31 @@ pub fn content_type(filename: &str) -> String {
         .first_raw()
         .unwrap_or("application/octet-stream")
         .to_string()
+}
+
+/// Extensions a browser runs as a page or a script when the file is opened
+/// from the bucket's own address.
+const ACTIVE_EXTENSIONS: [&str; 9] = ["html", "htm", "xhtml", "xht", "svg", "svgz", "xml", "js", "mjs"];
+/// The same, by content type (any parameters after ";" aside).
+const ACTIVE_CONTENT_TYPES: [&str; 7] = [
+    "text/html",
+    "application/xhtml+xml",
+    "image/svg+xml",
+    "text/xml",
+    "application/xml",
+    "text/javascript",
+    "application/javascript",
+];
+
+/// `attachment` for files that would otherwise run in the browser on the
+/// bucket's domain (HTML, SVG, XML, JavaScript), so opening the link
+/// downloads them instead. The content type stays, so an SVG still shows
+/// in an `<img>`. None for everything else.
+pub fn content_disposition(object_key: &str, content_type: &str) -> Option<&'static str> {
+    let name = object_key.rsplit('/').next().unwrap_or(object_key);
+    let extension = split_extension(name).1.to_ascii_lowercase();
+    let mime = content_type.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+    (ACTIVE_EXTENSIONS.contains(&extension.as_str()) || ACTIVE_CONTENT_TYPES.contains(&mime.as_str())).then_some("attachment")
 }
 
 /// Lowercase hex digests of the bytes uploaded, for `{md5}` and `{sha256}`.
@@ -109,6 +163,9 @@ pub fn generate_key_at(
     date: DateTime<Local>,
 ) -> String {
     let (name, ext) = split_extension(original_filename);
+    // A name can't add folders to the key, nor an extension.
+    let name = key_segment(name);
+    let ext = if ext.is_empty() { String::new() } else { key_segment(ext) };
     let uuid = uuid::Uuid::new_v4().to_string();
     let random: String = uuid::Uuid::new_v4().to_string().chars().take(8).collect();
     let subpath = place.subpath.trim_matches('/').to_string();
@@ -118,14 +175,14 @@ pub fn generate_key_at(
         ("{day}", format!("{:02}", date.day())),
         ("{date}", date.format("%Y-%m-%d").to_string()),
         ("{time}", date.format("%H%M%S").to_string()),
-        ("{filename}", name.to_string()),
+        ("{filename}", name.clone()),
         ("{uuid}", uuid),
         ("{random}", random),
-        ("{ext}", ext.to_string()),
+        ("{ext}", ext.clone()),
         ("{md5}", hashes.map(|hashes| hashes.md5.clone()).unwrap_or_default()),
         ("{sha256}", hashes.map(|hashes| hashes.sha256.clone()).unwrap_or_default()),
         // A folder's name is one segment, like a file's.
-        ("{folder}", place.folder.replace(['/', '\\'], "-")),
+        ("{folder}", if place.folder.is_empty() { String::new() } else { key_segment(&place.folder.replace(['/', '\\'], "-")) }),
         ("{subpath}", subpath.clone()),
     ];
     let mut result = template.to_string();
@@ -139,6 +196,17 @@ pub fn generate_key_at(
         };
     }
     collapse_empty_segments(&result)
+}
+
+/// A file's name (or extension) as one segment of a key: without slashes,
+/// backslashes, NUL or other control characters, which would add folders
+/// or break the key. A name left empty, or "." or "..", is "file".
+pub fn key_segment(name: &str) -> String {
+    let cleaned: String = name.chars().filter(|c| *c != '/' && *c != '\\' && !c.is_control()).collect();
+    match cleaned.as_str() {
+        "" | "." | ".." => "file".to_string(),
+        _ => cleaned,
+    }
 }
 
 /// "a//b" is "a/b", and a key never starts with "/": tokens that come out
@@ -221,6 +289,37 @@ mod tests {
         assert_eq!(format(url, OutputMode::Markdown, "a.pdf", ""), "[a.pdf](https://cdn.example.com/a.png)");
         assert_eq!(format(url, OutputMode::Html, "a.png", ""), "<img src=\"https://cdn.example.com/a.png\" alt=\"\">");
         assert_eq!(format(url, OutputMode::Custom, "a.b.png", "{name}|{ext}|{filename}|{url}"), "a.b|png|a.b.png|https://cdn.example.com/a.png");
+    }
+
+    #[test]
+    fn escapes_file_names_in_markup() {
+        let url = "https://x.dev/a";
+        assert_eq!(format(url, OutputMode::Html, "<b>&'\".pdf", ""), "<a href=\"https://x.dev/a\">&lt;b&gt;&amp;&#39;&quot;.pdf</a>");
+        assert_eq!(format(url, OutputMode::Markdown, "a](evil) \\[1].pdf", ""), "[a\\]\\(evil\\) \\\\\\[1\\].pdf](https://x.dev/a)");
+        // The custom template is the user's own.
+        assert_eq!(format(url, OutputMode::Custom, "<a>.txt", "{filename}"), "<a>.txt");
+    }
+
+    #[test]
+    fn downloads_active_content() {
+        for key in ["a.html", "dir/b.HTM", "c.svg", "d.svgz", "e.xml", "f.js", "g.mjs", "h.xhtml", "i.xht"] {
+            assert_eq!(content_disposition(key, "application/octet-stream"), Some("attachment"), "{key}");
+        }
+        assert_eq!(content_disposition("page", "text/html; charset=utf-8"), Some("attachment"));
+        assert_eq!(content_disposition("x.bin", "image/svg+xml"), Some("attachment"));
+        assert_eq!(content_disposition("a.png", &content_type("a.png")), None);
+        assert_eq!(content_disposition("html/a.txt", "text/plain"), None);
+    }
+
+    #[test]
+    fn keeps_names_to_one_key_segment() {
+        let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
+        let none = KeyPlace::default();
+        assert_eq!(generate_key_at("up/{filename}.{ext}", "../../etc\\pass\u{0}wd.png", None, &none, date), "up/....etcpasswd.png");
+        assert_eq!(generate_key_at("up/{filename}.{ext}", "...png", None, &none, date), "up/file.png");
+        assert_eq!(generate_key_at("up/{filename}", "..", None, &none, date), "up/file");
+        assert_eq!(generate_key_at("up/{filename}", "a\nb", None, &none, date), "up/ab");
+        assert_eq!(key_segment("ok name"), "ok name");
     }
 
     #[test]

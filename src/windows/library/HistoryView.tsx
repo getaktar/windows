@@ -552,6 +552,7 @@ function UploadDetail(props: {
           mimeType={record.mimeType}
           browserURL={record.publicUrl}
           placeholder={thumbnail}
+          size={record.byteSize}
           onZoom={props.onZoom}
         />
         {props.deletionError && (

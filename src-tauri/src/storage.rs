@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use crate::credentials::StorageCredentials;
 use crate::destinations::DestinationConfig;
 use crate::expiry::{Removal, RulesStatus};
-use crate::output::{encode_copy_source, resolve_public_url};
+use crate::output::{content_disposition, encode_copy_source, resolve_public_url};
 use crate::t;
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,6 +111,10 @@ pub enum StorageError {
     /// may work.
     #[error("{0}")]
     Server(String),
+    /// An upload sent only-if-new (If-None-Match) found something already
+    /// at its key.
+    #[error("{}", t!("Something else was uploaded under this name at the same time."))]
+    AlreadyExists,
     #[error("{0}")]
     Unknown(String),
 }
@@ -144,6 +148,21 @@ pub struct UploadedPart {
     pub number: i32,
     pub etag: String,
     pub size: u64,
+}
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long any request other than sending a file may take in all
+/// (listing, checking, deleting, copying, starting or finishing a
+/// multipart upload), reading the answer included.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+/// Finishing a multipart upload, which the server may take a while over.
+const COMPLETE_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Sending a file has no overall limit: a big one on a slow connection
+/// takes as long as it takes, and the upload's stall watchdog stops one
+/// that stopped moving.
+fn upload_timeouts() -> TimeoutConfig {
+    TimeoutConfig::builder().connect_timeout(CONNECT_TIMEOUT).disable_operation_timeout().build()
 }
 
 /// One HTTPS client for every destination, so connections are pooled.
@@ -193,7 +212,11 @@ impl S3Provider {
             // reject. Only send them when an operation requires one.
             .request_checksum_calculation(RequestChecksumCalculation::WhenRequired)
             .response_checksum_validation(ResponseChecksumValidation::WhenRequired)
-            .timeout_config(TimeoutConfig::builder().connect_timeout(Duration::from_secs(15)).build())
+            // Every request, its answer's body included, gets a minute;
+            // uploads lift that for themselves (see `upload_timeouts`).
+            .timeout_config(
+                TimeoutConfig::builder().connect_timeout(CONNECT_TIMEOUT).operation_timeout(REQUEST_TIMEOUT).build(),
+            )
             .build();
         Self { config, client: Client::from_conf(s3_config), credentials, region }
     }
@@ -234,13 +257,16 @@ impl S3Provider {
     }
 
     /// Uploads a file, counting the bytes sent into `progress` as the HTTP
-    /// client reads them.
+    /// client reads them. With `only_if_new`, the provider is asked not to
+    /// write over anything at the key (If-None-Match: *), and
+    /// `StorageError::AlreadyExists` says it didn't.
     pub async fn upload(
         &self,
         path: &Path,
         object_key: &str,
         content_type: &str,
         progress: Arc<Progress>,
+        only_if_new: bool,
     ) -> Result<UploadResult, StorageError> {
         let byte_size = tokio::fs::metadata(path)
             .await
@@ -265,7 +291,13 @@ impl S3Provider {
             .bucket(self.bucket())
             .key(object_key)
             .content_type(content_type)
+            .set_content_disposition(content_disposition(object_key, content_type).map(str::to_string))
+            .set_if_none_match(only_if_new.then(|| "*".to_string()))
             .body(ByteStream::new(body))
+            // Uploads can take as long as they need; the upload's own stall
+            // watchdog stops one that stopped moving.
+            .customize()
+            .config_override(aws_sdk_s3::Config::builder().timeout_config(upload_timeouts()))
             .send()
             .await
             .map_err(|error| upload_error(error, self.bucket()))?;
@@ -284,6 +316,7 @@ impl S3Provider {
             .bucket(self.bucket())
             .key(object_key)
             .content_type(content_type)
+            .set_content_disposition(content_disposition(object_key, content_type).map(str::to_string))
             .send()
             .await
             .map_err(|error| upload_error(error, self.bucket()))?;
@@ -344,6 +377,13 @@ impl S3Provider {
             .key(object_key)
             .upload_id(upload_id)
             .multipart_upload(completed)
+            // Putting a big file together can take the server minutes (S3
+            // keeps the connection alive meanwhile); timing out would throw
+            // the finished upload away.
+            .customize()
+            .config_override(aws_sdk_s3::Config::builder().timeout_config(
+                TimeoutConfig::builder().connect_timeout(CONNECT_TIMEOUT).operation_timeout(COMPLETE_TIMEOUT).build(),
+            ))
             .send()
             .await
             .map_err(|error| upload_error(error, self.bucket()))?;
@@ -454,9 +494,9 @@ impl S3Provider {
         Ok(output.contents().first().and_then(|object| object.key()) == Some(key))
     }
 
-    /// The size of the object at exactly `key`, or None when there's none.
-    /// Watched folders check it before moving an uploaded original away.
-    pub async fn object_size(&self, key: &str) -> Result<Option<i64>, StorageError> {
+    /// The object at exactly `key` (its size and when it was last
+    /// written), or None when there's none. Listed like `object_exists`.
+    pub async fn object_info(&self, key: &str) -> Result<Option<BucketObject>, StorageError> {
         let output = self
             .client
             .list_objects_v2()
@@ -466,7 +506,17 @@ impl S3Provider {
             .send()
             .await
             .map_err(|error| map_error(error, self.bucket()))?;
-        Ok(output.contents().first().filter(|object| object.key() == Some(key)).map(|object| object.size().unwrap_or_default()))
+        Ok(output.contents().first().filter(|object| object.key() == Some(key)).map(|object| BucketObject {
+            key: key.to_string(),
+            size: object.size().unwrap_or_default(),
+            last_modified: object.last_modified().map(|date| date.secs() * 1000),
+        }))
+    }
+
+    /// The size of the object at exactly `key`, or None when there's none.
+    /// Watched folders check it before moving an uploaded original away.
+    pub async fn object_size(&self, key: &str) -> Result<Option<i64>, StorageError> {
+        Ok(self.object_info(key).await?.map(|object| object.size))
     }
 
     /// S3 has no rename or move: both are a server-side copy followed by
@@ -557,20 +607,7 @@ impl S3Provider {
     /// When the object at exactly `key` was last written (Unix
     /// milliseconds), or None when there's no such object.
     pub async fn last_modified(&self, key: &str) -> Result<Option<i64>, StorageError> {
-        let output = self
-            .client
-            .list_objects_v2()
-            .bucket(self.bucket())
-            .max_keys(1)
-            .prefix(key)
-            .send()
-            .await
-            .map_err(|error| map_error(error, self.bucket()))?;
-        Ok(output
-            .contents()
-            .first()
-            .filter(|object| object.key() == Some(key))
-            .map(|object| object.last_modified().map(|date| date.secs() * 1000).unwrap_or_default()))
+        Ok(self.object_info(key).await?.map(|object| object.last_modified.unwrap_or_default()))
     }
 
     async fn put_lifecycle(&self, xml: Option<String>) -> Result<(), StorageError> {
@@ -763,9 +800,10 @@ impl PartSender {
             .part_number(number)
             .content_length(length as i64)
             .body(ByteStream::new(body))
-            // Retried here, with longer waits than the SDK's.
+            // Retried here, with longer waits than the SDK's, and with no
+            // overall time limit (see `upload_timeouts`).
             .customize()
-            .config_override(aws_sdk_s3::Config::builder().retry_config(RetryConfig::disabled()))
+            .config_override(aws_sdk_s3::Config::builder().retry_config(RetryConfig::disabled()).timeout_config(upload_timeouts()))
             .send()
             .await
             .map_err(|error| {
@@ -915,6 +953,9 @@ where
     let code = error.code().unwrap_or_default().to_ascii_lowercase();
     let description = format!("{code} {}", DisplayErrorContext(&error)).to_ascii_lowercase();
 
+    if status == Some(412) || code == "preconditionfailed" {
+        return StorageError::AlreadyExists;
+    }
     // HeadBucket's 404 has no body, so it arrives as a bare "NotFound".
     if code == "nosuchbucket" || code == "notfound" || description.contains("nosuchbucket") || (status == Some(404) && code.is_empty()) {
         return StorageError::BucketNotFound(bucket.to_string());
@@ -1145,7 +1186,7 @@ mod live_tests {
         let file = std::env::temp_dir().join("aktar test ü.txt");
         std::fs::write(&file, b"hello from aktar").unwrap();
         let progress = Arc::new(Progress::default());
-        let uploaded = storage.upload(&file, "live/aktar test ü.txt", "text/plain", progress.clone()).await.unwrap();
+        let uploaded = storage.upload(&file, "live/aktar test ü.txt", "text/plain", progress.clone(), false).await.unwrap();
         assert_eq!(uploaded.byte_size, 16);
         assert_eq!(progress.fraction(), Some(1.0));
         assert!(uploaded.public_url.ends_with("/live/aktar%20test%20%C3%BC.txt"));
@@ -1171,7 +1212,7 @@ mod live_tests {
         assert_eq!(body, "hello from aktar");
 
         // "+" and parentheses survive both the public URL and CopyObject.
-        let plus = storage.upload(&file, "live/a+b (1).txt", "text/plain", Arc::new(Progress::default())).await.unwrap();
+        let plus = storage.upload(&file, "live/a+b (1).txt", "text/plain", Arc::new(Progress::default()), false).await.unwrap();
         assert!(plus.public_url.ends_with("/live/a%2Bb%20(1).txt"));
         assert!(crate::bucket::move_object(&storage, "live/a+b (1).txt", "live/c+d (2).txt").await.is_ok());
         assert!(storage.object_exists("live/c+d (2).txt").await.unwrap());
@@ -1224,7 +1265,7 @@ mod live_tests {
         let size = 70 * 1024 * 1024 + 123;
         let (file, sha256) = big_file("multipart", size);
         let key = "live/multipart.bin";
-        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, SourceFile::of(&file), None)
+        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, SourceFile::of(&file), None, None)
             .await
             .unwrap();
         assert_eq!(session.part_size, 16 * 1024 * 1024);
@@ -1251,7 +1292,7 @@ mod live_tests {
         let key = "live/resumed.bin";
         let source = SourceFile::of(&file);
         let session =
-            multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, source.clone(), None)
+            multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, source.clone(), None, None)
                 .await
                 .unwrap();
         // Two parts get there; the rest are cut off.
@@ -1299,7 +1340,7 @@ mod live_tests {
         let size = 40 * 1024 * 1024;
         let (file, _) = big_file("abort", size);
         let key = "live/aborted.bin";
-        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, SourceFile::of(&file), None)
+        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "application/octet-stream", size as u64, SourceFile::of(&file), None, None)
             .await
             .unwrap();
         let sender = storage.part_sender();

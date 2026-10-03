@@ -10,7 +10,6 @@ import {
   Text,
 } from "@fluentui/react-components";
 import { CheckmarkRegular, CopyRegular, SaveRegular } from "@fluentui/react-icons";
-import { save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 
 import { api, errorMessage, type DestinationConfig, type QrMatrix, type UploadRecord } from "../lib/api";
@@ -92,11 +91,7 @@ export function QrCodeDialog({
     // The save dialog takes focus; that mustn't close the panel.
     await api.setPanelShowingDialog(true);
     try {
-      const path = await save({
-        defaultPath: `${splitExtension(record.localFilename)[0] || "link"} QR.png`,
-        filters: [{ name: "PNG", extensions: ["png"] }],
-      });
-      if (path) await api.saveQrImage(link, path);
+      await api.saveQrImage(link, `${splitExtension(record.localFilename)[0] || "link"} QR.png`);
     } catch (error) {
       setError(errorMessage(error));
     } finally {

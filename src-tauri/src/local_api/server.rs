@@ -17,6 +17,11 @@ use crate::core::SharedCore;
 const MAX_HEADER_SIZE: usize = 64 * 1024;
 const MAX_IN_MEMORY_BODY: usize = 1024 * 1024;
 const HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+/// The biggest body taken: 5 GiB. More is refused (413) before any of it
+/// is read.
+const MAX_BODY: u64 = 5 * 1024 * 1024 * 1024;
+/// A body that stops arriving for this long is given up on.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct Request {
     pub method: String,
@@ -115,6 +120,9 @@ async fn read_request(
         return Err(rejection);
     }
     let content_length = head.content_length.ok_or_else(|| Response::error(400, "Malformed request."))?;
+    if content_length as u64 > MAX_BODY {
+        return Err(Response::error(413, "The request body is larger than 5 GB."));
+    }
 
     let mut rest = buffer[header_end + 4..].to_vec();
     rest.truncate(content_length);
@@ -122,14 +130,19 @@ async fn read_request(
     if content_length > MAX_IN_MEMORY_BODY {
         let path = std::env::temp_dir().join("AktarLocalAPI").join(crate::util::new_id());
         *body_file = Some(path.clone());
-        stream_to_file(stream, &path, rest, content_length)
-            .await
-            .map_err(|_| Response::error(500, "Could not buffer the request body."))?;
+        stream_to_file(stream, &path, rest, content_length).await.map_err(|error| match error.kind() {
+            std::io::ErrorKind::TimedOut => Response::error(408, "Timed out waiting for the request body."),
+            std::io::ErrorKind::UnexpectedEof => Response::error(400, "The request body ended early."),
+            _ => Response::error(500, "Could not buffer the request body."),
+        })?;
     } else {
         body = rest;
         let mut chunk = [0u8; 64 * 1024];
         while body.len() < content_length {
-            match stream.read(&mut chunk).await {
+            match read_some(stream, &mut chunk).await {
+                Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+                    return Err(Response::error(408, "Timed out waiting for the request body."));
+                }
                 Ok(0) | Err(_) => return Err(Response::error(400, "The request body ended early.")),
                 Ok(read) => {
                     let wanted = (content_length - body.len()).min(read);
@@ -151,7 +164,7 @@ async fn stream_to_file(stream: &mut TcpStream, path: &PathBuf, already: Vec<u8>
     let mut received = already.len();
     let mut chunk = vec![0u8; 256 * 1024];
     while received < length {
-        let read = stream.read(&mut chunk).await?;
+        let read = read_some(stream, &mut chunk).await?;
         if read == 0 {
             return Err(std::io::ErrorKind::UnexpectedEof.into());
         }
@@ -160,6 +173,15 @@ async fn stream_to_file(stream: &mut TcpStream, path: &PathBuf, already: Vec<u8>
         received += wanted;
     }
     file.flush().await
+}
+
+/// One read from the connection, which fails with `TimedOut` when nothing
+/// arrives for `IDLE_TIMEOUT`: a client that stops sending mid-body
+/// doesn't hold the connection (and its file) forever.
+async fn read_some(stream: &mut TcpStream, buffer: &mut [u8]) -> std::io::Result<usize> {
+    tokio::time::timeout(IDLE_TIMEOUT, stream.read(buffer))
+        .await
+        .unwrap_or_else(|_| Err(std::io::ErrorKind::TimedOut.into()))
 }
 
 fn rejection(head: &Head, port: u16, token: &str) -> Option<Response> {
@@ -246,6 +268,7 @@ fn reason(status: u16) -> &'static str {
         408 => "Request Timeout",
         409 => "Conflict",
         411 => "Length Required",
+        413 => "Content Too Large",
         422 => "Unprocessable Content",
         431 => "Request Header Fields Too Large",
         502 => "Bad Gateway",

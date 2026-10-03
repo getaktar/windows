@@ -22,6 +22,11 @@ fn try_store(source: &Path, destination: &Path) -> Result<(), Box<dyn std::error
         return Ok(());
     }
     let mut decoder = ImageReader::open(source)?.with_guessed_format()?.into_decoder()?;
+    // Nor anything with more pixels than a photo is processed with.
+    let (width, height) = decoder.dimensions();
+    if !crate::image_processing::within_pixel_limit(width, height) {
+        return Ok(());
+    }
     // Honor EXIF orientation, so photos from phones aren't shown sideways.
     let orientation = decoder.orientation()?;
     let mut image = DynamicImage::from_decoder(decoder)?;

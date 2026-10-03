@@ -69,7 +69,12 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
                 Ok(body) => body,
                 Err(response) => return response,
             };
-            let (blocking_core, minutes) = (core.clone(), body.minutes.filter(|minutes| *minutes > 0));
+            let minutes = match body.minutes.as_ref().map(crate::watched::pause_minutes) {
+                None => None,
+                Some(Some(minutes)) => Some(minutes),
+                Some(None) => return Response::error(400, "minutes must be a whole number from 1 to 525600, or left out to pause until resumed."),
+            };
+            let blocking_core = core.clone();
             let _ = tauri::async_runtime::spawn_blocking(move || crate::watched::pause(&blocking_core, minutes)).await;
             Response::json(200, watched_dto(core))
         }
@@ -179,6 +184,13 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     if filename.is_empty() || filename == "." || filename == ".." {
         return Response::error(400, "The filename query parameter is required.");
     }
+    // One segment of a key, without control characters.
+    let filename = output::key_segment(&filename);
+    let prefix = match request.query.get("prefix").map(|raw| bucket::checked_folder(raw)) {
+        Some(Err(message)) => return Response::error(400, message),
+        Some(Ok(prefix)) => Some(prefix),
+        None => None,
+    };
     let Some(destination) = core.destinations.find(request.query.get("destinationId").map(String::as_str)) else {
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
     };
@@ -211,8 +223,7 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     }
 
     let mut input = UploadInput { original_filename: filename.clone(), expiry, ..UploadInput::from_path(path) };
-    if let Some(raw_prefix) = request.query.get("prefix") {
-        let prefix = bucket::normalized_folder(raw_prefix);
+    if let Some(prefix) = prefix {
         let key = match credentials::load(&destination.id) {
             Ok(creds) => bucket::available_key(&S3Provider::new(destination.clone(), creds), &filename, &prefix, &[]).await,
             Err(error) => {
@@ -221,7 +232,10 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
             }
         };
         match key {
-            Ok(key) => input.object_key = Some(key),
+            Ok(key) => {
+                input.object_key = Some(key);
+                input.keep_existing = true;
+            }
             Err(error) => {
                 let _ = tokio::fs::remove_dir_all(&directory).await;
                 return Response::error(502, error.to_string());
@@ -372,9 +386,12 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
                 Ok(body) => body,
                 Err(response) => return response,
             };
-            let new_key = body.to.trim().trim_matches('/').to_string();
+            let new_key = body.to.trim().trim_end_matches('/').to_string();
             if new_key.is_empty() || new_key == body.from {
                 return Response::error(400, "Pick a different name or folder.");
+            }
+            if let Err(message) = bucket::check_key(&new_key) {
+                return Response::error(400, message);
             }
             match bucket::move_object(&storage, &body.from, &new_key).await {
                 Ok(()) => {
@@ -394,11 +411,15 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
                 Ok(body) => body,
                 Err(response) => return response,
             };
-            let name = body.name.trim().trim_matches('/');
+            let name = body.name.trim().trim_end_matches('/');
             if name.is_empty() {
                 return Response::error(400, "The folder name is required.");
             }
-            let folder = format!("{}{name}/", bucket::normalized_folder(body.prefix.as_deref().unwrap_or_default()));
+            let prefix = match bucket::check_key(name).and_then(|()| bucket::checked_folder(body.prefix.as_deref().unwrap_or_default())) {
+                Ok(prefix) => prefix,
+                Err(message) => return Response::error(400, message),
+            };
+            let folder = format!("{prefix}{name}/");
             match storage.create_folder(&folder).await {
                 Ok(()) => Response::json(201, FolderDto::new(&folder)),
                 Err(error) => Response::error(502, error.to_string()),
@@ -439,7 +460,9 @@ fn decode_optional<T: for<'de> Deserialize<'de> + Default>(request: &Request) ->
 
 #[derive(Deserialize, Default)]
 struct PauseBody {
-    minutes: Option<u64>,
+    /// Checked by `watched::pause_minutes`; null or missing pauses until
+    /// resumed.
+    minutes: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]

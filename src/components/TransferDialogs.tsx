@@ -82,6 +82,8 @@ function transferErrorMessage(error: unknown, t: Translate) {
       return t("This was shared from a newer version of Aktar. Update Aktar and try again.");
     case "notTransfer":
       return t("This isn’t an Aktar transfer link.");
+    case "expired":
+      return t("This transfer link has expired. Make a new one on the other device.");
     default:
       return errorMessage(error);
   }
@@ -145,11 +147,26 @@ export function ShareDestinationDialog({ share, onClose }: { share: ShareRequest
     };
   }, [isOpen]);
 
+  // Once the window closes, a transfer link it copied doesn't stay on the
+  // clipboard (unless something else was copied since).
+  const copiedLink = useRef<string | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedLink.current) api.clearClipboardIf(copiedLink.current).catch(() => {});
+      copiedLink.current = null;
+    },
+    [share],
+  );
+
   const copyLink = () => {
     if (!share) return;
+    const link = share.link;
     api
-      .copyText(share.link)
-      .then(() => setCopied(true))
+      .copySecret(link)
+      .then(() => {
+        copiedLink.current = link;
+        setCopied(true);
+      })
       .catch((error) => setError(errorMessage(error)));
   };
 
