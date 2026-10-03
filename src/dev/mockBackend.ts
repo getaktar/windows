@@ -268,6 +268,48 @@ function mockQr(text: string): QrMatrix {
   return { size, modules };
 }
 
+/** "Share to Another Device" and "Import from Another Device": a link from
+ * the shared test vectors, whose code is K7P2-QX9M-4TRW. ?dup makes the
+ * imported destination one that's already here, uploading to the same
+ * place; ?dup=moved makes it upload to another bucket, which "Update
+ * Existing" warns about. */
+const mockTransferLink =
+  "aktar://import#AQABAgMEBQYHCAkKCwwNDg-goaKjpKWmp6ipqqtb3kuNh7HmTZAAsoxnF4uSJvWbwAcgdjc8HykCY2sexEkIGCNmWERsoA2f-1YQqaZAM-KR1X_z2vLMQxulRNBFXgNXHOZ76srLl3KfOH8DqV0aBtQyW5nvSf1IdulSa9cqDNfjMUPAycY-CKM_l2Kvs_FeyQXUAR9PGWEsgdNp4BwpIZVOUhr41EdisZOp9Jw5lwR1dHg4ADawbqib1DHbyu0n3uDcoHJrRkbBIZfGppFzOiRT7ZLEWUyI1OFgEzkNpnoNtESI2Z9nFS3jk1cMcEx0YUxqHJo1EwgAWVdoLeZi9gK76SsoT-CpvpZqR56eTh9pNp_dDlOg_4lYUSLVrikhpa6O3GJsGSoSdkg6g9f2Em00M2ADtYjB5y3stTrUTr4a1vbn__r09ean6d4l2d9olT2WQbjB0vS4TFKM_hO9Cuf3kb_GvGVk2tivHSupPTjVjFzcZaP2NaQOnwfbdxLPnkOq7XBsVpun04vHtvTX4h2nQ1a8KNyCI6tlJZO-a8vJkKJrdl0n-kkiCVrxD2SkP5zmzO38eOaCfgfJWgvsGGcyIntXUEy8A09FoOZ441goeDiIHrruFOXHOyNclHP2dLtVPlMGzKCIDra0JXr1";
+
+function mockTransferPayload() {
+  const duplicate = new URLSearchParams(window.location.search).get("dup");
+  if (duplicate !== null) {
+    const existing = destinations.find((destination) => destination.id === "D1")!;
+    return {
+      destination: {
+        ...existing,
+        // Written differently on purpose: the same place, so no warning.
+        endpoint: `${existing.endpoint.replace(/^https:\/\//, "").toUpperCase()}/`,
+        bucket: duplicate === "moved" ? "someone-elses-bucket" : ` ${existing.bucket}`,
+        isDefault: false,
+      },
+      credentials: { accessKeyId: "EXAMPLEACCESSKEYID000", secretAccessKey: "example-secret-not-real-0000000000000000" },
+      customTemplate: null,
+    };
+  }
+  return {
+    destination: {
+      id: "0E984725-C51C-4BF4-9960-E1C80E27ABA0",
+      name: "MinIO",
+      preset: "minIO",
+      endpoint: "http://192.168.1.10:9000",
+      region: "us-east-1",
+      bucket: "uploads",
+      publicBaseURL: "http://192.168.1.10:9000/uploads",
+      objectPathTemplate: "{uuid}.{ext}",
+      forcePathStyle: true,
+      isDefault: false,
+    },
+    credentials: { accessKeyId: "minioadmin", secretAccessKey: "minioadmin" },
+    customTemplate: null,
+  };
+}
+
 export function installMockBackend(route: string) {
   const language =
     new URLSearchParams(window.location.search).get("lang") ?? import.meta.env.VITE_MOCK_LANG ?? "en";
@@ -369,6 +411,27 @@ export function installMockBackend(route: string) {
           return new URLSearchParams(window.location.search).has("alt");
         case "qr_code":
           return mockQr(args.text as string);
+        case "create_transfer":
+          return { link: mockTransferLink, code: "K7P2-QX9M-4TRW" };
+        // The share dialog keeps its window out of screenshots.
+        case "plugin:window|set_content_protected":
+          return null;
+        case "check_transfer_link": {
+          const link = String(args.link).trim();
+          return /^aktar:\/\/import#[\w-]{60,}$/i.test(link) || /^[\w-]{60,}$/.test(link) ? null : Promise.reject("notTransfer");
+        }
+        case "open_transfer":
+          return String(args.code).toUpperCase().replace(/[\s-]/g, "") === "K7P2QX9M4TRW"
+            ? mockTransferPayload()
+            : Promise.reject("wrongCode");
+        case "import_destination": {
+          const config = { ...(args.config as DestinationConfig), isDefault: destinations.length === 0 };
+          const index = destinations.findIndex((destination) => destination.id === config.id);
+          if (index >= 0) destinations[index] = config;
+          else destinations.push(config);
+          window.setTimeout(() => emit("destinations-changed"), 0);
+          return config;
+        }
         case "set_rename_shortcut":
           settings = { ...settings, renameShortcut: (args.accelerator as string | null) ?? null };
           return null;

@@ -242,6 +242,8 @@ export interface FolderCheck {
 export interface SettingsRequest {
   tab: string | null;
   watchPath: string | null;
+  /** An aktar://import link to open "Import from Another Device" with. */
+  importLink?: string | null;
 }
 
 export interface BucketObject {
@@ -398,6 +400,26 @@ export interface QrMatrix {
   modules: string;
 }
 
+/** "Share to Another Device": the link the QR code holds, and the code
+ * ("XXXX-XXXX-XXXX") that's typed on the other device. */
+export interface TransferShare {
+  link: string;
+  code: string;
+}
+
+/** What a transfer link carries. */
+export interface TransferPayload {
+  destination: DestinationConfig;
+  credentials: StorageCredentials;
+  /** The app-level template, sent along with a destination that copies
+   * with it. */
+  customTemplate: string | null;
+}
+
+/** Why a transfer link couldn't be opened; `checkTransferLink` and
+ * `openTransfer` reject with one of these. */
+export type TransferError = "notTransfer" | "newerVersion" | "wrongCode";
+
 export type AppWindowName = "library" | "settings" | "onboarding" | "update";
 
 export const api = {
@@ -411,6 +433,19 @@ export const api = {
   /** A copy with the same keys, as a starting point for another profile on
    * the same bucket. */
   duplicateDestination: (id: string) => invoke<DestinationConfig>("duplicate_destination", { id }),
+  /** A fresh code and link with the destination's keys; rejects with the
+   * usual message when its keys are missing. */
+  createTransfer: (destinationId: string) => invoke<TransferShare>("create_transfer", { destinationId }),
+  checkTransferLink: (link: string) => invoke<void>("check_transfer_link", { link }),
+  openTransfer: (link: string, code: string) => invoke<TransferPayload>("open_transfer", { link, code }),
+  /** Saves an imported destination under its own ID, adding it or updating
+   * the one here with that ID. */
+  importDestination: (
+    config: DestinationConfig,
+    credentials: StorageCredentials | null,
+    rules: FormRules,
+    customTemplate: string | null,
+  ) => invoke<DestinationConfig>("import_destination", { config, credentials, rules, customTemplate }),
   setDestinationExpiry: (id: string, days: number) => invoke<void>("set_destination_expiry", { id, days }),
   setDestinationLink: (id: string, seconds: number | null) => invoke<void>("set_destination_link", { id, seconds }),
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>

@@ -28,6 +28,7 @@ mod shell;
 mod storage;
 mod system;
 mod thumbnails;
+mod transfer;
 mod tray;
 mod updater;
 mod uploads;
@@ -134,6 +135,10 @@ pub fn run() {
             commands::bucket_create_folder,
             commands::bucket_presign,
             commands::duplicate_destination,
+            commands::create_transfer,
+            commands::check_transfer_link,
+            commands::open_transfer,
+            commands::import_destination,
             commands::set_destination_expiry,
             commands::set_destination_link,
             commands::record_temporary_link,

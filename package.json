@@ -17,6 +17,7 @@
     "@fluentui/react-icons": "^2.0.343",
     "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-dialog": "^2.8.0",
+    "jsqr": "^1.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

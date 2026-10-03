@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Move a destination to another device: "Share to Another Device…" in a
+  destination's menu shows a QR code and a transfer code; on the other
+  device (Mac, Windows, iPhone or Android), "Import from Another Device…"
+  scans the code with the camera or takes the pasted link, asks for the
+  transfer code, and opens the destination form filled in, keys included,
+  to test and import. The keys are encrypted with the transfer code, which
+  is never part of the QR code or the link, and the window closes itself
+  after 10 minutes. Also on the Welcome window, and through
+  `aktar://import` links, which never import anything on their own
+
 ## [0.4.1] - 2026-10-03
 
 ### Fixed

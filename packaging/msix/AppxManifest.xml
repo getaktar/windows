@@ -104,5 +104,8 @@
     <!-- A regular desktop app (tray icon, global shortcut, local API on
          127.0.0.1), not a sandboxed one. -->
     <rescap:Capability Name="runFullTrust" />
+    <!-- "Scan QR Code" in Import from Another Device. Device capabilities
+         come after all others. -->
+    <DeviceCapability Name="webcam" />
   </Capabilities>
 </Package>

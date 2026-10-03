@@ -19,6 +19,7 @@ use crate::history::UploadRecord;
 use crate::local_api::{self, LocalApiState};
 use crate::settings::{Settings, SettingsPatch};
 use crate::storage::{BucketListing, ConnectionResult, S3Provider};
+use crate::transfer::{self, TransferError};
 use crate::updater::{self, UpdateStatus};
 use crate::uploads::{self, JobSnapshot, NameRequest, UploadInput};
 use crate::watched::engine::Now;
@@ -84,6 +85,21 @@ pub fn save_destination(
     rules: Option<FormRules>,
 ) -> Result<DestinationConfig, String> {
     let is_new = config.id.is_empty();
+    if is_new {
+        config.id = crate::util::new_id();
+    }
+    store_destination(&core, config, credentials, rules, is_new)
+}
+
+/// Adds `config` under its own ID when `is_new`, or updates the one with
+/// that ID.
+fn store_destination(
+    core: &Core,
+    config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+    rules: Option<FormRules>,
+    is_new: bool,
+) -> Result<DestinationConfig, String> {
     let credentials = filled(credentials);
     // A result about another bucket (the connection fields were edited
     // after the check) says nothing about this one.
@@ -91,9 +107,8 @@ pub fn save_destination(
         FormRules::Checked { connection: Some(connection), .. } if !connection.is_for(&config) => FormRules::NotChecked,
         rules => rules,
     };
-    let reconnected = !is_new && !is_saved_connection(&core, &config, credentials.as_ref());
+    let reconnected = !is_new && !is_saved_connection(core, &config, credentials.as_ref());
     if is_new {
-        config.id = crate::util::new_id();
         let Some(credentials) = credentials else {
             return Err(t!("Enter an Access Key ID and Secret Access Key."));
         };
@@ -106,9 +121,9 @@ pub fn save_destination(
         core.destinations.update(config.clone());
     }
     match rules {
-        FormRules::Checked { check, .. } => expiry::record(&core, &config.id, check),
+        FormRules::Checked { check, .. } => expiry::record(core, &config.id, check),
         // Rows from the old bucket shouldn't expire against the new one.
-        FormRules::NotChecked if reconnected => expiry::record(&core, &config.id, None),
+        FormRules::NotChecked if reconnected => expiry::record(core, &config.id, None),
         FormRules::NotChecked => {}
     }
     core.notify(events::DESTINATIONS_CHANGED);
@@ -158,6 +173,85 @@ pub fn duplicate_destination(core: Core, id: String) -> Result<DestinationConfig
     core.destinations.add(copy.clone());
     core.notify(events::DESTINATIONS_CHANGED);
     Ok(copy)
+}
+
+// MARK: - Transfer to another device
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferShare {
+    link: String,
+    /// "XXXX-XXXX-XXXX", shown next to the QR code and never part of the link.
+    code: String,
+}
+
+/// "Share to Another Device": a fresh code and link for the destination,
+/// with its keys from Credential Manager. Nothing is kept: closing the
+/// window forgets the code.
+#[tauri::command]
+pub async fn create_transfer(core: Core<'_>, destination_id: String) -> Result<TransferShare, String> {
+    let destination = core
+        .destinations
+        .find(Some(&destination_id))
+        .filter(|destination| destination.id == destination_id)
+        .ok_or_else(|| t!("No destination to upload to. Add one in Settings."))?;
+    let custom_template = Some(core.settings.get().custom_template);
+    tauri::async_runtime::spawn_blocking(move || {
+        let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
+        let payload = transfer::TransferPayload { destination, credentials, custom_template };
+        let code = transfer::generate_code();
+        let link = transfer::seal(&payload, &code)?;
+        Ok(TransferShare { link, code: transfer::display_code(&code) })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Whether a pasted or scanned link can be opened, before the code is
+/// asked for.
+#[tauri::command]
+pub fn check_transfer_link(link: String) -> Result<(), TransferError> {
+    transfer::envelope(&link).map(|_| ())
+}
+
+/// The destination and keys in a transfer link. Nothing is saved: the
+/// destination form shows them, and `import_destination` saves them.
+#[tauri::command]
+pub async fn open_transfer(link: String, code: String) -> Result<transfer::TransferPayload, TransferError> {
+    tauri::async_runtime::spawn_blocking(move || transfer::open(&link, &code))
+        .await
+        .map_err(|_| TransferError::NotTransfer)?
+}
+
+/// "Import" in the destination form: adds the destination under the ID it
+/// had on the other device, or updates the one here with that ID ("Update
+/// Existing"). The app-level template comes along for a destination that
+/// copies with it, unless this app's own was already changed.
+#[tauri::command]
+pub fn import_destination(
+    core: Core,
+    mut config: DestinationConfig,
+    credentials: Option<StorageCredentials>,
+    rules: Option<FormRules>,
+    custom_template: Option<String>,
+) -> Result<DestinationConfig, String> {
+    let Ok(id) = uuid::Uuid::parse_str(config.id.trim()) else {
+        return Err(t!("This isn’t an Aktar transfer link."));
+    };
+    config.id = id.hyphenated().to_string().to_uppercase();
+    let existing = core.destinations.find(Some(&config.id)).filter(|existing| existing.id.eq_ignore_ascii_case(&config.id));
+    if let Some(existing) = &existing {
+        config.id = existing.id.clone();
+    }
+    let custom = config.output_mode == Some(crate::output::OutputMode::Custom);
+    let saved = store_destination(&core, config, credentials, rules, existing.is_none())?;
+    if let Some(template) = custom_template.filter(|template| custom && !template.is_empty()) {
+        if core.settings.get().custom_template == Settings::default().custom_template {
+            core.settings.update(|settings| settings.custom_template = template);
+            core.notify(events::SETTINGS_CHANGED);
+        }
+    }
+    Ok(saved)
 }
 
 /// The panel's "Delete after" choice, kept per destination.

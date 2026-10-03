@@ -145,7 +145,7 @@ export function QrCodeDialog({
 /** One square per dark module on white, with the four-module quiet zone,
  * drawn as vectors with crisp edges so it stays sharp at any scale and in
  * dark mode. */
-function QrSvg({ matrix }: { matrix: QrMatrix }) {
+export function QrSvg({ matrix }: { matrix: QrMatrix }) {
   const quiet = 4;
   const side = matrix.size + quiet * 2;
   let path = "";

@@ -11,6 +11,8 @@
 //!                            minutes)
 //! aktar://watch/resume       resume them
 //! aktar://connect?callback=raycast://extensions/<author>/<extension>/<command>
+//! aktar://import#<data>      open "Import from Another Device" with this
+//!                            transfer link (see `transfer`)
 //! ```
 //!
 //! `connect` is how the Raycast extension pairs: after the user approves,
@@ -60,6 +62,10 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
             }
             _ => crate::watched::show_settings(core),
         },
+        // Only opens the import with the link filled in, also when it
+        // launched the app: the transfer code still has to be typed, and
+        // Import pressed, before anything is saved.
+        "import" => crate::watched::show_import(core, link.trim()),
         "connect" => {
             let core = core.clone();
             tauri::async_runtime::spawn(async move { connect(&core, &url).await });
@@ -223,6 +229,13 @@ mod tests {
         assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=60").unwrap()), Some(60));
         assert_eq!(minutes(&Url::parse("aktar://watch/pause").unwrap()), None);
         assert_eq!(minutes(&Url::parse("aktar://watch/pause?minutes=soon").unwrap()), None);
+    }
+
+    #[test]
+    fn keeps_the_transfer_in_the_fragment() {
+        let url = Url::parse("aktar://import#AQABAgMEBQYHCAkKCwwNDg-goaKj").unwrap();
+        assert_eq!(url.host_str(), Some("import"));
+        assert_eq!(url.fragment(), Some("AQABAgMEBQYHCAkKCwwNDg-goaKj"));
     }
 
     #[test]

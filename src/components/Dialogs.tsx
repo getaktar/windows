@@ -23,7 +23,8 @@ import { useI18n } from "../lib/i18n";
 export function ConfirmDialog(props: {
   open: boolean;
   title: string;
-  message: string;
+  /** Left out when the title says it all. */
+  message?: string;
   confirmLabel: string;
   destructive?: boolean;
   /** A second way to confirm, next to the main one. */
@@ -37,7 +38,7 @@ export function ConfirmDialog(props: {
       <DialogSurface>
         <DialogBody>
           <DialogTitle>{props.title}</DialogTitle>
-          <DialogContent>{props.message}</DialogContent>
+          {props.message && <DialogContent>{props.message}</DialogContent>}
           <DialogActions>
             <Button appearance="secondary" onClick={props.onCancel}>
               {t("Cancel")}

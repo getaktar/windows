@@ -182,7 +182,7 @@ impl DestinationConfig {
 
     /// Settings that can't be right (edited by hand, or from a newer
     /// version) are dropped, so they fall back to the defaults.
-    fn sanitize(&mut self) {
+    pub(crate) fn sanitize(&mut self) {
         if self.expiry_days.is_some_and(|days| days != 0 && !crate::expiry::is_valid(days)) {
             self.expiry_days = None;
         }

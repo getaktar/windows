@@ -36,6 +36,7 @@ import {
   type OutputMode,
   type ProviderPreset,
   type PublicLinkCheck,
+  type StorageCredentials,
 } from "../lib/api";
 import {
   durationLabel,
@@ -58,15 +59,27 @@ const defaultForcePathStyle = (preset: ProviderPreset) => preset === "minIO";
 
 const r2Endpoint = (accountID: string) => `https://${accountID}.r2.cloudflarestorage.com`;
 
+/** A destination from another device ("Import from Another Device"). */
+export interface ImportDraft {
+  config: DestinationConfig;
+  credentials: StorageCredentials;
+  customTemplate: string | null;
+  /** "Update Existing": saved over the destination here with its ID. */
+  update: boolean;
+}
+
 interface Props {
   open: boolean;
   /** The destination being edited, or null to add one. */
   existing: DestinationConfig | null;
+  /** Shown filled in, keys included, as a new destination (or over the
+   * one with its ID, with `update`). Nothing is saved until Import. */
+  draft?: ImportDraft | null;
   onSaved: (destination: DestinationConfig) => void;
   onCancel: () => void;
 }
 
-export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
+export function DestinationForm({ open, existing, draft = null, onSaved, onCancel }: Props) {
   const { t, locale } = useI18n();
   const [preset, setPreset] = useState<ProviderPreset>("cloudflareR2");
   const [name, setName] = useState("");
@@ -110,6 +123,14 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [isConfirmingTurnOff, setIsConfirmingTurnOff] = useState(false);
   /** tmp/{N}d/ folders that already hold files, while confirming set up. */
   const [prefixesInUse, setPrefixesInUse] = useState<string[] | null>(null);
+  /** An import tests the connection once on its own, after the fields
+   * are filled in. */
+  const [autoTest, setAutoTest] = useState(false);
+  /** Where the fields start from. */
+  const source = existing ?? draft?.config ?? null;
+  /** The saved destination this form changes, whose keys stay when the
+   * key fields are left empty. */
+  const savedId = existing?.id ?? (draft?.update ? draft.config.id : null);
 
   useEffect(() => {
     if (!open) return;
@@ -118,44 +139,51 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setFormRules({ kind: "notChecked" });
     setIsConfirmingTurnOff(false);
     setPrefixesInUse(null);
-    if (existing) api.expiryRulesStatus(existing.id).then(setRulesCheck).catch(() => {});
-    const initialPreset = existing?.preset ?? "cloudflareR2";
+    if (savedId) api.expiryRulesStatus(savedId).then(setRulesCheck).catch(() => {});
+    const initialPreset = source?.preset ?? "cloudflareR2";
     setPreset(initialPreset);
-    setName(existing?.name ?? "");
-    setAccountID(existing?.accountID ?? "");
-    setEndpoint(existing?.endpoint ?? "");
-    setRegion(existing?.region ?? defaultRegion(initialPreset));
-    setAccessKeyId("");
-    setSecretAccessKey("");
-    setBucket(existing?.bucket ?? "");
-    setPublicBaseURL(existing?.publicBaseURL ?? "");
-    setObjectPathTemplate(existing?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
-    setForcePathStyle(existing?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
-    setOutputMode(existing?.outputMode ?? null);
-    setTemporaryLink(existing?.temporaryLink ?? null);
-    setExpiryDays(existing?.expiryDays ?? settings?.deleteAfterDays ?? 0);
-    setImageMetadata(existing?.imageMetadata ?? "removeLocation");
-    setFolderUpload(existing?.folderUpload ?? "zip");
-    setImageFormat(existing?.imageProcessing?.format ?? "original");
-    setImageQuality(existing?.imageProcessing?.quality ?? null);
-    setImageMaxLongEdge(existing?.imageProcessing?.maxLongEdge ?? null);
+    setName(source?.name ?? "");
+    setAccountID(source?.accountID ?? "");
+    setEndpoint(source?.endpoint ?? "");
+    setRegion(source?.region ?? defaultRegion(initialPreset));
+    setAccessKeyId(draft?.credentials.accessKeyId ?? "");
+    setSecretAccessKey(draft?.credentials.secretAccessKey ?? "");
+    setBucket(source?.bucket ?? "");
+    setPublicBaseURL(source?.publicBaseURL ?? "");
+    setObjectPathTemplate(source?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
+    setForcePathStyle(source?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
+    setOutputMode(source?.outputMode ?? null);
+    setTemporaryLink(source?.temporaryLink ?? null);
+    setExpiryDays(source?.expiryDays ?? settings?.deleteAfterDays ?? 0);
+    setImageMetadata(source?.imageMetadata ?? "removeLocation");
+    setFolderUpload(source?.folderUpload ?? "zip");
+    setImageFormat(source?.imageProcessing?.format ?? "original");
+    setImageQuality(source?.imageProcessing?.quality ?? null);
+    setImageMaxLongEdge(source?.imageProcessing?.maxLongEdge ?? null);
     setTestResult(null);
     setTestError(null);
     setSaveError(null);
+    setAutoTest(draft !== null);
     // Settings only supply the starting "Delete after" of a new form.
-  }, [open, existing]);
+  }, [open, existing, draft]);
+
+  useEffect(() => {
+    if (!autoTest) return;
+    setAutoTest(false);
+    test();
+  }, [autoTest]);
 
   const hasNewCredentials = accessKeyId.trim() !== "" && secretAccessKey !== "";
-  const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || existing !== null);
+  const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || savedId !== null);
   const canSave =
     name.trim() !== "" &&
     bucket.trim() !== "" &&
     endpoint.trim() !== "" &&
     publicBaseURL.trim() !== "" &&
-    (existing !== null || hasNewCredentials);
+    (savedId !== null || hasNewCredentials);
 
   const currentConfig = (): DestinationConfig => ({
-    id: existing?.id ?? "",
+    id: existing?.id ?? draft?.config.id ?? "",
     name: name.trim(),
     preset,
     accountID: preset === "cloudflareR2" ? accountID.trim() : null,
@@ -180,7 +208,12 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       ? null
       : { format: imageFormat, quality: imageQuality, maxLongEdge: imageMaxLongEdge };
 
-  const credentials = () => (hasNewCredentials ? { accessKeyId, secretAccessKey, sessionToken: null } : null);
+  /** An imported session token goes along while its key is unchanged. */
+  const credentials = () => {
+    if (!hasNewCredentials) return null;
+    const sessionToken = draft && accessKeyId === draft.credentials.accessKeyId ? (draft.credentials.sessionToken ?? null) : null;
+    return { accessKeyId, secretAccessKey, sessionToken };
+  };
 
   /** The bucket a rules result is about, so saving can tell whether the
    * connection was edited after it. */
@@ -270,7 +303,11 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      onSaved(await api.saveDestination(currentConfig(), credentials(), formRules));
+      onSaved(
+        draft
+          ? await api.importDestination(currentConfig(), credentials(), formRules, draft.customTemplate)
+          : await api.saveDestination(currentConfig(), credentials(), formRules),
+      );
     } catch (error) {
       setSaveError(errorMessage(error));
     } finally {
@@ -288,7 +325,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
           }}
         >
           <DialogBody>
-            <DialogTitle>{existing ? t("Edit Destination") : t("Add Destination")}</DialogTitle>
+            <DialogTitle>
+              {draft ? t("Import Destination") : existing ? t("Edit Destination") : t("Add Destination")}
+            </DialogTitle>
             <DialogContent className="form-content">
               <div className="form-group">
                 <Field label={t("Provider")}>
@@ -372,8 +411,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 {t("Credentials")}
               </Text>
               <div className="form-group">
-                <Field label={t("Access Key ID")} required={!existing}>
+                <Field label={t("Access Key ID")} required={savedId === null}>
                   <Input
+                    type={draft ? "password" : undefined}
                     value={accessKeyId}
                     placeholder={existing ? t("Unchanged") : undefined}
                     autoComplete="off"
@@ -381,7 +421,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                     onChange={(_, data) => setAccessKeyId(data.value)}
                   />
                 </Field>
-                <Field label={t("Secret Access Key")} required={!existing}>
+                <Field label={t("Secret Access Key")} required={savedId === null}>
                   <Input
                     type="password"
                     value={secretAccessKey}
@@ -625,7 +665,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 {t("Cancel")}
               </Button>
               <Button appearance="primary" type="submit" disabled={!canSave || isSaving}>
-                {t("Save")}
+                {draft ? t("Import") : t("Save")}
               </Button>
             </DialogActions>
           </DialogBody>

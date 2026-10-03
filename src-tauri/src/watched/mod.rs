@@ -56,6 +56,8 @@ pub struct WatchService {
 pub struct SettingsRequest {
     pub tab: Option<String>,
     pub watch_path: Option<String>,
+    /// An aktar://import link to open "Import from Another Device" with.
+    pub import_link: Option<String>,
 }
 
 impl WatchService {
@@ -515,6 +517,17 @@ pub fn request_watch(core: &SharedCore, path: PathBuf) {
 /// Settings, on the Watched Folders tab (aktar://watch).
 pub fn show_settings(core: &SharedCore) {
     core.watched.request.lock().unwrap().tab = Some("watched".into());
+    open_settings(core);
+}
+
+/// aktar://import: Settings opens "Import from Another Device" with the
+/// link filled in. Nothing is imported until the code is typed and Import
+/// is pressed there.
+pub fn show_import(core: &SharedCore, link: &str) {
+    let mut request = core.watched.request.lock().unwrap();
+    request.tab = Some("destinations".into());
+    request.import_link = Some(link.to_string());
+    drop(request);
     open_settings(core);
 }
 

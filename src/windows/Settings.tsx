@@ -37,6 +37,7 @@ import {
   WarningFilled,
   DocumentCopyRegular,
   CloudAddRegular,
+  QrCodeRegular,
 } from "@fluentui/react-icons";
 import { message } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState, type ReactElement } from "react";
@@ -46,6 +47,7 @@ import { DestinationForm } from "../components/DestinationForm";
 import { ProviderIcon } from "../components/FileVisuals";
 import { Card, CardRow, SettingsPage, SettingsSection, ToggleRow } from "../components/SettingsLayout";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
+import { ImportDestinationDialog, ShareDestinationDialog, type ShareRequest } from "../components/TransferDialogs";
 import { api, errorMessage, events, type DestinationConfig, type OutputMode } from "../lib/api";
 import { providerName } from "../lib/format";
 import { useDestinations, useFlag, useLocalApi, useSettings, useTauriEvent, useUpdateStatus } from "../lib/hooks";
@@ -60,15 +62,21 @@ export default function SettingsWindow() {
   const { t, info } = useI18n();
   const [tab, setTab] = useState<TabName>("general");
   const [watchPath, setWatchPath] = useState<string | null>(null);
+  const [importLink, setImportLink] = useState<string | null>(null);
 
   // aktar://watch and File Explorer's "Watch with Aktar" open a tab (and
-  // add a folder there), whether this window was open already or not.
+  // add a folder there), aktar://import opens the import with its link,
+  // whether this window was open already or not.
   const takeRequest = () => {
     api
       .takeSettingsRequest()
       .then((request) => {
         if (request.tab === "watched") setTab("watched");
         if (request.watchPath) setWatchPath(request.watchPath);
+        if (request.importLink) {
+          setTab("destinations");
+          setImportLink(request.importLink);
+        }
       })
       .catch(() => {});
   };
@@ -106,7 +114,9 @@ export default function SettingsWindow() {
       </nav>
       <main className="settings-main">
         {tab === "general" && <GeneralSettings />}
-        {tab === "destinations" && <DestinationsSettings />}
+        {tab === "destinations" && (
+          <DestinationsSettings importLink={importLink} onImportLinkHandled={() => setImportLink(null)} />
+        )}
         {tab === "watched" && <WatchedFoldersSettings pendingPath={watchPath} onPendingHandled={() => setWatchPath(null)} />}
         {tab === "output" && <OutputSettings />}
         {tab === "integrations" && <IntegrationsSettings />}
@@ -276,17 +286,47 @@ function GeneralSettings() {
 
 // MARK: - Destinations
 
-function DestinationsSettings() {
+function DestinationsSettings({
+  importLink,
+  onImportLinkHandled,
+}: {
+  /** From aktar://import: opens the import with the link filled in. */
+  importLink: string | null;
+  onImportLinkHandled: () => void;
+}) {
   const { t } = useI18n();
   const [destinations] = useDestinations();
   const [editing, setEditing] = useState<DestinationConfig | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [removing, setRemoving] = useState<DestinationConfig | null>(null);
+  const [sharing, setSharing] = useState<ShareRequest | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [pendingImportLink, setPendingImportLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!importLink) return;
+    setPendingImportLink(importLink);
+    setImportOpen(true);
+    onImportLinkHandled();
+  }, [importLink]);
 
   const openForm = (destination: DestinationConfig | null) => {
     setEditing(destination);
     setFormOpen(true);
   };
+
+  const openImport = () => {
+    setPendingImportLink(null);
+    setImportOpen(true);
+  };
+
+  // The keys come from Credential Manager; without them it fails like
+  // Duplicate does.
+  const share = (destination: DestinationConfig) =>
+    api
+      .createTransfer(destination.id)
+      .then((transfer) => setSharing({ ...transfer, name: destination.name }))
+      .catch((error) => message(errorMessage(error), { kind: "error" }));
 
   return (
     <SettingsPage title={t("Destinations")} subtitle={t("Manage where your files are uploaded.")}>
@@ -299,9 +339,14 @@ function DestinationsSettings() {
           <Text className="secondary pre-line" align="center">
             {t("Connect an S3-compatible storage provider\nto start uploading files.")}
           </Text>
-          <Button appearance="primary" onClick={() => openForm(null)}>
-            {t("Add Destination")}
-          </Button>
+          <div className="inline-row">
+            <Button appearance="primary" onClick={() => openForm(null)}>
+              {t("Add Destination")}
+            </Button>
+            <Button icon={<QrCodeRegular />} onClick={openImport}>
+              {t("Import from Another Device…")}
+            </Button>
+          </div>
         </div>
       ) : (
         <>
@@ -339,6 +384,7 @@ function DestinationsSettings() {
                         >
                           {t("Duplicate")}
                         </MenuItem>
+                        <MenuItem onClick={() => share(destination)}>{t("Share to Another Device…")}</MenuItem>
                         <MenuDivider />
                         <MenuItem className="menu-destructive" onClick={() => setRemoving(destination)}>
                           {t("Remove")}
@@ -350,9 +396,12 @@ function DestinationsSettings() {
               ))}
             </Card>
           </SettingsSection>
-          <div>
+          <div className="inline-row">
             <Button icon={<AddRegular />} onClick={() => openForm(null)}>
               {t("Add Destination")}
+            </Button>
+            <Button icon={<QrCodeRegular />} onClick={openImport}>
+              {t("Import from Another Device…")}
             </Button>
           </div>
         </>
@@ -363,6 +412,13 @@ function DestinationsSettings() {
         existing={editing}
         onCancel={() => setFormOpen(false)}
         onSaved={() => setFormOpen(false)}
+      />
+      <ShareDestinationDialog share={sharing} onClose={() => setSharing(null)} />
+      <ImportDestinationDialog
+        open={importOpen}
+        initialLink={pendingImportLink}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {}}
       />
       <ConfirmDialog
         open={removing !== null}

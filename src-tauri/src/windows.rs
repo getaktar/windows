@@ -3,6 +3,7 @@
 
 use std::time::Duration;
 
+use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -70,9 +71,13 @@ fn open_now(app: &AppHandle, which: AppWindow) {
         .center();
     let builder = match which {
         AppWindow::Library => builder.inner_size(1100.0, 680.0).min_inner_size(860.0, 500.0),
-        AppWindow::Settings => builder.inner_size(880.0, 640.0).min_inner_size(720.0, 480.0),
+        AppWindow::Settings => builder
+            .inner_size(880.0, 640.0)
+            .min_inner_size(720.0, 480.0)
+            .on_permission_request(allow_camera),
         AppWindow::Onboarding => builder
-            .inner_size(480.0, 400.0)
+            .on_permission_request(allow_camera)
+            .inner_size(480.0, 440.0)
             .resizable(false)
             .maximizable(false)
             .minimizable(false),
@@ -88,6 +93,17 @@ fn open_now(app: &AppHandle, which: AppWindow) {
             let _ = window.set_focus();
         }
         Err(error) => log::error!("Could not open the {} window: {error}", which.label()),
+    }
+}
+
+/// "Scan QR Code" in "Import from Another Device" starts the camera only
+/// when it's clicked, and these windows only show Aktar's own pages, so
+/// WebView2's own "use your camera?" prompt (whose Block would stick) isn't
+/// shown on top. Windows' camera privacy setting still applies.
+fn allow_camera<R: tauri::Runtime>(_: tauri::Webview<R>, kind: PermissionKind) -> PermissionResponse {
+    match kind {
+        PermissionKind::Camera => PermissionResponse::Allow,
+        _ => PermissionResponse::Default,
     }
 }
 

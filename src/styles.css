@@ -353,6 +353,13 @@ body {
   margin: 0;
 }
 
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
 .onboarding-tray-hint {
   margin-top: 8px;
   max-width: 360px;
@@ -1213,6 +1220,38 @@ body {
 
 .qr-actions {
   flex-wrap: wrap;
+}
+
+/* Share to Another Device / Import from Another Device */
+.transfer-code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.transfer-code-input input {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.import-surface {
+  max-width: 460px;
+}
+
+.import-camera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.import-camera video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
 }
 
 /* Name This Upload */

@@ -9,6 +9,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:window:allow-hide",
+    "core:window:allow-set-content-protected",
     "dialog:allow-open",
     "dialog:allow-ask",
     "dialog:allow-message",
