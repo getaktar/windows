@@ -272,7 +272,8 @@ function mockQr(text: string): QrMatrix {
  * the shared test vectors, whose code is K7P2-QX9M-4TRW. ?dup makes the
  * imported destination one that's already here, uploading to the same
  * place; ?dup=moved makes it upload to another bucket, which "Update
- * Existing" warns about. */
+ * Existing" warns about. ?testfail makes the connection test after the
+ * import fail. */
 const mockTransferLink =
   "aktar://import#AQABAgMEBQYHCAkKCwwNDg-goaKjpKWmp6ipqqtb3kuNh7HmTZAAsoxnF4uSJvWbwAcgdjc8HykCY2sexEkIGCNmWERsoA2f-1YQqaZAM-KR1X_z2vLMQxulRNBFXgNXHOZ76srLl3KfOH8DqV0aBtQyW5nvSf1IdulSa9cqDNfjMUPAycY-CKM_l2Kvs_FeyQXUAR9PGWEsgdNp4BwpIZVOUhr41EdisZOp9Jw5lwR1dHg4ADawbqib1DHbyu0n3uDcoHJrRkbBIZfGppFzOiRT7ZLEWUyI1OFgEzkNpnoNtESI2Z9nFS3jk1cMcEx0YUxqHJo1EwgAWVdoLeZi9gK76SsoT-CpvpZqR56eTh9pNp_dDlOg_4lYUSLVrikhpa6O3GJsGSoSdkg6g9f2Em00M2ADtYjB5y3stTrUTr4a1vbn__r09ean6d4l2d9olT2WQbjB0vS4TFKM_hO9Cuf3kb_GvGVk2tivHSupPTjVjFzcZaP2NaQOnwfbdxLPnkOq7XBsVpun04vHtvTX4h2nQ1a8KNyCI6tlJZO-a8vJkKJrdl0n-kkiCVrxD2SkP5zmzO38eOaCfgfJWgvsGGcyIntXUEy8A09FoOZ441goeDiIHrruFOXHOyNclHP2dLtVPlMGzKCIDra0JXr1";
 
@@ -331,8 +332,9 @@ export function installMockBackend(route: string) {
               ["es", "Español"], ["pt-BR", "Português (Brasil)"], ["ja", "日本語"], ["zh-Hans", "简体中文"],
             ],
           };
+        // A new array, as from Rust, so a change shows up in React state.
         case "list_destinations":
-          return destinations;
+          return [...destinations];
         case "list_jobs":
           return jobs;
         case "list_history":
@@ -383,8 +385,17 @@ export function installMockBackend(route: string) {
           return [];
         case "remove_expiry_rules":
           return null;
+        // ?testfail: the bucket can't be reached at all.
         case "test_connection":
-          return { bucketReachable: true, writable: true, publicLink: { kind: "status", code: 403 } };
+          return new Promise((resolve, reject) =>
+            window.setTimeout(
+              () =>
+                new URLSearchParams(window.location.search).has("testfail")
+                  ? reject("error sending request for url (http://192.168.1.10:9000/uploads)")
+                  : resolve({ bucketReachable: true, writable: true, publicLink: { kind: "status", code: 403 } }),
+              700,
+            ),
+          );
         case "upload_clipboard":
           return false;
         case "upload_files":
@@ -424,9 +435,16 @@ export function installMockBackend(route: string) {
           return String(args.code).toUpperCase().replace(/[\s-]/g, "") === "K7P2QX9M4TRW"
             ? mockTransferPayload()
             : Promise.reject("wrongCode");
+        // Rust trims what it decodes; the mock payload keeps a space to
+        // show that it doesn't count as another bucket.
         case "import_destination": {
-          const config = { ...(args.config as DestinationConfig), isDefault: destinations.length === 0 };
-          const index = destinations.findIndex((destination) => destination.id === config.id);
+          const imported = args.config as DestinationConfig;
+          const index = destinations.findIndex((destination) => destination.id === imported.id);
+          const config = {
+            ...imported,
+            bucket: imported.bucket.trim(),
+            isDefault: index >= 0 ? destinations[index].isDefault : destinations.length === 0,
+          };
           if (index >= 0) destinations[index] = config;
           else destinations.push(config);
           window.setTimeout(() => emit("destinations-changed"), 0);

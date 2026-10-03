@@ -221,8 +221,6 @@
   "Image Processing": "Görsel İşleme",
   "Image metadata": "Görsel meta verileri",
   "Images": "Görseller",
-  "Import": "İçe Aktar",
-  "Import Destination": "Hedefi İçe Aktar",
   "Import from Another Device": "Başka Cihazdan Aktar",
   "Import from Another Device…": "Başka Cihazdan Aktar…",
   "Include Ctrl, Alt, or the Windows key in the shortcut.": "Kısayola Ctrl, Alt veya Windows tuşunu ekle.",
@@ -614,5 +612,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "Bu hedef için “Silinme” artık sunulmaz. Bucket Aktar'ın kurallarını tuttuğu sürece tmp/ altındaki mevcut dosyalar zamanı gelince yine silinir; kuralları kaldırırsan bu dosyalar kalıcı olarak kalır.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "“{0}” ve dosyaları oldukları yerde kalır, yüklemeler de bucket'ta kalır.",
   "“{0}” is already on this device.": "“{0}” bu cihazda zaten var.",
-  "“{0}” isn't in Aktar's scripts folder.": "“{0}”, Aktar'ın betikler klasöründe değil."
+  "“{0}” isn't in Aktar's scripts folder.": "“{0}”, Aktar'ın betikler klasöründe değil.",
+  "“{0}” was added.": "“{0}” eklendi.",
+  "“{0}” was updated.": "“{0}” güncellendi."
 }

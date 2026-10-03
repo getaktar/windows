@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   destination's menu shows a QR code and a transfer code; on the other
   device (Mac, Windows, iPhone or Android), "Import from Another Device…"
   scans the code with the camera or takes the pasted link, asks for the
-  transfer code, and opens the destination form filled in, keys included,
-  to test and import. The keys are encrypted with the transfer code, which
-  is never part of the QR code or the link, and the window closes itself
-  after 10 minutes. Also on the Welcome window, and through
-  `aktar://import` links, which never import anything on their own
+  transfer code (formatted as XXXX-XXXX-XXXX as you type), and adds the
+  destination right away, keys included. If it's already there, you pick
+  "Update Existing" or "Add as Copy", with a warning when the update would
+  upload somewhere else. The connection is then tested on its own and the
+  result shown, with "Edit" to open the destination form; a failed test
+  leaves the destination saved. The keys are encrypted with the transfer
+  code, which is never part of the QR code or the link, and the window
+  closes itself after 10 minutes. Also on the Welcome window, and through
+  `aktar://import` links, which never import anything without the code
 
 ## [0.4.1] - 2026-10-03
 

@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { DestinationForm } from "../components/DestinationForm";
 import { ImportDestinationDialog } from "../components/TransferDialogs";
-import { api } from "../lib/api";
+import { api, type DestinationConfig } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import appIcon from "../../src-tauri/icons/128x128.png";
 
@@ -11,6 +11,9 @@ export default function Onboarding() {
   const { t } = useI18n();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  /** An imported destination opened with "Edit"; it's already saved, so
+   * closing the form either way finishes onboarding. */
+  const [imported, setImported] = useState<DestinationConfig | null>(null);
 
   return (
     <div className="onboarding">
@@ -23,7 +26,14 @@ export default function Onboarding() {
         {t("No account. No proprietary cloud. Your files stay yours.")}
       </Text>
       <div className="onboarding-actions">
-        <Button appearance="primary" size="large" onClick={() => setShowForm(true)}>
+        <Button
+          appearance="primary"
+          size="large"
+          onClick={() => {
+            setImported(null);
+            setShowForm(true);
+          }}
+        >
           {t("Connect Storage")}
         </Button>
         <Button appearance="subtle" onClick={() => setShowImport(true)}>
@@ -36,8 +46,11 @@ export default function Onboarding() {
 
       <DestinationForm
         open={showForm}
-        existing={null}
-        onCancel={() => setShowForm(false)}
+        existing={imported}
+        onCancel={() => {
+          setShowForm(false);
+          if (imported) api.finishOnboarding();
+        }}
         onSaved={() => {
           setShowForm(false);
           // Show where Aktar lives from now on. Rust closes this window
@@ -48,7 +61,12 @@ export default function Onboarding() {
       <ImportDestinationDialog
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImported={() => api.finishOnboarding()}
+        onDone={() => api.finishOnboarding()}
+        onEdit={(destination) => {
+          setShowImport(false);
+          setImported(destination);
+          setShowForm(true);
+        }}
       />
     </div>
   );

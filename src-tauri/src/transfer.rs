@@ -206,7 +206,9 @@ fn remove_nulls(object: &mut Map<String, Value>) {
 
 /// Lenient: unknown fields are ignored, and an optional field with a value
 /// this app doesn't know is left unset rather than failing the whole
-/// import. Only what a destination can't work without is required.
+/// import. Only what a destination can't work without is required. Text
+/// fields are trimmed, as the destination form does, since the import
+/// saves them as they come.
 fn decode_payload(data: &[u8]) -> Result<TransferPayload, TransferError> {
     let root: Value = serde_json::from_slice(data).map_err(|_| TransferError::NotTransfer)?;
     if integer(root.get("v")).is_some_and(|version| version > FORMAT_VERSION as i64) {
@@ -214,7 +216,7 @@ fn decode_payload(data: &[u8]) -> Result<TransferPayload, TransferError> {
     }
     let object = root.get("destination").and_then(Value::as_object).ok_or(TransferError::NotTransfer)?;
     let keys = root.get("credentials").and_then(Value::as_object).ok_or(TransferError::NotTransfer)?;
-    let required = |object: &Map<String, Value>, name: &str| string(object.get(name)).ok_or(TransferError::NotTransfer);
+    let required = |object: &Map<String, Value>, name: &str| trimmed(object.get(name)).ok_or(TransferError::NotTransfer);
 
     let id = uuid::Uuid::parse_str(&required(object, "id")?).map_err(|_| TransferError::NotTransfer)?;
     let preset: ProviderPreset = serde_json::from_value(Value::String(required(object, "preset")?)).map_err(|_| TransferError::NotTransfer)?;
@@ -222,12 +224,12 @@ fn decode_payload(data: &[u8]) -> Result<TransferPayload, TransferError> {
         id: id.hyphenated().to_string().to_uppercase(),
         name: required(object, "name")?,
         preset,
-        account_id: string(object.get("accountID")),
+        account_id: trimmed(object.get("accountID")),
         endpoint: required(object, "endpoint")?,
-        region: string(object.get("region")).unwrap_or_else(|| default_region(preset).into()),
+        region: trimmed(object.get("region")).unwrap_or_else(|| default_region(preset).into()),
         bucket: required(object, "bucket")?,
         public_base_url: required(object, "publicBaseURL")?,
-        object_path_template: string(object.get("objectPathTemplate")).unwrap_or_else(|| DEFAULT_OBJECT_PATH.into()),
+        object_path_template: trimmed(object.get("objectPathTemplate")).unwrap_or_else(|| DEFAULT_OBJECT_PATH.into()),
         force_path_style: object.get("forcePathStyle").and_then(Value::as_bool).unwrap_or(preset == ProviderPreset::MinIO),
         is_default: false,
         output_mode: known(object.get("outputMode")),
@@ -275,6 +277,11 @@ fn known<T: serde::de::DeserializeOwned>(value: Option<&Value>) -> Option<T> {
 
 fn string(value: Option<&Value>) -> Option<String> {
     value.and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_string)
+}
+
+/// `string` without the spaces around it.
+fn trimmed(value: Option<&Value>) -> Option<String> {
+    value.and_then(Value::as_str).map(str::trim).filter(|text| !text.is_empty()).map(str::to_string)
 }
 
 /// A whole number, also when it's written as 30.0.
@@ -378,6 +385,31 @@ mod tests {
         assert_eq!(display_code("K7P2QX9M4TRW"), "K7P2-QX9M-4TRW");
         let code = generate_code();
         assert_eq!(normalize_code(&code).as_deref(), Some(code.as_str()));
+    }
+
+    #[test]
+    fn trims_what_it_saves() {
+        let mut destination = open(FULL, CODE).unwrap().destination;
+        destination.name = " Screenshots ".into();
+        destination.endpoint = " https://s3.example.com/ ".into();
+        destination.bucket = " shots\n".into();
+        destination.public_base_url = "  https://files.example.com ".into();
+        destination.region = " ".into();
+        destination.object_path_template = " {uuid}.{ext} ".into();
+        let payload = TransferPayload {
+            destination,
+            credentials: StorageCredentials { access_key_id: " AKID ".into(), secret_access_key: "secret ".into(), session_token: None },
+            custom_template: None,
+        };
+        let opened = open(&seal(&payload, CODE).unwrap(), CODE).unwrap();
+        assert_eq!(opened.destination.name, "Screenshots");
+        assert_eq!(opened.destination.endpoint, "https://s3.example.com/");
+        assert_eq!(opened.destination.bucket, "shots");
+        assert_eq!(opened.destination.public_base_url, "https://files.example.com");
+        assert_eq!(opened.destination.region, "auto");
+        assert_eq!(opened.destination.object_path_template, "{uuid}.{ext}");
+        assert_eq!(opened.credentials.access_key_id, "AKID");
+        assert_eq!(opened.credentials.secret_access_key, "secret");
     }
 
     #[test]

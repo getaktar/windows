@@ -418,7 +418,11 @@ function DestinationsSettings({
         open={importOpen}
         initialLink={pendingImportLink}
         onClose={() => setImportOpen(false)}
-        onImported={() => {}}
+        onDone={() => setImportOpen(false)}
+        onEdit={(destination) => {
+          setImportOpen(false);
+          openForm(destination);
+        }}
       />
       <ConfirmDialog
         open={removing !== null}

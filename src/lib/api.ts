@@ -438,14 +438,10 @@ export const api = {
   createTransfer: (destinationId: string) => invoke<TransferShare>("create_transfer", { destinationId }),
   checkTransferLink: (link: string) => invoke<void>("check_transfer_link", { link }),
   openTransfer: (link: string, code: string) => invoke<TransferPayload>("open_transfer", { link, code }),
-  /** Saves an imported destination under its own ID, adding it or updating
-   * the one here with that ID. */
-  importDestination: (
-    config: DestinationConfig,
-    credentials: StorageCredentials | null,
-    rules: FormRules,
-    customTemplate: string | null,
-  ) => invoke<DestinationConfig>("import_destination", { config, credentials, rules, customTemplate }),
+  /** Saves an imported destination and its keys under its own ID, adding
+   * it or updating the one here with that ID. Resolves to it as saved. */
+  importDestination: (config: DestinationConfig, credentials: StorageCredentials, customTemplate: string | null) =>
+    invoke<DestinationConfig>("import_destination", { config, credentials, customTemplate }),
   setDestinationExpiry: (id: string, days: number) => invoke<void>("set_destination_expiry", { id, days }),
   setDestinationLink: (id: string, seconds: number | null) => invoke<void>("set_destination_link", { id, seconds }),
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>

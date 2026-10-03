@@ -221,8 +221,6 @@
   "Image Processing": "Image Processing",
   "Image metadata": "Image metadata",
   "Images": "Images",
-  "Import": "Import",
-  "Import Destination": "Import Destination",
   "Import from Another Device": "Import from Another Device",
   "Import from Another Device…": "Import from Another Device…",
   "Include Ctrl, Alt, or the Windows key in the shortcut.": "Include Ctrl, Alt, or the Windows key in the shortcut.",
@@ -614,5 +612,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "“{0}” and its files stay where they are, and uploads stay in the bucket.",
   "“{0}” is already on this device.": "“{0}” is already on this device.",
-  "“{0}” isn't in Aktar's scripts folder.": "“{0}” isn't in Aktar's scripts folder."
+  "“{0}” isn't in Aktar's scripts folder.": "“{0}” isn't in Aktar's scripts folder.",
+  "“{0}” was added.": "“{0}” was added.",
+  "“{0}” was updated.": "“{0}” was updated."
 }

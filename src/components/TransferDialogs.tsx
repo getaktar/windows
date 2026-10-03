@@ -14,18 +14,19 @@ import {
 import { CameraRegular, CopyRegular } from "@fluentui/react-icons";
 import jsQR from "jsqr";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import {
   api,
   errorMessage,
+  type ConnectionResult,
   type DestinationConfig,
   type QrMatrix,
   type TransferPayload,
   type TransferShare,
 } from "../lib/api";
 import { useI18n, type Translate } from "../lib/i18n";
-import { DestinationForm, type ImportDraft } from "./DestinationForm";
+import { ConnectionTestResult } from "./ConnectionTestResult";
 import { ConfirmDialog } from "./Dialogs";
 import { QrSvg } from "./QrCodeDialog";
 
@@ -34,11 +35,31 @@ const SHARE_LIFETIME_MS = 10 * 60 * 1000;
 /** Crockford base32, as in src-tauri/src/transfer.rs. */
 const CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
+const CODE_LENGTH = 12;
+
 /** What was typed, as the 12 characters of a transfer code, or null. Rust
  * checks it again; this only enables Continue. */
 function normalizeCode(input: string) {
   const code = input.toUpperCase().replace(/[\s-]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
-  return code.length === 12 && [...code].every((character) => CODE_ALPHABET.includes(character)) ? code : null;
+  return code.length === CODE_LENGTH && [...code].every((character) => CODE_ALPHABET.includes(character)) ? code : null;
+}
+
+/** The letters and digits in `text`, uppercased: what the code field
+ * keeps of anything typed or pasted. */
+function codeCharacters(text: string) {
+  return text.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+/** "K7P2QX9M4TRW" as "K7P2-QX9M-4TRW", and a partial code the same way,
+ * without a hyphen at the end. */
+function formatCode(characters: string) {
+  return characters.match(/.{1,4}/g)?.join("-") ?? "";
+}
+
+/** Where the caret goes in `formatCode` output to sit after `count` code
+ * characters. */
+function caretAfter(count: number) {
+  return count + Math.min(2, Math.max(0, Math.floor((count - 1) / 4)));
 }
 
 /** An endpoint as written, ignoring case, a trailing slash and a missing
@@ -177,23 +198,101 @@ export function ShareDestinationDialog({ share, onClose }: { share: ShareRequest
 
 // MARK: - Import
 
-type Stage = "link" | "code" | "duplicate" | "form";
+type Stage = "link" | "code" | "duplicate" | "result";
+
+/** The transfer code field: formats what's typed or pasted as
+ * XXXX-XXXX-XXXX while keeping the caret after the same character, and
+ * deletes across a hyphen as if it weren't there. */
+function TransferCodeInput({
+  inputRef,
+  value,
+  onChange,
+}: {
+  inputRef: RefObject<HTMLInputElement | null>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  /** Where the caret goes once the formatted value is rendered. */
+  const pendingCaret = useRef<number | null>(null);
+  /** Renders again when an edit leaves the value as it was (an extra
+   * character on a full code, or a lone hyphen deleted), so the input
+   * shows the value again with the caret in place. */
+  const [, rerender] = useState(0);
+
+  useLayoutEffect(() => {
+    const caret = pendingCaret.current;
+    pendingCaret.current = null;
+    if (caret !== null && document.activeElement === inputRef.current) inputRef.current?.setSelectionRange(caret, caret);
+  });
+
+  const apply = (characters: string, charactersBeforeCaret: number) => {
+    const next = formatCode(characters);
+    pendingCaret.current = caretAfter(Math.max(0, Math.min(charactersBeforeCaret, characters.length)));
+    if (next === value) rerender((count) => count + 1);
+    else onChange(next);
+  };
+
+  const handleChange = (raw: string, caret: number) => {
+    const characters = codeCharacters(raw);
+    const before = codeCharacters(raw.slice(0, caret)).length;
+    const current = codeCharacters(value);
+    if (characters.length > CODE_LENGTH && current.length === CODE_LENGTH) {
+      // Typing into a full code changes nothing.
+      apply(current, before - (characters.length - current.length));
+      return;
+    }
+    apply(characters.slice(0, CODE_LENGTH), before);
+  };
+
+  // A hyphen is only formatting: Backspace right after one (or Delete
+  // right before one) removes the character on its other side.
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const start = input.selectionStart ?? 0;
+    if (start !== input.selectionEnd || event.ctrlKey || event.metaKey || event.altKey) return;
+    let removeAt = -1;
+    if (event.key === "Backspace" && value[start - 1] === "-") removeAt = start - 2;
+    if (event.key === "Delete" && value[start] === "-") removeAt = start + 1;
+    if (removeAt < 0 || removeAt >= value.length) return;
+    event.preventDefault();
+    const before = codeCharacters(value.slice(0, event.key === "Backspace" ? removeAt : start)).length;
+    apply(codeCharacters(value.slice(0, removeAt) + value.slice(removeAt + 1)), before);
+  };
+
+  return (
+    <Input
+      ref={inputRef}
+      className="transfer-code-input"
+      value={value}
+      placeholder="XXXX-XXXX-XXXX"
+      autoComplete="off"
+      spellCheck={false}
+      onKeyDown={handleKeyDown}
+      onChange={(event, data) => handleChange(data.value, event.currentTarget.selectionStart ?? data.value.length)}
+    />
+  );
+}
 
 /** "Import from Another Device": the link (pasted, or scanned with the
  * camera), then the transfer code, then what to do when the destination
- * is already here, then the destination form filled in. Nothing is saved
- * until Import is pressed in the form. `initialLink` comes from an
- * aktar://import link. */
+ * is already here. The destination is then saved as it came, and the last
+ * step says so and tests the connection; it stays saved whatever the test
+ * finds. `initialLink` comes from an aktar://import link. */
 export function ImportDestinationDialog({
   open,
   initialLink,
   onClose,
-  onImported,
+  onDone,
+  onEdit,
 }: {
   open: boolean;
   initialLink?: string | null;
+  /** Closed before anything was saved. */
   onClose: () => void;
-  onImported: (destination: DestinationConfig) => void;
+  /** "Done" on the last step, or closing it. */
+  onDone: (destination: DestinationConfig) => void;
+  /** "Edit" on the last step: the destination form for what was saved. */
+  onEdit: (destination: DestinationConfig) => void;
 }) {
   const { t } = useI18n();
   const [stage, setStage] = useState<Stage>("link");
@@ -206,7 +305,11 @@ export function ImportDestinationDialog({
   const [existingName, setExistingName] = useState("");
   /** Set when "Update Existing" would make it upload somewhere else. */
   const [movesUploads, setMovesUploads] = useState(false);
-  const [draft, setDraft] = useState<ImportDraft | null>(null);
+  /** The destination as saved, and whether it replaced one with its ID. */
+  const [saved, setSaved] = useState<{ destination: DestinationConfig; updated: boolean } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ConnectionResult | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -214,7 +317,11 @@ export function ImportDestinationDialog({
   /** Bumped when the camera is stopped, so a start still on its way is
    * dropped when it arrives. */
   const cameraGeneration = useRef(0);
+  /** Bumped when the dialog opens or closes, so a test still running from
+   * before doesn't show up in the next import. */
+  const session = useRef(0);
   const codeInput = useRef<HTMLInputElement>(null);
+  const doneButton = useRef<HTMLButtonElement>(null);
 
   const stopCamera = () => {
     cameraGeneration.current++;
@@ -225,6 +332,7 @@ export function ImportDestinationDialog({
   };
 
   useEffect(() => {
+    session.current++;
     if (!open) {
       stopCamera();
       return;
@@ -236,7 +344,10 @@ export function ImportDestinationDialog({
     setCodeError(null);
     setIsWorking(false);
     setPayload(null);
-    setDraft(null);
+    setSaved(null);
+    setIsTesting(false);
+    setTestResult(null);
+    setTestError(null);
     setCameraError(null);
     if (initialLink) submitLink(initialLink);
   }, [open, initialLink]);
@@ -246,6 +357,9 @@ export function ImportDestinationDialog({
 
   useEffect(() => {
     if (stage === "code") window.setTimeout(() => codeInput.current?.focus(), 0);
+    // The code field it replaces had focus; without it, Esc and Enter
+    // would go nowhere.
+    if (stage === "result") window.setTimeout(() => doneButton.current?.focus(), 0);
   }, [stage]);
 
   const submitLink = async (value: string) => {
@@ -340,7 +454,7 @@ export function ImportDestinationDialog({
         setMovesUploads(uploadsElsewhere(opened.destination, existing));
         setStage("duplicate");
       } else {
-        showForm(opened, "new");
+        await save(opened, "new");
       }
     } catch (error) {
       setCodeError(transferErrorMessage(error, t));
@@ -350,34 +464,69 @@ export function ImportDestinationDialog({
     }
   };
 
-  const showForm = (opened: TransferPayload, mode: "new" | "update" | "copy") => {
+  /** Saves the destination as it came (a copy under a new ID for "Add as
+   * Copy"), then tests its connection. */
+  const save = async (opened: TransferPayload, mode: "new" | "update" | "copy") => {
     const config =
       mode === "copy"
         ? { ...opened.destination, id: crypto.randomUUID().toUpperCase(), name: t("{0} Copy", opened.destination.name) }
         : opened.destination;
-    setDraft({ config, credentials: opened.credentials, customTemplate: opened.customTemplate, update: mode === "update" });
-    setStage("form");
+    const destination = await api.importDestination(config, opened.credentials, opened.customTemplate);
+    setSaved({ destination, updated: mode === "update" });
+    setStage("result");
+    testConnection(destination);
+  };
+
+  /** From the duplicate question: errors go back to the code step. */
+  const saveDuplicate = async (mode: "update" | "copy") => {
+    if (!payload) return;
+    setStage("code");
+    setIsWorking(true);
+    try {
+      await save(payload, mode);
+    } catch (error) {
+      setCodeError(transferErrorMessage(error, t));
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const testConnection = async (destination: DestinationConfig) => {
+    const current = session.current;
+    setIsTesting(true);
+    setTestResult(null);
+    setTestError(null);
+    try {
+      const result = await api.testConnection(destination, null);
+      if (current === session.current) setTestResult(result);
+    } catch (error) {
+      if (current === session.current) setTestError(errorMessage(error));
+    } finally {
+      if (current === session.current) setIsTesting(false);
+    }
   };
 
   const close = () => {
     stopCamera();
-    onClose();
+    if (saved) onDone(saved.destination);
+    else onClose();
   };
 
   return (
     <>
-      <Dialog open={open && (stage === "link" || stage === "code")} onOpenChange={(_, data) => !data.open && close()}>
+      <Dialog open={open && stage !== "duplicate"} onOpenChange={(_, data) => !data.open && close()}>
         <DialogSurface className="import-surface">
           <form
             onSubmit={(event) => {
               event.preventDefault();
               if (stage === "link" && link.trim()) submitLink(link);
               if (stage === "code") submitCode();
+              if (stage === "result") close();
             }}
           >
             <DialogBody>
               <DialogTitle>{t("Import from Another Device")}</DialogTitle>
-              {stage === "link" ? (
+              {stage === "link" && (
                 <DialogContent className="dialog-stack">
                   <Field label={t("Paste Transfer Link")} validationMessage={linkError ?? undefined}>
                     <Input
@@ -411,42 +560,63 @@ export function ImportDestinationDialog({
                     </Text>
                   )}
                 </DialogContent>
-              ) : (
+              )}
+              {stage === "code" && (
                 <DialogContent className="dialog-stack">
                   <Field
                     label={t("Transfer Code")}
                     hint={codeError ? undefined : t("Enter the transfer code shown on the other device.")}
                     validationMessage={codeError ?? undefined}
                   >
-                    <Input
-                      ref={codeInput}
-                      className="transfer-code-input"
+                    <TransferCodeInput
+                      inputRef={codeInput}
                       value={code}
-                      placeholder="XXXX-XXXX-XXXX"
-                      autoComplete="off"
-                      spellCheck={false}
-                      maxLength={20}
-                      onChange={(_, data) => {
-                        setCode(data.value.toUpperCase());
+                      onChange={(value) => {
+                        setCode(value);
                         setCodeError(null);
                       }}
                     />
                   </Field>
                 </DialogContent>
               )}
-              <DialogActions>
-                <Button appearance="secondary" onClick={close}>
-                  {t("Cancel")}
-                </Button>
-                <Button
-                  appearance="primary"
-                  type="submit"
-                  disabled={isWorking || (stage === "link" ? !link.trim() : !normalizeCode(code))}
-                  icon={isWorking ? <Spinner size="tiny" /> : undefined}
-                >
-                  {t("Continue")}
-                </Button>
-              </DialogActions>
+              {stage === "result" && saved && (
+                <DialogContent className="dialog-stack">
+                  <Text weight="semibold">
+                    {saved.updated
+                      ? t("“{0}” was updated.", saved.destination.name)
+                      : t("“{0}” was added.", saved.destination.name)}
+                  </Text>
+                  {isTesting ? (
+                    <Spinner size="tiny" labelPosition="after" label={t("Testing…")} className="import-testing" />
+                  ) : (
+                    <ConnectionTestResult result={testResult} error={testError} />
+                  )}
+                </DialogContent>
+              )}
+              {stage === "result" ? (
+                <DialogActions>
+                  <Button appearance="secondary" onClick={() => saved && onEdit(saved.destination)}>
+                    {t("Edit")}
+                  </Button>
+                  <Button ref={doneButton} appearance="primary" type="submit">
+                    {t("Done")}
+                  </Button>
+                </DialogActions>
+              ) : (
+                <DialogActions>
+                  <Button appearance="secondary" onClick={close}>
+                    {t("Cancel")}
+                  </Button>
+                  <Button
+                    appearance="primary"
+                    type="submit"
+                    disabled={isWorking || (stage === "link" ? !link.trim() : !normalizeCode(code))}
+                    icon={isWorking ? <Spinner size="tiny" /> : undefined}
+                  >
+                    {t("Continue")}
+                  </Button>
+                </DialogActions>
+              )}
             </DialogBody>
           </form>
         </DialogSurface>
@@ -463,19 +633,9 @@ export function ImportDestinationDialog({
             : undefined
         }
         confirmLabel={t("Update Existing")}
-        alternative={{ label: t("Add as Copy"), onSelect: () => payload && showForm(payload, "copy") }}
-        onConfirm={() => payload && showForm(payload, "update")}
+        alternative={{ label: t("Add as Copy"), onSelect: () => saveDuplicate("copy") }}
+        onConfirm={() => saveDuplicate("update")}
         onCancel={close}
-      />
-      <DestinationForm
-        open={open && stage === "form"}
-        existing={null}
-        draft={draft}
-        onCancel={close}
-        onSaved={(destination) => {
-          onImported(destination);
-          onClose();
-        }}
       />
     </>
   );

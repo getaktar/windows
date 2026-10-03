@@ -214,8 +214,8 @@ pub fn check_transfer_link(link: String) -> Result<(), TransferError> {
     transfer::envelope(&link).map(|_| ())
 }
 
-/// The destination and keys in a transfer link. Nothing is saved: the
-/// destination form shows them, and `import_destination` saves them.
+/// The destination and keys in a transfer link. Nothing is saved:
+/// `import_destination` saves them once the code was right.
 #[tauri::command]
 pub async fn open_transfer(link: String, code: String) -> Result<transfer::TransferPayload, TransferError> {
     tauri::async_runtime::spawn_blocking(move || transfer::open(&link, &code))
@@ -223,16 +223,17 @@ pub async fn open_transfer(link: String, code: String) -> Result<transfer::Trans
         .map_err(|_| TransferError::NotTransfer)?
 }
 
-/// "Import" in the destination form: adds the destination under the ID it
-/// had on the other device, or updates the one here with that ID ("Update
-/// Existing"). The app-level template comes along for a destination that
-/// copies with it, unless this app's own was already changed.
+/// "Import from Another Device", once the code was right: adds the
+/// destination under the ID it had on the other device, or updates the one
+/// here with that ID ("Update Existing"), keys included. "Add as Copy"
+/// sends a new ID. The app-level template comes along for a destination
+/// that copies with it, unless this app's own was already changed.
+/// Returns the destination as saved, default flag included.
 #[tauri::command]
 pub fn import_destination(
     core: Core,
     mut config: DestinationConfig,
-    credentials: Option<StorageCredentials>,
-    rules: Option<FormRules>,
+    credentials: StorageCredentials,
     custom_template: Option<String>,
 ) -> Result<DestinationConfig, String> {
     let Ok(id) = uuid::Uuid::parse_str(config.id.trim()) else {
@@ -244,14 +245,14 @@ pub fn import_destination(
         config.id = existing.id.clone();
     }
     let custom = config.output_mode == Some(crate::output::OutputMode::Custom);
-    let saved = store_destination(&core, config, credentials, rules, existing.is_none())?;
+    let saved = store_destination(&core, config, Some(credentials), None, existing.is_none())?;
     if let Some(template) = custom_template.filter(|template| custom && !template.is_empty()) {
         if core.settings.get().custom_template == Settings::default().custom_template {
             core.settings.update(|settings| settings.custom_template = template);
             core.notify(events::SETTINGS_CHANGED);
         }
     }
-    Ok(saved)
+    Ok(core.destinations.find(Some(&saved.id)).unwrap_or(saved))
 }
 
 /// The panel's "Delete after" choice, kept per destination.

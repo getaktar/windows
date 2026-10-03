@@ -1240,6 +1240,10 @@ body {
   max-width: 460px;
 }
 
+.import-testing {
+  justify-content: flex-start;
+}
+
 .import-camera {
   display: flex;
   flex-direction: column;

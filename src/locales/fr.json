@@ -221,8 +221,6 @@
   "Image Processing": "Traitement des images",
   "Image metadata": "Métadonnées des images",
   "Images": "Images",
-  "Import": "Importer",
-  "Import Destination": "Importer la destination",
   "Import from Another Device": "Importer depuis un autre appareil",
   "Import from Another Device…": "Importer depuis un autre appareil…",
   "Include Ctrl, Alt, or the Windows key in the shortcut.": "Incluez Ctrl, Alt ou la touche Windows dans le raccourci.",
@@ -614,5 +612,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "« Supprimer après » ne sera plus proposé pour cette destination. Les fichiers déjà sous tmp/ sont toujours supprimés à l'échéance tant que le bucket garde les règles d'Aktar ; si vous supprimez les règles, ces fichiers sont conservés définitivement.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "« {0} » et ses fichiers restent où ils sont, et les envois restent dans le bucket.",
   "“{0}” is already on this device.": "« {0} » est déjà sur cet appareil.",
-  "“{0}” isn't in Aktar's scripts folder.": "« {0} » n’est pas dans le dossier des scripts d’Aktar."
+  "“{0}” isn't in Aktar's scripts folder.": "« {0} » n’est pas dans le dossier des scripts d’Aktar.",
+  "“{0}” was added.": "« {0} » a été ajouté.",
+  "“{0}” was updated.": "« {0} » a été mis à jour."
 }

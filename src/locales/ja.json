@@ -221,8 +221,6 @@
   "Image Processing": "画像の処理",
   "Image metadata": "画像のメタデータ",
   "Images": "画像",
-  "Import": "読み込む",
-  "Import Destination": "保存先を読み込む",
   "Import from Another Device": "別のデバイスから読み込む",
   "Import from Another Device…": "別のデバイスから読み込む…",
   "Include Ctrl, Alt, or the Windows key in the shortcut.": "ショートカットにはCtrl、Alt、またはWindowsキーを含めてください。",
@@ -614,5 +612,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "この保存先では「削除まで」が表示されなくなります。バケットに Aktar のルールが残っている間は、tmp/ 内の既存ファイルは予定どおり削除されます。ルールを削除すると、それらのファイルは残り続けます。",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "「{0}」とそのファイルはそのまま残り、アップロード済みのファイルもバケットに残ります。",
   "“{0}” is already on this device.": "「{0}」はすでにこのデバイスにあります。",
-  "“{0}” isn't in Aktar's scripts folder.": "「{0}」はAktarのスクリプトフォルダにありません。"
+  "“{0}” isn't in Aktar's scripts folder.": "「{0}」はAktarのスクリプトフォルダにありません。",
+  "“{0}” was added.": "「{0}」を追加しました。",
+  "“{0}” was updated.": "「{0}」を更新しました。"
 }

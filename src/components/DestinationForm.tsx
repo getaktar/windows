@@ -35,8 +35,6 @@ import {
   type ImageProcessing,
   type OutputMode,
   type ProviderPreset,
-  type PublicLinkCheck,
-  type StorageCredentials,
 } from "../lib/api";
 import {
   durationLabel,
@@ -48,6 +46,7 @@ import {
 } from "../lib/format";
 import { useSettings } from "../lib/hooks";
 import { useI18n, type Translate } from "../lib/i18n";
+import { ConnectionTestResult } from "./ConnectionTestResult";
 import { ConfirmDialog } from "./Dialogs";
 
 const presets: ProviderPreset[] = ["cloudflareR2", "amazonS3", "minIO", "backblazeB2", "digitalOceanSpaces", "customS3"];
@@ -59,27 +58,15 @@ const defaultForcePathStyle = (preset: ProviderPreset) => preset === "minIO";
 
 const r2Endpoint = (accountID: string) => `https://${accountID}.r2.cloudflarestorage.com`;
 
-/** A destination from another device ("Import from Another Device"). */
-export interface ImportDraft {
-  config: DestinationConfig;
-  credentials: StorageCredentials;
-  customTemplate: string | null;
-  /** "Update Existing": saved over the destination here with its ID. */
-  update: boolean;
-}
-
 interface Props {
   open: boolean;
   /** The destination being edited, or null to add one. */
   existing: DestinationConfig | null;
-  /** Shown filled in, keys included, as a new destination (or over the
-   * one with its ID, with `update`). Nothing is saved until Import. */
-  draft?: ImportDraft | null;
   onSaved: (destination: DestinationConfig) => void;
   onCancel: () => void;
 }
 
-export function DestinationForm({ open, existing, draft = null, onSaved, onCancel }: Props) {
+export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const { t, locale } = useI18n();
   const [preset, setPreset] = useState<ProviderPreset>("cloudflareR2");
   const [name, setName] = useState("");
@@ -123,14 +110,6 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
   const [isConfirmingTurnOff, setIsConfirmingTurnOff] = useState(false);
   /** tmp/{N}d/ folders that already hold files, while confirming set up. */
   const [prefixesInUse, setPrefixesInUse] = useState<string[] | null>(null);
-  /** An import tests the connection once on its own, after the fields
-   * are filled in. */
-  const [autoTest, setAutoTest] = useState(false);
-  /** Where the fields start from. */
-  const source = existing ?? draft?.config ?? null;
-  /** The saved destination this form changes, whose keys stay when the
-   * key fields are left empty. */
-  const savedId = existing?.id ?? (draft?.update ? draft.config.id : null);
 
   useEffect(() => {
     if (!open) return;
@@ -139,51 +118,44 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
     setFormRules({ kind: "notChecked" });
     setIsConfirmingTurnOff(false);
     setPrefixesInUse(null);
-    if (savedId) api.expiryRulesStatus(savedId).then(setRulesCheck).catch(() => {});
-    const initialPreset = source?.preset ?? "cloudflareR2";
+    if (existing) api.expiryRulesStatus(existing.id).then(setRulesCheck).catch(() => {});
+    const initialPreset = existing?.preset ?? "cloudflareR2";
     setPreset(initialPreset);
-    setName(source?.name ?? "");
-    setAccountID(source?.accountID ?? "");
-    setEndpoint(source?.endpoint ?? "");
-    setRegion(source?.region ?? defaultRegion(initialPreset));
-    setAccessKeyId(draft?.credentials.accessKeyId ?? "");
-    setSecretAccessKey(draft?.credentials.secretAccessKey ?? "");
-    setBucket(source?.bucket ?? "");
-    setPublicBaseURL(source?.publicBaseURL ?? "");
-    setObjectPathTemplate(source?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
-    setForcePathStyle(source?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
-    setOutputMode(source?.outputMode ?? null);
-    setTemporaryLink(source?.temporaryLink ?? null);
-    setExpiryDays(source?.expiryDays ?? settings?.deleteAfterDays ?? 0);
-    setImageMetadata(source?.imageMetadata ?? "removeLocation");
-    setFolderUpload(source?.folderUpload ?? "zip");
-    setImageFormat(source?.imageProcessing?.format ?? "original");
-    setImageQuality(source?.imageProcessing?.quality ?? null);
-    setImageMaxLongEdge(source?.imageProcessing?.maxLongEdge ?? null);
+    setName(existing?.name ?? "");
+    setAccountID(existing?.accountID ?? "");
+    setEndpoint(existing?.endpoint ?? "");
+    setRegion(existing?.region ?? defaultRegion(initialPreset));
+    setAccessKeyId("");
+    setSecretAccessKey("");
+    setBucket(existing?.bucket ?? "");
+    setPublicBaseURL(existing?.publicBaseURL ?? "");
+    setObjectPathTemplate(existing?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
+    setForcePathStyle(existing?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
+    setOutputMode(existing?.outputMode ?? null);
+    setTemporaryLink(existing?.temporaryLink ?? null);
+    setExpiryDays(existing?.expiryDays ?? settings?.deleteAfterDays ?? 0);
+    setImageMetadata(existing?.imageMetadata ?? "removeLocation");
+    setFolderUpload(existing?.folderUpload ?? "zip");
+    setImageFormat(existing?.imageProcessing?.format ?? "original");
+    setImageQuality(existing?.imageProcessing?.quality ?? null);
+    setImageMaxLongEdge(existing?.imageProcessing?.maxLongEdge ?? null);
     setTestResult(null);
     setTestError(null);
     setSaveError(null);
-    setAutoTest(draft !== null);
     // Settings only supply the starting "Delete after" of a new form.
-  }, [open, existing, draft]);
-
-  useEffect(() => {
-    if (!autoTest) return;
-    setAutoTest(false);
-    test();
-  }, [autoTest]);
+  }, [open, existing]);
 
   const hasNewCredentials = accessKeyId.trim() !== "" && secretAccessKey !== "";
-  const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || savedId !== null);
+  const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || existing !== null);
   const canSave =
     name.trim() !== "" &&
     bucket.trim() !== "" &&
     endpoint.trim() !== "" &&
     publicBaseURL.trim() !== "" &&
-    (savedId !== null || hasNewCredentials);
+    (existing !== null || hasNewCredentials);
 
   const currentConfig = (): DestinationConfig => ({
-    id: existing?.id ?? draft?.config.id ?? "",
+    id: existing?.id ?? "",
     name: name.trim(),
     preset,
     accountID: preset === "cloudflareR2" ? accountID.trim() : null,
@@ -208,12 +180,7 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
       ? null
       : { format: imageFormat, quality: imageQuality, maxLongEdge: imageMaxLongEdge };
 
-  /** An imported session token goes along while its key is unchanged. */
-  const credentials = () => {
-    if (!hasNewCredentials) return null;
-    const sessionToken = draft && accessKeyId === draft.credentials.accessKeyId ? (draft.credentials.sessionToken ?? null) : null;
-    return { accessKeyId, secretAccessKey, sessionToken };
-  };
+  const credentials = () => (hasNewCredentials ? { accessKeyId, secretAccessKey, sessionToken: null } : null);
 
   /** The bucket a rules result is about, so saving can tell whether the
    * connection was edited after it. */
@@ -303,11 +270,7 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
     setIsSaving(true);
     setSaveError(null);
     try {
-      onSaved(
-        draft
-          ? await api.importDestination(currentConfig(), credentials(), formRules, draft.customTemplate)
-          : await api.saveDestination(currentConfig(), credentials(), formRules),
-      );
+      onSaved(await api.saveDestination(currentConfig(), credentials(), formRules));
     } catch (error) {
       setSaveError(errorMessage(error));
     } finally {
@@ -325,9 +288,7 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
           }}
         >
           <DialogBody>
-            <DialogTitle>
-              {draft ? t("Import Destination") : existing ? t("Edit Destination") : t("Add Destination")}
-            </DialogTitle>
+            <DialogTitle>{existing ? t("Edit Destination") : t("Add Destination")}</DialogTitle>
             <DialogContent className="form-content">
               <div className="form-group">
                 <Field label={t("Provider")}>
@@ -411,9 +372,8 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
                 {t("Credentials")}
               </Text>
               <div className="form-group">
-                <Field label={t("Access Key ID")} required={savedId === null}>
+                <Field label={t("Access Key ID")} required={!existing}>
                   <Input
-                    type={draft ? "password" : undefined}
                     value={accessKeyId}
                     placeholder={existing ? t("Unchanged") : undefined}
                     autoComplete="off"
@@ -421,7 +381,7 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
                     onChange={(_, data) => setAccessKeyId(data.value)}
                   />
                 </Field>
-                <Field label={t("Secret Access Key")} required={savedId === null}>
+                <Field label={t("Secret Access Key")} required={!existing}>
                   <Input
                     type="password"
                     value={secretAccessKey}
@@ -637,12 +597,7 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
               </div>
 
               <div ref={testOutcome}>
-                {testError && (
-                  <Text size={200} className="text-error">
-                    {testError}
-                  </Text>
-                )}
-                {testResult && <TestResult result={testResult} />}
+                <ConnectionTestResult result={testResult} error={testError} />
               </div>
               {saveError && (
                 <Text size={200} className="text-error">
@@ -665,7 +620,7 @@ export function DestinationForm({ open, existing, draft = null, onSaved, onCance
                 {t("Cancel")}
               </Button>
               <Button appearance="primary" type="submit" disabled={!canSave || isSaving}>
-                {draft ? t("Import") : t("Save")}
+                {t("Save")}
               </Button>
             </DialogActions>
           </DialogBody>
@@ -719,60 +674,6 @@ function imageMetadataLabel(policy: ImageMetadataPolicy, t: Translate) {
     case "keepAll":
       return t("Keep all");
   }
-}
-
-/** One line per step of the test, so a bucket that takes uploads but won't
- * serve them reads as a problem instead of a success. */
-function TestResult({ result }: { result: ConnectionResult }) {
-  const { t } = useI18n();
-  const link = result.publicLink;
-  const hint = publicLinkHint(link, t);
-  return (
-    <div className="test-result">
-      {result.writable ? (
-        <Text size={200} className="text-success">
-          ✓ {t("Upload: works")}
-        </Text>
-      ) : (
-        <Text size={200} className="text-error">
-          ✕ {t("Upload: failed. This key can read the bucket but can’t write to it.")}
-        </Text>
-      )}
-      {link?.kind === "reachable" && (
-        <Text size={200} className="text-success">
-          ✓ {t("Public link: works")}
-        </Text>
-      )}
-      {link?.kind === "status" && (
-        <Text size={200} className="text-error">
-          ✕ {t("Public link: failed (HTTP {0})", String(link.code))}
-        </Text>
-      )}
-      {link?.kind === "noResponse" && (
-        <Text size={200} className="text-error">
-          ✕ {t("Public link: no response")}
-        </Text>
-      )}
-      {hint && (
-        <Text size={200} className="secondary">
-          {hint}
-        </Text>
-      )}
-    </div>
-  );
-}
-
-function publicLinkHint(check: PublicLinkCheck | null, t: Translate) {
-  if (!check || check.kind === "reachable") return null;
-  if (check.kind === "status" && (check.code === 401 || check.code === 403)) {
-    return t(
-      "Uploads work, but anyone who opens a link gets an error. Allow public reads on the bucket (on R2, turn on the r2.dev URL or connect a custom domain), or keep it private and share files with Copy Temporary Link in the Library.",
-    );
-  }
-  if (check.kind === "status" && check.code === 404) {
-    return t("The test file was uploaded, but it isn’t at the Public Base URL. Check that the URL points to this bucket.");
-  }
-  return t("The Public Base URL didn’t serve the test file. Check the domain and that it points to this bucket.");
 }
 
 /** Whether the bucket deletes expiring uploads itself, and if the key
