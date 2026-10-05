@@ -697,7 +697,7 @@
   "Your uploads will appear here": "アップロードしたファイルがここに表示されます",
   "Your whole user folder can’t be watched. Pick a folder inside it.": "ユーザーフォルダ全体は監視できません。その中のフォルダを選択してください。",
   "You’re up to date!": "最新の状態です！",
-  "an image from the clipboard": "クリップボードの画像",
+  "an image": "画像",
   "macOS saves a screenshot once its floating thumbnail disappears, about 5 seconds later. For instant uploads, turn off Show Floating Thumbnail in the Screenshot app’s Options.": "macOSはフローティングサムネールが消えてから（約5秒後）スクリーンショットを保存します。すぐにアップロードするには、スクリーンショットAppのオプションで「フローティングサムネールを表示」をオフにしてください。",
   "screenshots": "screenshots",
   "the file’s folder inside it": "その中でのファイルのフォルダ",

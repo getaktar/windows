@@ -44,7 +44,8 @@ clipboard. This is the Windows version of [Aktar for Mac](https://github.com/get
   extension (opt-in, see Settings > Integrations)
 - Launch at sign-in, automatic updates, light and dark mode
 - In English, Turkish, German, French, Spanish, Brazilian Portuguese,
-  Japanese, and Simplified Chinese
+  Japanese, Simplified and Traditional Chinese, Korean, Italian, Dutch, Polish,
+  Russian, Ukrainian, Indonesian, and Vietnamese
 
 ## Privacy & security
 

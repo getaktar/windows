@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Nine more languages: Traditional Chinese, Korean, Italian, Dutch, Polish,
+  Russian, Ukrainian, Indonesian and Vietnamese
+
+### Fixed
+
+- The confirmation for an `aktar://upload-clipboard` link no longer says
+  "from the clipboard" twice when the clipboard holds an image
+
 ## [0.7.0] - 2026-10-05
 
 ### Added

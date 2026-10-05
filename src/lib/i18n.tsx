@@ -14,6 +14,15 @@ import ja from "../locales/ja.json";
 import ptBR from "../locales/pt-BR.json";
 import tr from "../locales/tr.json";
 import zhHans from "../locales/zh-Hans.json";
+import zhHant from "../locales/zh-Hant.json";
+import ko from "../locales/ko.json";
+import it from "../locales/it.json";
+import nl from "../locales/nl.json";
+import pl from "../locales/pl.json";
+import ru from "../locales/ru.json";
+import uk from "../locales/uk.json";
+import id from "../locales/id.json";
+import vi from "../locales/vi.json";
 
 const tables: Record<string, Record<string, string>> = {
   en,
@@ -24,6 +33,15 @@ const tables: Record<string, Record<string, string>> = {
   "pt-BR": ptBR,
   ja,
   "zh-Hans": zhHans,
+  "zh-Hant": zhHant,
+  ko,
+  it,
+  nl,
+  pl,
+  ru,
+  uk,
+  id,
+  vi,
 };
 
 export type Translate = (key: string, ...args: (string | number)[]) => string;
@@ -112,6 +130,15 @@ export function websiteURL(language: string) {
     "pt-BR": "pt-br",
     ja: "ja",
     "zh-Hans": "zh",
+    "zh-Hant": "zh-hant",
+    ko: "ko",
+    it: "it",
+    nl: "nl",
+    pl: "pl",
+    ru: "ru",
+    uk: "uk",
+    id: "id",
+    vi: "vi",
   };
   const prefix = prefixes[language];
   return prefix ? `https://getaktar.com/${prefix}/` : "https://getaktar.com/";

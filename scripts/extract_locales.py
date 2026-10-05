@@ -23,7 +23,10 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CATALOG = ROOT.parent / "mac" / "Sources" / "Aktar" / "Localizable.xcstrings"
 EXTRAS = ROOT / "scripts" / "windows_strings.json"
 OUT = ROOT / "src" / "locales"
-LANGUAGES = ["en", "tr", "de", "fr", "es", "pt-BR", "ja", "zh-Hans"]
+LANGUAGES = [
+    "en", "tr", "de", "fr", "es", "pt-BR", "ja", "zh-Hans",
+    "zh-Hant", "ko", "it", "nl", "pl", "ru", "uk", "id", "vi",
+]
 
 SPECIFIER = re.compile(r"%(?:(\d+)\$)?(?:@|lld|ld|d)")
 

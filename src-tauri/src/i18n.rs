@@ -17,6 +17,15 @@ pub const SUPPORTED: &[(&str, &str)] = &[
     ("pt-BR", "Português (Brasil)"),
     ("ja", "日本語"),
     ("zh-Hans", "简体中文"),
+    ("zh-Hant", "繁體中文"),
+    ("ko", "한국어"),
+    ("it", "Italiano"),
+    ("nl", "Nederlands"),
+    ("pl", "Polski"),
+    ("ru", "Русский"),
+    ("uk", "Українська"),
+    ("id", "Bahasa Indonesia"),
+    ("vi", "Tiếng Việt"),
 ];
 
 type Table = HashMap<String, String>;
@@ -24,7 +33,7 @@ type Table = HashMap<String, String>;
 fn tables() -> &'static HashMap<&'static str, Table> {
     static TABLES: OnceLock<HashMap<&'static str, Table>> = OnceLock::new();
     TABLES.get_or_init(|| {
-        let sources: [(&str, &str); 8] = [
+        let sources: [(&str, &str); 17] = [
             ("en", include_str!("../../src/locales/en.json")),
             ("tr", include_str!("../../src/locales/tr.json")),
             ("de", include_str!("../../src/locales/de.json")),
@@ -33,6 +42,15 @@ fn tables() -> &'static HashMap<&'static str, Table> {
             ("pt-BR", include_str!("../../src/locales/pt-BR.json")),
             ("ja", include_str!("../../src/locales/ja.json")),
             ("zh-Hans", include_str!("../../src/locales/zh-Hans.json")),
+            ("zh-Hant", include_str!("../../src/locales/zh-Hant.json")),
+            ("ko", include_str!("../../src/locales/ko.json")),
+            ("it", include_str!("../../src/locales/it.json")),
+            ("nl", include_str!("../../src/locales/nl.json")),
+            ("pl", include_str!("../../src/locales/pl.json")),
+            ("ru", include_str!("../../src/locales/ru.json")),
+            ("uk", include_str!("../../src/locales/uk.json")),
+            ("id", include_str!("../../src/locales/id.json")),
+            ("vi", include_str!("../../src/locales/vi.json")),
         ];
         sources
             .into_iter()
@@ -86,7 +104,21 @@ fn match_locale(locale: &str) -> Option<&'static str> {
         "es" => Some("es"),
         "pt" => Some("pt-BR"),
         "ja" => Some("ja"),
+        // Traditional script, or a region that uses it, unless Simplified is named.
+        "zh" if !lower.contains("hans")
+            && ["hant", "tw", "hk", "mo"].iter().any(|tag| lower.split('-').any(|part| part == *tag)) =>
+        {
+            Some("zh-Hant")
+        }
         "zh" => Some("zh-Hans"),
+        "ko" => Some("ko"),
+        "it" => Some("it"),
+        "nl" => Some("nl"),
+        "pl" => Some("pl"),
+        "ru" => Some("ru"),
+        "uk" => Some("uk"),
+        "id" | "in" => Some("id"),
+        "vi" => Some("vi"),
         _ => None,
     }
 }
@@ -128,7 +160,11 @@ mod tests {
         assert_eq!(match_locale("pt-PT"), Some("pt-BR"));
         assert_eq!(match_locale("zh-Hans-CN"), Some("zh-Hans"));
         assert_eq!(match_locale("en_GB"), Some("en"));
-        assert_eq!(match_locale("nl-NL"), None);
+        assert_eq!(match_locale("zh-TW"), Some("zh-Hant"));
+        assert_eq!(match_locale("zh-Hant-HK"), Some("zh-Hant"));
+        assert_eq!(match_locale("zh-CN"), Some("zh-Hans"));
+        assert_eq!(match_locale("nl-NL"), Some("nl"));
+        assert_eq!(match_locale("sv-SE"), None);
     }
 
     #[test]

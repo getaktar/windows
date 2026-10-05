@@ -42,7 +42,7 @@ exist on Windows. With the Mac repo checked out next to this one
 pnpm locales
 ```
 
-New Windows-only strings need all eight languages in
+New Windows-only strings need all seventeen languages in
 `scripts/windows_strings.json`; the script refuses to run otherwise.
 
 ## Tests

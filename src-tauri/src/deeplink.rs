@@ -108,7 +108,7 @@ async fn upload_clipboard(core: &SharedCore) {
         return;
     }
     let what = match inputs.as_slice() {
-        [input] if input.temporary => t!("an image from the clipboard"),
+        [input] if input.temporary => t!("an image"),
         [input] => format!("“{}”", input.original_filename),
         _ => t!("{0} files", inputs.len()),
     };

@@ -332,6 +332,7 @@ export function installMockBackend(route: string) {
             languages: [
               ["en", "English"], ["tr", "Türkçe"], ["de", "Deutsch"], ["fr", "Français"],
               ["es", "Español"], ["pt-BR", "Português (Brasil)"], ["ja", "日本語"], ["zh-Hans", "简体中文"],
+              ["zh-Hant", "繁體中文"], ["ko", "한국어"], ["it", "Italiano"], ["nl", "Nederlands"], ["pl", "Polski"], ["ru", "Русский"], ["uk", "Українська"], ["id", "Bahasa Indonesia"], ["vi", "Tiếng Việt"],
             ],
           };
         // A new array, as from Rust, so a change shows up in React state.
