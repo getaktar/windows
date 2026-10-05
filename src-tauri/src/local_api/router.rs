@@ -366,11 +366,11 @@ fn routed(core: &SharedCore, filename: &str) -> Option<DestinationConfig> {
 
 // MARK: - Replacing
 
-/// The request body, staged under a fixed name like an upload's: the
-/// caller's name only becomes the content type.
-async fn staged_body(request: &Request) -> Result<(PathBuf, PathBuf), Response> {
+/// The request body, staged under a fixed name like an upload's, with the
+/// extension of `filename` (see `staged_name`), so it gets a thumbnail.
+async fn staged_body(request: &Request, filename: &str) -> Result<(PathBuf, PathBuf), Response> {
     let directory = std::env::temp_dir().join("AktarLocalAPI").join(format!("upload-{}", crate::util::new_id()));
-    let path = directory.join("upload");
+    let path = directory.join(staged_name(filename));
     let staged = async {
         tokio::fs::create_dir_all(&directory).await?;
         match &request.body_file {
@@ -396,11 +396,11 @@ async fn replace_upload(core: &SharedCore, request: &Request, id: &str) -> Respo
     let Some(record) = core.history.get(id) else {
         return Response::error(404, "No upload with that ID.");
     };
-    let (directory, path) = match staged_body(request).await {
+    let filename = filename_from(request).unwrap_or_else(|| record.local_filename.clone());
+    let (directory, path) = match staged_body(request, &filename).await {
         Ok(staged) => staged,
         Err(response) => return response,
     };
-    let filename = filename_from(request).unwrap_or_else(|| record.local_filename.clone());
     let response = match uploads::replace_upload(core, &record.id, path, Some(filename)) {
         Ok(queued) => wait_for_replace(core, queued).await,
         Err(message) => Response::error(404, message),
@@ -577,11 +577,11 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             if crate::thumbnails::is_thumbnail(&key, &thumbnail_prefixes) {
                 return Response::error(400, "That key is in this bucket's thumbnail folder.");
             }
-            let (directory, path) = match staged_body(request).await {
+            let filename = filename_from(request).unwrap_or_else(|| crate::bucket::split_key(&key).1.to_string());
+            let (directory, path) = match staged_body(request, &filename).await {
                 Ok(staged) => staged,
                 Err(response) => return response,
             };
-            let filename = filename_from(request).unwrap_or_else(|| crate::bucket::split_key(&key).1.to_string());
             let response = match uploads::replace_object(core, destination.clone(), key, path, Some(filename)) {
                 Ok(queued) => wait_for_replace(core, queued).await,
                 Err(message) => Response::error(400, message),
