@@ -181,8 +181,8 @@ mod shell {
             return None;
         }
         // Bitmaps without transparency often leave alpha at 0.
-        let opaque = data.chunks_exact(4).all(|pixel| pixel[3] == 0);
-        for pixel in data.chunks_exact_mut(4) {
+        let opaque = data.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0);
+        for pixel in data.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
             if opaque {
                 pixel[3] = 255;
