@@ -1,6 +1,6 @@
 [package]
 name = "aktar"
-version = "0.5.1"
+version = "0.6.0"
 description = "Upload files to your own S3-compatible storage from the Windows tray"
 authors = ["Mert Topuz"]
 license = "MIT"
