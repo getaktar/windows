@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Videos and audio files play right in a file's details in History and the
   bucket view, streamed from the bucket (private buckets too) without
   downloading them first. Nothing loads until you click Play
+- Local API: `GET /v1/uploads/{id}/thumbnail` and
+  `GET /v1/destinations/{id}/thumbnail?key=` return a file's thumbnail as
+  a PNG (`px` sets its size, `generate=0` only returns one that's at hand),
+  for the Raycast extension's icons and previews
 - Settings > General shows how much space thumbnails take on this PC, with
   Clear to remove them all (they're made again when shown)
 

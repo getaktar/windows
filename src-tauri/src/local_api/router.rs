@@ -10,11 +10,13 @@
 //! POST   /v1/uploads?filename=&destinationId=&prefix=&expires=     (raw file bytes)
 //! POST   /v1/uploads/clipboard?destinationId=&expires=
 //! DELETE /v1/uploads/{id}
+//! GET    /v1/uploads/{id}/thumbnail?px=&generate=             (PNG; 204 when there's none)
 //! GET    /v1/destinations/{id}/objects?prefix=&continuationToken=
 //! DELETE /v1/destinations/{id}/objects?key=
 //! POST   /v1/destinations/{id}/objects/move                {"from", "to"}
 //! POST   /v1/destinations/{id}/folders                     {"prefix", "name"}
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
+//! GET    /v1/destinations/{id}/thumbnail?key=&objectSize=&lastModified=&px=&generate=  (PNG; 204 when there's none)
 //! GET    /v1/watched-folders
 //! POST   /v1/watched-folders/pause                         {"minutes"} (none: until resumed)
 //! POST   /v1/watched-folders/resume
@@ -63,6 +65,7 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
         ("POST", ["uploads"]) => upload_body(core, &request).await,
         ("POST", ["uploads", "clipboard"]) => upload_clipboard(core, &request).await,
         ("DELETE", ["uploads", id]) => delete_upload(core, id).await,
+        ("GET", ["uploads", id, "thumbnail"]) => upload_thumbnail(core, &request, id).await,
         ("GET", ["watched-folders"]) => Response::json(200, watched_dto(core)),
         ("POST", ["watched-folders", "pause"]) => {
             let body: PauseBody = match decode_optional(&request) {
@@ -107,6 +110,48 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
             handle_bucket(core, &request, destination, &rest).await
         }
         _ => Response::error(404, "Not found."),
+    }
+}
+
+// MARK: - Thumbnails
+
+/// The thumbnail of an upload, as the app shows it (made or fetched now if
+/// it has none yet), unless thumbnails are off for its destination.
+async fn upload_thumbnail(core: &SharedCore, request: &Request, id: &str) -> Response {
+    let Some(record) = core.history.get(id) else {
+        return Response::error(404, "No upload with that ID.");
+    };
+    let destination = core.destinations.all().into_iter().find(|destination| destination.id == record.destination_id);
+    if destination.is_some_and(|destination| destination.thumbnail_mode() == crate::thumbnails::ThumbnailMode::Off) {
+        return Response::no_content();
+    }
+    if core.history.thumbnails.path(&record.id).is_none() && generates(request) {
+        crate::thumbnails::remote::for_record(core, &record.id).await;
+    }
+    let data = core.history.thumbnails.path(&record.id).and_then(|path| std::fs::read(path).ok());
+    thumbnail_response(data, request)
+}
+
+/// A thumbnail that doesn't exist yet is made, which can mean downloading
+/// the file (up to 25 MB); `generate=0` only returns one that's at hand, for
+/// asking about many files at once.
+fn generates(request: &Request) -> bool {
+    !matches!(request.query.get("generate").map(String::as_str), Some("0" | "false"))
+}
+
+/// PNG (any image viewer and Raycast can show it), its longest side at
+/// most `px` (default 128, up to 512) pixels; 204 for no thumbnail.
+fn thumbnail_response(data: Option<Vec<u8>>, request: &Request) -> Response {
+    let px = request.query.get("px").and_then(|px| px.parse::<u32>().ok()).unwrap_or(128).clamp(16, 512);
+    let png = data.and_then(|data| {
+        let image = image::load_from_memory(&data).ok()?.thumbnail(px, px);
+        let mut png = Vec::new();
+        image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).ok()?;
+        Some(png)
+    });
+    match png {
+        Some(png) => Response::png(png),
+        None => Response::no_content(),
     }
 }
 
@@ -373,6 +418,29 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
                 }
                 Err(error) => Response::error(502, error.to_string()),
             }
+        }
+        ("GET", ["thumbnail"]) => {
+            let Some(key) = request.query.get("key").filter(|key| !key.is_empty()) else {
+                return Response::error(400, "The key query parameter is required.");
+            };
+            if destination.thumbnail_mode() == crate::thumbnails::ThumbnailMode::Off {
+                return Response::no_content();
+            }
+            // The listing gives both; without them the bucket is asked.
+            let object = match request.query.get("objectSize").and_then(|size| size.parse::<i64>().ok()) {
+                Some(size) => BucketObject {
+                    key: key.clone(),
+                    size,
+                    last_modified: request.query.get("lastModified").and_then(|date| crate::util::parse_iso8601(date)),
+                },
+                None => match storage.object_info(key).await {
+                    Ok(Some(object)) => object,
+                    Ok(None) => return Response::error(404, "No object with that key."),
+                    Err(error) => return Response::error(502, error.to_string()),
+                },
+            };
+            let data = crate::thumbnails::remote::for_object(core, &destination, &object, &thumbnail_prefixes, generates(request)).await;
+            thumbnail_response(data, request)
         }
         ("DELETE", ["objects"]) => {
             let Some(key) = request.query.get("key").filter(|key| !key.is_empty()) else {
@@ -708,6 +776,21 @@ mod tests {
             body: Vec::new(),
             body_file: None,
         }
+    }
+
+    #[test]
+    fn thumbnails_are_sent_as_small_pngs() {
+        let mut webp = Vec::new();
+        let picture = image::DynamicImage::new_rgba8(512, 256);
+        image::codecs::webp::WebPEncoder::new_lossless(&mut webp).encode(picture.as_bytes(), 512, 256, image::ExtendedColorType::Rgba8).unwrap();
+        let mut request = request(None);
+        request.query.insert("px".into(), "64".into());
+        let response = thumbnail_response(Some(webp), &request);
+        assert_eq!((response.status, response.content_type), (200, "image/png"));
+        let png = image::load_from_memory(&response.body).unwrap();
+        assert_eq!((png.width(), png.height()), (64, 32));
+        assert_eq!(thumbnail_response(None, &request).status, 204);
+        assert_eq!(thumbnail_response(Some(b"not an image".to_vec()), &request).status, 204);
     }
 
     fn error(result: Result<Expiry, Response>) -> (u16, String) {

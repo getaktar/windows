@@ -515,7 +515,7 @@ pub async fn record_temporary_link(core: Core<'_>, id: String, seconds: u64) -> 
 pub async fn bucket_thumbnail(core: Core<'_>, destination_id: String, object: BucketObject) -> Result<Option<String>, ()> {
     let Some(destination) = core.destinations.find(Some(&destination_id)) else { return Ok(None) };
     let prefixes = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
-    let data = thumbnails::remote::for_object(&core, &destination, &object, &prefixes).await;
+    let data = thumbnails::remote::for_object(&core, &destination, &object, &prefixes, true).await;
     Ok(data.map(|data| {
         use base64::Engine as _;
         let mime = if thumbnails::is_webp(&data) { "image/webp" } else { "image/png" };

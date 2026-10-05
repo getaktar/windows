@@ -72,6 +72,11 @@ pub fn now_millis() -> i64 {
 
 /// ISO 8601 in UTC with whole seconds, the format the Mac app's local API
 /// uses (`JSONEncoder.DateEncodingStrategy.iso8601`).
+/// Unix milliseconds from an ISO 8601 date, as `iso8601` writes them.
+pub fn parse_iso8601(date: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(date).ok().map(|date| date.timestamp_millis())
+}
+
 pub fn iso8601(millis: i64) -> String {
     chrono::DateTime::from_timestamp_millis(millis)
         .unwrap_or_default()

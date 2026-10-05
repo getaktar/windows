@@ -36,11 +36,20 @@ pub struct Request {
 pub struct Response {
     pub status: u16,
     pub body: Vec<u8>,
+    pub content_type: &'static str,
 }
 
 impl Response {
     pub fn json(status: u16, value: impl Serialize) -> Self {
-        Self { status, body: serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()) }
+        Self { status, body: serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()), content_type: "application/json; charset=utf-8" }
+    }
+
+    pub fn png(body: Vec<u8>) -> Self {
+        Self { status: 200, body, content_type: "image/png" }
+    }
+
+    pub fn no_content() -> Self {
+        Self { status: 204, body: Vec::new(), content_type: "application/json; charset=utf-8" }
     }
 
     pub fn error(status: u16, message: impl Into<String>) -> Self {
@@ -245,9 +254,10 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 async fn write_response(stream: &mut TcpStream, response: &Response) -> std::io::Result<()> {
     let header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         response.status,
         reason(response.status),
+        response.content_type,
         response.body.len()
     );
     stream.write_all(header.as_bytes()).await?;

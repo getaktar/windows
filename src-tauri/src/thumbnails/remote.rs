@@ -62,7 +62,10 @@ enum Outcome {
 // MARK: - Bucket view
 
 /// The thumbnail of a file in the bucket view, or None (a file icon).
-pub async fn for_object(core: &SharedCore, destination: &DestinationConfig, object: &BucketObject, prefixes: &[String]) -> Option<Vec<u8>> {
+/// `allow_download` false: only what's at hand (this PC's, the cache, the
+/// bucket's own thumbnail), never the file itself, for callers that ask
+/// for many at once (the local API's list icons).
+pub async fn for_object(core: &SharedCore, destination: &DestinationConfig, object: &BucketObject, prefixes: &[String], allow_download: bool) -> Option<Vec<u8>> {
     if destination.thumbnail_mode() == ThumbnailMode::Off || object.key.ends_with('/') || super::is_thumbnail(&object.key, prefixes) {
         return None;
     }
@@ -81,7 +84,7 @@ pub async fn for_object(core: &SharedCore, destination: &DestinationConfig, obje
     let storage = provider(destination)?;
     let outcome = {
         let _permit = limit().acquire().await.ok()?;
-        make(&storage, destination, &object.key, object.size.max(0) as u64, object.last_modified, None).await
+        make(&storage, destination, &object.key, object.size.max(0) as u64, object.last_modified, None, allow_download).await
     };
     match outcome {
         Outcome::Made(data) => {
@@ -138,7 +141,7 @@ pub async fn for_record(core: &SharedCore, record_id: &str) -> bool {
         let _permit = limit().acquire().await;
         // The bucket's own thumbnail is written just after the file.
         let written_after = record.created_at - 120_000;
-        make(&storage, &destination, &record.object_key, record.byte_size.max(0) as u64, Some(written_after), Some(record.created_at)).await
+        make(&storage, &destination, &record.object_key, record.byte_size.max(0) as u64, Some(written_after), Some(record.created_at), true).await
     } else {
         Outcome::Failed
     };
@@ -167,6 +170,7 @@ async fn make(
     size: u64,
     written_after: Option<i64>,
     uploaded_at: Option<i64>,
+    allow_download: bool,
 ) -> Outcome {
     let prefix = destination.bucket_thumbnail_prefix();
     if let Some(prefix) = &prefix {
@@ -175,6 +179,10 @@ async fn make(
         }
     }
 
+    // Not known to be unavailable: left for a caller that may download.
+    if !allow_download {
+        return Outcome::Failed;
+    }
     let name = crate::bucket::split_key(object_key).1.to_string();
     if size > MAX_SOURCE_BYTES || !super::can_have_thumbnail(&name) {
         return Outcome::Unavailable;
