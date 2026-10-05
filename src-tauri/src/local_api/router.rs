@@ -359,12 +359,18 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
         Err(error) => return credential_failure(error),
     };
 
+    // Aktar's own thumbnail folders, hidden and kept in step with their files.
+    let thumbnail_prefixes = crate::thumbnails::bucket_prefixes(&destination, &core.destinations.all());
     match (request.method.as_str(), route) {
         ("GET", ["objects"]) => {
             let prefix = bucket::normalized_folder(request.query.get("prefix").map(String::as_str).unwrap_or_default());
             let token = request.query.get("continuationToken").filter(|token| !token.is_empty()).cloned();
             match storage.list(&prefix, token).await {
-                Ok(listing) => Response::json(200, listing_dto(&listing, &destination)),
+                Ok(mut listing) => {
+                    listing.folders.retain(|folder| !crate::thumbnails::is_hidden_folder(folder, &thumbnail_prefixes));
+                    listing.objects.retain(|object| !crate::thumbnails::is_thumbnail(&object.key, &thumbnail_prefixes));
+                    Response::json(200, listing_dto(&listing, &destination))
+                }
                 Err(error) => Response::error(502, error.to_string()),
             }
         }
@@ -372,8 +378,9 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             let Some(key) = request.query.get("key").filter(|key| !key.is_empty()) else {
                 return Response::error(400, "The key query parameter is required.");
             };
-            match storage.delete(key).await {
+            match bucket::delete_object(&storage, key, &thumbnail_prefixes).await {
                 Ok(()) => {
+                    crate::thumbnails::remote::forget(core, &destination.id, key);
                     core.history.object_deleted(key, &destination.id);
                     core.notify(events::HISTORY_CHANGED);
                     Response::json(200, serde_json::json!({ "deleted": key }))
@@ -393,8 +400,9 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             if let Err(message) = bucket::check_key(&new_key) {
                 return Response::error(400, message);
             }
-            match bucket::move_object(&storage, &body.from, &new_key).await {
+            match bucket::move_object(&storage, &body.from, &new_key, &thumbnail_prefixes).await {
                 Ok(()) => {
+                    crate::thumbnails::remote::forget(core, &destination.id, &body.from);
                     core.history.object_moved(&body.from, &new_key, &destination, crate::expiry::is_active(core, &destination.id));
                     core.notify(events::HISTORY_CHANGED);
                     let object = BucketObject { key: new_key, size: 0, last_modified: Some(crate::util::now_millis()) };

@@ -1,5 +1,5 @@
 import { Button, Spinner, Text } from "@fluentui/react-components";
-import { ImageOffRegular, OpenRegular } from "@fluentui/react-icons";
+import { ImageOffRegular, OpenRegular, PlayCircleFilled } from "@fluentui/react-icons";
 import { useEffect, useState } from "react";
 
 import { api } from "../lib/api";
@@ -15,8 +15,14 @@ interface PreviewProps {
   mimeType?: string;
   /** Opened by "Open in Browser" (the public link, even when `url` is presigned). */
   browserURL: string;
-  /** A local thumbnail to show, dimmed, while the full image loads. */
+  /** A local thumbnail to show, dimmed, while the full image loads, and in
+   * place of a preview for other files (a video's frame, a document's
+   * first page). */
   placeholder?: string | null;
+  /** The link a video or audio file plays from, asked for on Play: a
+   * presigned one where possible, so private buckets work too. Without it,
+   * `url`. */
+  mediaURL?: () => Promise<string | null>;
   /** The file's size in bytes, when known: past 25 MB, nothing is downloaded. */
   size?: number;
   onZoom?: () => void;
@@ -60,6 +66,41 @@ function Unavailable({ browserURL }: { browserURL: string }) {
   );
 }
 
+/** A video or audio file, played from its link without being downloaded
+ * first. Nothing loads until Play is clicked; until then its thumbnail
+ * stands in. */
+function MediaPlayer(props: { video: boolean; filename: string; poster?: string | null; load: () => Promise<string | null>; browserURL: string }) {
+  const { t } = useI18n();
+  const [src, setSrc] = useState<string | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "failed">("idle");
+  const play = async () => {
+    setState("loading");
+    const url = await props.load().catch(() => null);
+    if (url) setSrc(url);
+    else setState("failed");
+  };
+  if (state === "failed") return <Unavailable browserURL={props.browserURL} />;
+  if (src) {
+    return props.video ? (
+      <video className="preview-media" src={src} controls autoPlay onError={() => setState("failed")} />
+    ) : (
+      <audio className="preview-audio" src={src} controls autoPlay onError={() => setState("failed")} />
+    );
+  }
+  return (
+    <>
+      {props.poster ? <img className="preview-poster" src={props.poster} alt="" draggable={false} /> : <FileIcon filename={props.filename} size={44} />}
+      {state === "loading" ? (
+        <Spinner className="preview-play" size="medium" />
+      ) : (
+        <button type="button" className="preview-play" aria-label={t("Play")} title={t("Play")} onClick={play}>
+          <PlayCircleFilled fontSize={56} />
+        </button>
+      )}
+    </>
+  );
+}
+
 function PdfFrame({ data }: { data: ArrayBuffer }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
@@ -70,7 +111,7 @@ function PdfFrame({ data }: { data: ArrayBuffer }) {
   return src ? <iframe className="preview-pdf" src={src} title="PDF" /> : null;
 }
 
-export function Preview({ url, filename, mimeType, browserURL, placeholder, size, onZoom }: PreviewProps) {
+export function Preview({ url, filename, mimeType, browserURL, placeholder, mediaURL, size, onZoom }: PreviewProps) {
   const { t } = useI18n();
   const kind = previewKind(filename, mimeType);
   const tooBig = size !== undefined && size > MAX_PREVIEW_BYTES;
@@ -147,10 +188,27 @@ export function Preview({ url, filename, mimeType, browserURL, placeholder, size
         </div>
       );
     }
+    case "media":
+      return (
+        <div className="preview preview-player">
+          <MediaPlayer
+            key={url ?? filename}
+            video={kind.video}
+            filename={filename}
+            poster={placeholder}
+            load={mediaURL ?? (() => Promise.resolve(url))}
+            browserURL={browserURL}
+          />
+        </div>
+      );
     default:
       return (
         <button type="button" className="preview preview-file" onClick={() => api.openUrl(browserURL)}>
-          <FileIcon filename={filename} size={44} />
+          {placeholder ? (
+            <img className="preview-thumbnail" src={placeholder} alt="" draggable={false} />
+          ) : (
+            <FileIcon filename={filename} size={44} />
+          )}
           <Text size={200} className="link-text">
             {t("Open in Browser")}
           </Text>

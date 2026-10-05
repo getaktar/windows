@@ -119,14 +119,28 @@ impl From<StorageError> for MoveError {
 }
 
 /// Renames or moves an object. S3 does this as a copy followed by a delete,
-/// and refuses to overwrite something already at `new_key`.
-pub async fn move_object(storage: &S3Provider, from: &str, new_key: &str) -> Result<(), MoveError> {
+/// and refuses to overwrite something already at `new_key`. Its thumbnails
+/// in the bucket's thumbnail folders (`prefixes`) go along, and a file
+/// can't be put inside one of those folders.
+pub async fn move_object(storage: &S3Provider, from: &str, new_key: &str, prefixes: &[String]) -> Result<(), MoveError> {
+    if crate::thumbnails::is_thumbnail(new_key, prefixes) {
+        return Err(MoveError::Storage(StorageError::Unknown(t!("That folder holds this bucket’s thumbnails. Pick another one."))));
+    }
     if storage.object_exists(new_key).await? {
         return Err(MoveError::Exists);
     }
     storage.copy(from, new_key).await?;
+    crate::thumbnails::bucket::copy(storage, from, new_key, prefixes).await;
+    crate::thumbnails::bucket::delete(storage, from, prefixes).await?;
     storage.delete(from).await?;
     Ok(())
+}
+
+/// Deletes an object, its thumbnails first (see `thumbnails::bucket`), so
+/// a thumbnail never outlives its file.
+pub async fn delete_object(storage: &S3Provider, key: &str, prefixes: &[String]) -> Result<(), StorageError> {
+    crate::thumbnails::bucket::delete(storage, key, prefixes).await?;
+    storage.delete(key).await
 }
 
 #[cfg(test)]

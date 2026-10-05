@@ -264,6 +264,9 @@ fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferErro
         image_metadata: known(object.get("imageMetadata")),
         folder_upload: known(object.get("folderUpload")),
         image_processing: image_processing(object.get("imageProcessing")),
+        thumbnails: known(object.get("thumbnails")),
+        // Normalized, and dropped when it can't be a folder, by `sanitize`.
+        thumbnail_prefix: string(object.get("thumbnailPrefix")),
     };
     // Values this app doesn't offer (a "Delete after" or link duration)
     // are dropped, the same as in destinations.json.
@@ -462,11 +465,38 @@ mod tests {
     }
 
     #[test]
+    fn reads_thumbnail_settings_leniently() {
+        let decoded = |thumbnails: Value, prefix: Value| {
+            let data = serde_json::to_vec(&json!({
+                "v": 1,
+                "destination": {
+                    "id": "0F0E8A57-4D8C-4C61-9B26-7C3F7E0E9A11", "name": "A", "preset": "customS3",
+                    "endpoint": "https://s3.example.com", "bucket": "b", "publicBaseURL": "https://files.example.com",
+                    "thumbnails": thumbnails, "thumbnailPrefix": prefix,
+                },
+                "credentials": { "accessKeyId": "id", "secretAccessKey": "secret" },
+            }))
+            .unwrap();
+            decode_payload(&data, 0).unwrap().destination
+        };
+        let valid = decoded(json!("bucket"), json!("/thumbs"));
+        assert_eq!(valid.thumbnails, Some(crate::thumbnails::ThumbnailMode::Bucket));
+        assert_eq!(valid.thumbnail_prefix.as_deref(), Some("thumbs/"));
+        // Unknown values are left unset, never fail the import.
+        let unknown = decoded(json!("cloud"), json!("tmp/7d/thumbs/"));
+        assert_eq!(unknown.thumbnails, None);
+        assert_eq!(unknown.thumbnail_prefix, None);
+        assert_eq!(decoded(json!(3), json!("a/../b")).thumbnail_prefix, None);
+    }
+
+    #[test]
     fn round_trips() {
         let mut destination = open(FULL, CODE).unwrap().destination;
         destination.output_mode = Some(OutputMode::Custom);
         destination.is_default = true;
         destination.image_processing = Some(ImageProcessing { format: ImageFormat::Avif, quality: None, max_long_edge: Some(1920) });
+        destination.thumbnails = Some(crate::thumbnails::ThumbnailMode::Bucket);
+        destination.thumbnail_prefix = Some("previews/".into());
         let payload = TransferPayload {
             destination: destination.clone(),
             credentials: StorageCredentials {
@@ -481,6 +511,8 @@ mod tests {
         assert_eq!(json["expiresAt"], 4_600);
         assert!(json["destination"].get("isDefault").is_none());
         assert!(json["destination"]["imageProcessing"].get("quality").is_none());
+        assert_eq!(json["destination"]["thumbnails"], "bucket");
+        assert_eq!(json["destination"]["thumbnailPrefix"], "previews/");
 
         let code = generate_code();
         let link = seal(&payload, &code).unwrap();

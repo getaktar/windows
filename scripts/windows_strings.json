@@ -1,5 +1,7 @@
 {
   "// About this file": "Strings that only exist in the Windows app, with their translations. scripts/extract_locales.py merges them into src/locales on top of the Mac app's String Catalog. Keep the tone of the catalog: 'sen' in Turkish, 'du' in German, 'vous' in French, 'tú' in Spanish, 'você' in Portuguese.",
+  "// Watched folders": "Settings > Watched Folders, the panel's watching row, the tray's Pause Watching, and their notifications. English keys match the shared Mac/Windows spec, so the Mac catalog's translations can replace these once it has them.",
+  "// Security fixes": "Strings from the security fixes of October 2026 (link confirmations, key checks, webhooks, transfer link expiry).",
   "1 day": {
     "tr": "1 gün",
     "de": "1 Tag",
@@ -8,6 +10,33 @@
     "pt-BR": "1 dia",
     "ja": "1日",
     "zh-Hans": "1 天"
+  },
+  "A link asked Aktar to pause watched folders for {0} minutes.": {
+    "tr": "Bir bağlantı, Aktar'dan izlenen klasörleri {0} dakika duraklatmasını istedi.",
+    "de": "Ein Link möchte, dass Aktar überwachte Ordner für {0} Minuten pausiert.",
+    "fr": "Un lien demande à Aktar de mettre en pause les dossiers surveillés pendant {0} minutes.",
+    "es": "Un enlace ha pedido a Aktar que pause las carpetas vigiladas durante {0} minutos.",
+    "pt-BR": "Um link pediu ao Aktar para pausar as pastas monitoradas por {0} minutos.",
+    "ja": "リンクがAktarに監視フォルダを{0}分間一時停止するよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 将监视文件夹暂停 {0} 分钟。"
+  },
+  "A link asked Aktar to pause watched folders until you resume them.": {
+    "tr": "Bir bağlantı, Aktar'dan izlenen klasörleri sen devam ettirene kadar duraklatmasını istedi.",
+    "de": "Ein Link möchte, dass Aktar überwachte Ordner pausiert, bis du sie fortsetzt.",
+    "fr": "Un lien demande à Aktar de mettre en pause les dossiers surveillés jusqu’à ce que vous les repreniez.",
+    "es": "Un enlace ha pedido a Aktar que pause las carpetas vigiladas hasta que las reanudes.",
+    "pt-BR": "Um link pediu ao Aktar para pausar as pastas monitoradas até você retomá-las.",
+    "ja": "リンクがAktarに、再開するまで監視フォルダを一時停止するよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 暂停监视文件夹，直到你恢复。"
+  },
+  "A link asked Aktar to upload {0} from the clipboard to “{1}”.": {
+    "tr": "Bir bağlantı, Aktar'dan panodaki {0} öğesini “{1}” hedefine yüklemesini istedi.",
+    "de": "Ein Link möchte, dass Aktar {0} aus der Zwischenablage nach „{1}“ hochlädt.",
+    "fr": "Un lien demande à Aktar d’envoyer {0} depuis le presse-papiers vers « {1} ».",
+    "es": "Un enlace ha pedido a Aktar que suba {0} del portapapeles a «{1}».",
+    "pt-BR": "Um link pediu ao Aktar para enviar {0} da área de transferência para “{1}”.",
+    "ja": "リンクがAktarに、クリップボードの{0}を「{1}」にアップロードするよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 将剪贴板中的{0}上传到“{1}”。"
   },
   "A new version of Aktar is available!": {
     "tr": "Aktar'ın yeni bir sürümü var!",
@@ -18,907 +47,6 @@
     "ja": "Aktarの新しいバージョンがあります！",
     "zh-Hans": "Aktar 有新版本可用！"
   },
-  "Aktar couldn’t start. {0}": {
-    "tr": "Aktar başlatılamadı. {0}",
-    "de": "Aktar konnte nicht starten. {0}",
-    "fr": "Impossible de démarrer Aktar. {0}",
-    "es": "Aktar no pudo iniciarse. {0}",
-    "pt-BR": "Não foi possível iniciar o Aktar. {0}",
-    "ja": "Aktarを起動できませんでした。{0}",
-    "zh-Hans": "Aktar 无法启动。{0}"
-  },
-  "Aktar forgets this destination and its keys. Files already in the bucket aren’t touched.": {
-    "tr": "Aktar bu hedefi ve anahtarlarını unutur. Bucket'taki dosyalara dokunulmaz.",
-    "de": "Aktar vergisst dieses Ziel und seine Schlüssel. Dateien im Bucket bleiben unverändert.",
-    "fr": "Aktar oublie cette destination et ses clés. Les fichiers déjà dans le bucket ne sont pas modifiés.",
-    "es": "Aktar olvida este destino y sus claves. Los archivos que ya están en el bucket no se tocan.",
-    "pt-BR": "O Aktar esquece este destino e suas chaves. Os arquivos que já estão no bucket não são alterados.",
-    "ja": "Aktarはこのアップロード先とそのキーを削除します。バケット内のファイルはそのまま残ります。",
-    "zh-Hans": "Aktar 将忘记此上传目标及其密钥。存储桶中已有的文件不受影响。"
-  },
-  "Aktar lives in the notification area, next to the clock. If you don’t see its icon, click the arrow there and drag Aktar onto the taskbar.": {
-    "tr": "Aktar, görev çubuğunda saatin yanındaki bildirim alanında yaşar. Simgesini göremiyorsan oradaki oka tıkla ve Aktar'ı görev çubuğuna sürükle.",
-    "de": "Aktar wohnt im Infobereich neben der Uhr. Wenn du das Symbol nicht siehst, klicke dort auf den Pfeil und zieh Aktar auf die Taskleiste.",
-    "fr": "Aktar se trouve dans la zone de notification, à côté de l’horloge. Si vous ne voyez pas son icône, cliquez sur la flèche à cet endroit et faites glisser Aktar dans la barre des tâches.",
-    "es": "Aktar vive en el área de notificación, junto al reloj. Si no ves su icono, haz clic en la flecha que hay allí y arrastra Aktar a la barra de tareas.",
-    "pt-BR": "O Aktar fica na área de notificação, ao lado do relógio. Se não encontrar o ícone, clique na seta ali e arraste o Aktar para a barra de tarefas.",
-    "ja": "Aktarはタスクバーの時計の横にある通知領域に常駐します。アイコンが見つからない場合は、そこにある矢印をクリックして、Aktarをタスクバーにドラッグしてください。",
-    "zh-Hans": "Aktar 位于任务栏时钟旁的通知区域。如果看不到它的图标，请点击那里的箭头，然后将 Aktar 拖到任务栏上。"
-  },
-  "Aktar {0} is available. You have {1}. Would you like to install it now?": {
-    "tr": "Aktar {0} çıktı. Sende {1} var. Şimdi yüklemek ister misin?",
-    "de": "Aktar {0} ist verfügbar. Du hast {1}. Möchtest du es jetzt installieren?",
-    "fr": "Aktar {0} est disponible. Vous avez la version {1}. Voulez-vous l’installer maintenant ?",
-    "es": "Aktar {0} está disponible. Tienes la {1}. ¿Quieres instalarla ahora?",
-    "pt-BR": "O Aktar {0} está disponível. Você tem a versão {1}. Deseja instalar agora?",
-    "ja": "Aktar {0}が利用可能です。現在のバージョンは{1}です。今すぐインストールしますか？",
-    "zh-Hans": "Aktar {0} 已推出，你当前的版本是 {1}。要现在安装吗？"
-  },
-  "Aktar {0} is currently the newest version available.": {
-    "tr": "Aktar {0} şu anki en yeni sürüm.",
-    "de": "Aktar {0} ist die neueste verfügbare Version.",
-    "fr": "Aktar {0} est actuellement la version la plus récente.",
-    "es": "Aktar {0} es la versión más reciente disponible.",
-    "pt-BR": "O Aktar {0} é a versão mais recente disponível.",
-    "ja": "Aktar {0}は現在入手できる最新バージョンです。",
-    "zh-Hans": "Aktar {0} 已是当前可用的最新版本。"
-  },
-  "Aktar {0} is ready to install": {
-    "tr": "Aktar {0} yüklenmeye hazır",
-    "de": "Aktar {0} kann installiert werden",
-    "fr": "Aktar {0} est prêt à être installé",
-    "es": "Aktar {0} está listo para instalarse",
-    "pt-BR": "O Aktar {0} está pronto para ser instalado",
-    "ja": "Aktar {0}をインストールする準備ができました",
-    "zh-Hans": "Aktar {0} 已可安装"
-  },
-  "Another app is already using this port. Pick a different port.": {
-    "tr": "Bu port zaten başka bir uygulama tarafından kullanılıyor. Farklı bir port seç.",
-    "de": "Eine andere App verwendet diesen Port bereits. Wähle einen anderen Port.",
-    "fr": "Une autre app utilise déjà ce port. Choisissez un autre port.",
-    "es": "Otra app ya está usando este puerto. Elige otro puerto.",
-    "pt-BR": "Outro app já está usando esta porta. Escolha uma porta diferente.",
-    "ja": "このポートは別のアプリがすでに使用しています。別のポートを選んでください。",
-    "zh-Hans": "另一个应用已在使用此端口。请选择其他端口。"
-  },
-  "Auto-delete": {
-    "tr": "Otomatik silme",
-    "de": "Automatisch löschen",
-    "fr": "Suppression automatique",
-    "es": "Eliminación automática",
-    "pt-BR": "Exclusão automática",
-    "ja": "自動削除",
-    "zh-Hans": "自动删除"
-  },
-  "Check Again": {
-    "tr": "Tekrar Kontrol Et",
-    "de": "Erneut prüfen",
-    "fr": "Vérifier à nouveau",
-    "es": "Comprobar de nuevo",
-    "pt-BR": "Verificar novamente",
-    "ja": "再確認",
-    "zh-Hans": "重新检查"
-  },
-  "Checking for updates…": {
-    "tr": "Güncellemeler denetleniyor…",
-    "de": "Nach Updates suchen …",
-    "fr": "Recherche de mises à jour…",
-    "es": "Buscando actualizaciones…",
-    "pt-BR": "Verificando atualizações…",
-    "ja": "アップデートを確認中…",
-    "zh-Hans": "正在检查更新…"
-  },
-  "Checking…": {
-    "tr": "Kontrol ediliyor…",
-    "de": "Wird geprüft…",
-    "fr": "Vérification…",
-    "es": "Comprobando…",
-    "pt-BR": "Verificando…",
-    "ja": "確認中…",
-    "zh-Hans": "正在检查…"
-  },
-  "Clear": {
-    "tr": "Temizle",
-    "de": "Löschen",
-    "fr": "Effacer",
-    "es": "Borrar",
-    "pt-BR": "Limpar",
-    "ja": "消去",
-    "zh-Hans": "清除"
-  },
-  "Close": {
-    "tr": "Kapat",
-    "de": "Schließen",
-    "fr": "Fermer",
-    "es": "Cerrar",
-    "pt-BR": "Fechar",
-    "ja": "閉じる",
-    "zh-Hans": "关闭"
-  },
-  "Close panel after upload": {
-    "tr": "Yüklemeden sonra paneli kapat",
-    "de": "Panel nach dem Upload schließen",
-    "fr": "Fermer le panneau après l’envoi",
-    "es": "Cerrar el panel tras la subida",
-    "pt-BR": "Fechar o painel após o envio",
-    "ja": "アップロード後にパネルを閉じる",
-    "zh-Hans": "上传后关闭面板"
-  },
-  "Could not connect. {0}": {
-    "tr": "Bağlanılamadı. {0}",
-    "de": "Verbindung fehlgeschlagen. {0}",
-    "fr": "Connexion impossible. {0}",
-    "es": "No se pudo conectar. {0}",
-    "pt-BR": "Não foi possível conectar. {0}",
-    "ja": "接続できませんでした。{0}",
-    "zh-Hans": "无法连接。{0}"
-  },
-  "Credential Manager error ({0}).": {
-    "tr": "Kimlik Bilgileri Yöneticisi hatası ({0}).",
-    "de": "Fehler der Anmeldeinformationsverwaltung ({0}).",
-    "fr": "Erreur du Gestionnaire d’identification ({0}).",
-    "es": "Error del Administrador de credenciales ({0}).",
-    "pt-BR": "Erro do Gerenciador de Credenciais ({0}).",
-    "ja": "資格情報マネージャーのエラー({0})。",
-    "zh-Hans": "凭据管理器错误（{0}）。"
-  },
-  "Delete after": {
-    "tr": "Silinme süresi",
-    "de": "Löschen nach",
-    "fr": "Supprimer après",
-    "es": "Eliminar tras",
-    "pt-BR": "Excluir após",
-    "ja": "削除まで",
-    "zh-Hans": "删除期限"
-  },
-  "Deletes after 1 day": {
-    "tr": "1 gün sonra silinir",
-    "de": "Wird nach 1 Tag gelöscht",
-    "fr": "Supprimé après 1 jour",
-    "es": "Se elimina tras 1 día",
-    "pt-BR": "Excluído após 1 dia",
-    "ja": "1日後に削除されます",
-    "zh-Hans": "1 天后删除"
-  },
-  "Deletes after {0} days": {
-    "tr": "{0} gün sonra silinir",
-    "de": "Wird nach {0} Tagen gelöscht",
-    "fr": "Supprimé après {0} jours",
-    "es": "Se elimina tras {0} días",
-    "pt-BR": "Excluído após {0} dias",
-    "ja": "{0}日後に削除されます",
-    "zh-Hans": "{0} 天后删除"
-  },
-  "Deletes in 1 day": {
-    "tr": "1 gün içinde silinecek",
-    "de": "Wird in 1 Tag gelöscht",
-    "fr": "Supprimé dans 1 jour",
-    "es": "Se elimina en 1 día",
-    "pt-BR": "Será excluído em 1 dia",
-    "ja": "あと1日で削除",
-    "zh-Hans": "将在 1 天后删除"
-  },
-  "Deletes in {0} days": {
-    "tr": "{0} gün içinde silinecek",
-    "de": "Wird in {0} Tagen gelöscht",
-    "fr": "Supprimé dans {0} jours",
-    "es": "Se elimina en {0} días",
-    "pt-BR": "Será excluído em {0} dias",
-    "ja": "あと{0}日で削除",
-    "zh-Hans": "将在 {0} 天后删除"
-  },
-  "Deletes today": {
-    "tr": "Bugün silinecek",
-    "de": "Wird heute gelöscht",
-    "fr": "Supprimé aujourd’hui",
-    "es": "Se elimina hoy",
-    "pt-BR": "Será excluído hoje",
-    "ja": "今日削除",
-    "zh-Hans": "今天删除"
-  },
-  "Download new versions in the background and install them when you’re not using Aktar": {
-    "tr": "Yeni sürümleri arka planda indir ve Aktar'ı kullanmadığın bir anda yükle",
-    "de": "Neue Versionen im Hintergrund laden und installieren, wenn du Aktar gerade nicht verwendest",
-    "fr": "Télécharger les nouvelles versions en arrière-plan et les installer lorsque vous n’utilisez pas Aktar",
-    "es": "Descargar nuevas versiones en segundo plano e instalarlas cuando no estés usando Aktar",
-    "pt-BR": "Baixar novas versões em segundo plano e instalá-las quando você não estiver usando o Aktar",
-    "ja": "新しいバージョンをバックグラウンドでダウンロードし、Aktarを使っていないときにインストール",
-    "zh-Hans": "在后台下载新版本，并在你未使用 Aktar 时安装"
-  },
-  "Downloading Aktar {0}…": {
-    "tr": "Aktar {0} indiriliyor…",
-    "de": "Aktar {0} wird geladen …",
-    "fr": "Téléchargement d’Aktar {0}…",
-    "es": "Descargando Aktar {0}…",
-    "pt-BR": "Baixando o Aktar {0}…",
-    "ja": "Aktar {0}をダウンロード中…",
-    "zh-Hans": "正在下载 Aktar {0}…"
-  },
-  "Enter an Access Key ID and Secret Access Key.": {
-    "tr": "Bir Access Key ID ve Secret Access Key gir.",
-    "de": "Gib eine Access Key ID und einen Secret Access Key ein.",
-    "fr": "Saisissez un Access Key ID et une Secret Access Key.",
-    "es": "Introduce un Access Key ID y una Secret Access Key.",
-    "pt-BR": "Insira um Access Key ID e uma Secret Access Key.",
-    "ja": "アクセスキーIDとシークレットアクセスキーを入力してください。",
-    "zh-Hans": "请输入 Access Key ID 和 Secret Access Key。"
-  },
-  "Expired": {
-    "tr": "Süresi doldu",
-    "de": "Abgelaufen",
-    "fr": "Expiré",
-    "es": "Caducado",
-    "pt-BR": "Expirado",
-    "ja": "期限切れ",
-    "zh-Hans": "已过期"
-  },
-  "Folders": {
-    "tr": "Klasörler",
-    "de": "Ordner",
-    "fr": "Dossiers",
-    "es": "Carpetas",
-    "pt-BR": "Pastas",
-    "ja": "フォルダ",
-    "zh-Hans": "文件夹"
-  },
-  "Follows your Windows display language unless you pick one here.": {
-    "tr": "Burada bir dil seçmezsen Windows'un görüntüleme dilini kullanır.",
-    "de": "Verwendet die Anzeigesprache von Windows, sofern du hier keine andere wählst.",
-    "fr": "Utilise la langue d’affichage de Windows, sauf si vous en choisissez une ici.",
-    "es": "Usa el idioma de Windows, a menos que elijas otro aquí.",
-    "pt-BR": "Usa o idioma de exibição do Windows, a menos que você escolha outro aqui.",
-    "ja": "ここで選択しない場合は、Windowsの表示言語が使われます。",
-    "zh-Hans": "除非在此处选择，否则将使用 Windows 的显示语言。"
-  },
-  "Include Ctrl, Alt, or the Windows key in the shortcut.": {
-    "tr": "Kısayola Ctrl, Alt veya Windows tuşunu ekle.",
-    "de": "Nimm Strg, Alt oder die Windows-Taste in das Tastenkürzel auf.",
-    "fr": "Incluez Ctrl, Alt ou la touche Windows dans le raccourci.",
-    "es": "Incluye Ctrl, Alt o la tecla Windows en el atajo.",
-    "pt-BR": "Inclua Ctrl, Alt ou a tecla Windows no atalho.",
-    "ja": "ショートカットにはCtrl、Alt、またはWindowsキーを含めてください。",
-    "zh-Hans": "快捷键需要包含 Ctrl、Alt 或 Windows 键。"
-  },
-  "Install and Relaunch": {
-    "tr": "Yükle ve Yeniden Başlat",
-    "de": "Installieren und neu starten",
-    "fr": "Installer et relancer",
-    "es": "Instalar y reiniciar",
-    "pt-BR": "Instalar e reabrir",
-    "ja": "インストールして再起動",
-    "zh-Hans": "安装并重新启动"
-  },
-  "It will be installed the next time you quit Aktar.": {
-    "tr": "Aktar'dan bir sonraki çıkışında yüklenecek.",
-    "de": "Es wird installiert, wenn du Aktar das nächste Mal beendest.",
-    "fr": "Elle sera installée la prochaine fois que vous quitterez Aktar.",
-    "es": "Se instalará la próxima vez que cierres Aktar.",
-    "pt-BR": "Ela será instalada na próxima vez que você fechar o Aktar.",
-    "ja": "次にAktarを終了したときにインストールされます。",
-    "zh-Hans": "将在你下次退出 Aktar 时安装。"
-  },
-  "It will be installed when you’re not using Aktar, or the next time you quit it.": {
-    "tr": "Aktar'ı kullanmadığın bir anda ya da ondan bir sonraki çıkışında yüklenecek.",
-    "de": "Es wird installiert, wenn du Aktar gerade nicht verwendest, oder wenn du Aktar das nächste Mal beendest.",
-    "fr": "Elle sera installée lorsque vous n’utilisez pas Aktar, ou la prochaine fois que vous le quitterez.",
-    "es": "Se instalará cuando no estés usando Aktar o la próxima vez que lo cierres.",
-    "pt-BR": "Ela será instalada quando você não estiver usando o Aktar ou na próxima vez que você o encerrar.",
-    "ja": "Aktarを使っていないとき、または次にAktarを終了したときにインストールされます。",
-    "zh-Hans": "将在你未使用 Aktar 时或下次退出 Aktar 时安装。"
-  },
-  "Last checked {0}": {
-    "tr": "Son kontrol: {0}",
-    "de": "Zuletzt geprüft: {0}",
-    "fr": "Dernière vérification : {0}",
-    "es": "Última comprobación: {0}",
-    "pt-BR": "Última verificação: {0}",
-    "ja": "最終確認：{0}",
-    "zh-Hans": "上次检查：{0}"
-  },
-  "Later": {
-    "tr": "Sonra",
-    "de": "Später",
-    "fr": "Plus tard",
-    "es": "Más tarde",
-    "pt-BR": "Mais tarde",
-    "ja": "あとで",
-    "zh-Hans": "稍后"
-  },
-  "Lifecycle rules are set up.": {
-    "tr": "Yaşam döngüsü kuralları kurulu.",
-    "de": "Lebenszyklusregeln sind eingerichtet.",
-    "fr": "Les règles de cycle de vie sont configurées.",
-    "es": "Las reglas de ciclo de vida están configuradas.",
-    "pt-BR": "As regras de ciclo de vida estão configuradas.",
-    "ja": "ライフサイクルルールは設定済みです。",
-    "zh-Hans": "生命周期规则已设置。"
-  },
-  "More": {
-    "tr": "Daha Fazla",
-    "de": "Mehr",
-    "fr": "Plus",
-    "es": "Más",
-    "pt-BR": "Mais",
-    "ja": "その他",
-    "zh-Hans": "更多"
-  },
-  "No credentials found in Credential Manager for this destination.": {
-    "tr": "Bu hedef için Kimlik Bilgileri Yöneticisi'nde kimlik bilgisi bulunamadı.",
-    "de": "Für dieses Ziel wurden keine Zugangsdaten in der Anmeldeinformationsverwaltung gefunden.",
-    "fr": "Aucun identifiant trouvé dans le Gestionnaire d’identification pour cette destination.",
-    "es": "No se han encontrado credenciales en el Administrador de credenciales para este destino.",
-    "pt-BR": "Nenhuma credencial encontrada no Gerenciador de Credenciais para este destino.",
-    "ja": "このアップロード先の認証情報が資格情報マネージャーに見つかりません。",
-    "zh-Hans": "凭据管理器中找不到此上传目标的凭证。"
-  },
-  "No destination to upload to. Add one in Settings.": {
-    "tr": "Yüklenecek bir hedef yok. Ayarlar'dan bir tane ekle.",
-    "de": "Kein Ziel zum Hochladen. Füge in den Einstellungen eines hinzu.",
-    "fr": "Aucune destination d’envoi. Ajoutez-en une dans les Réglages.",
-    "es": "No hay ningún destino al que subir. Añade uno en Ajustes.",
-    "pt-BR": "Não há destino para enviar. Adicione um em Ajustes.",
-    "ja": "アップロード先がありません。設定で追加してください。",
-    "zh-Hans": "没有可上传的目标。请在设置中添加一个。"
-  },
-  "Not set up yet.": {
-    "tr": "Henüz kurulmadı.",
-    "de": "Noch nicht eingerichtet.",
-    "fr": "Pas encore configuré.",
-    "es": "Aún no está configurado.",
-    "pt-BR": "Ainda não configurado.",
-    "ja": "まだ設定されていません。",
-    "zh-Hans": "尚未设置。"
-  },
-  "On many keyboards Ctrl+Alt types characters like @ or €. Add Shift or the Windows key.": {
-    "tr": "Birçok klavyede Ctrl+Alt, @ ya da € gibi karakterler yazar. Shift ya da Windows tuşunu da ekle.",
-    "de": "Auf vielen Tastaturen tippt Strg+Alt Zeichen wie @ oder €. Nimm Umschalt oder die Windows-Taste dazu.",
-    "fr": "Sur de nombreux claviers, Ctrl+Alt sert à taper des caractères comme @ ou €. Ajoutez Maj ou la touche Windows.",
-    "es": "En muchos teclados, Ctrl+Alt escribe caracteres como @ o €. Añade Mayús o la tecla Windows.",
-    "pt-BR": "Em muitos teclados, Ctrl+Alt digita caracteres como @ ou €. Adicione Shift ou a tecla Windows.",
-    "ja": "多くのキーボードでは、Ctrl+Altで@や€などの文字を入力します。ShiftキーかWindowsキーを追加してください。",
-    "zh-Hans": "在许多键盘上，Ctrl+Alt 用于输入 @ 或 € 等字符。请加上 Shift 或 Windows 键。"
-  },
-  "Only files can be uploaded, not folders.": {
-    "tr": "Yalnızca dosyalar yüklenebilir, klasörler yüklenemez.",
-    "de": "Nur Dateien können hochgeladen werden, keine Ordner.",
-    "fr": "Seuls les fichiers peuvent être téléversés, pas les dossiers.",
-    "es": "Solo se pueden subir archivos, no carpetas.",
-    "pt-BR": "Só é possível enviar arquivos, não pastas.",
-    "ja": "アップロードできるのはファイルのみで、フォルダはアップロードできません。",
-    "zh-Hans": "只能上传文件，不能上传文件夹。"
-  },
-  "Press a shortcut…": {
-    "tr": "Bir kısayola bas…",
-    "de": "Tastenkürzel drücken …",
-    "fr": "Appuyez sur un raccourci…",
-    "es": "Pulsa un atajo…",
-    "pt-BR": "Pressione um atalho…",
-    "ja": "ショートカットを押してください…",
-    "zh-Hans": "请按下快捷键…"
-  },
-  "Quit Aktar": {
-    "tr": "Aktar'dan Çık",
-    "de": "Aktar beenden",
-    "fr": "Quitter Aktar",
-    "es": "Salir de Aktar",
-    "pt-BR": "Sair do Aktar",
-    "ja": "Aktarを終了",
-    "zh-Hans": "退出 Aktar"
-  },
-  "Record Shortcut": {
-    "tr": "Kısayol Kaydet",
-    "de": "Tastenkürzel aufnehmen",
-    "fr": "Enregistrer un raccourci",
-    "es": "Grabar atajo",
-    "pt-BR": "Gravar atalho",
-    "ja": "ショートカットを記録",
-    "zh-Hans": "录制快捷键"
-  },
-  "Remind Me Later": {
-    "tr": "Daha Sonra Hatırlat",
-    "de": "Später erinnern",
-    "fr": "Me le rappeler plus tard",
-    "es": "Recordármelo más tarde",
-    "pt-BR": "Lembrar mais tarde",
-    "ja": "あとで通知",
-    "zh-Hans": "稍后提醒我"
-  },
-  "Remove “{0}”?": {
-    "tr": "“{0}” kaldırılsın mı?",
-    "de": "„{0}“ entfernen?",
-    "fr": "Supprimer « {0} » ?",
-    "es": "¿Quitar “{0}”?",
-    "pt-BR": "Remover “{0}”?",
-    "ja": "“{0}”を削除しますか？",
-    "zh-Hans": "要移除“{0}”吗？"
-  },
-  "Set Up": {
-    "tr": "Kur",
-    "de": "Einrichten",
-    "fr": "Configurer",
-    "es": "Configurar",
-    "pt-BR": "Configurar",
-    "ja": "設定",
-    "zh-Hans": "设置"
-  },
-  "Software Update": {
-    "tr": "Yazılım Güncelleme",
-    "de": "Softwareupdate",
-    "fr": "Mise à jour",
-    "es": "Actualización de software",
-    "pt-BR": "Atualização de Software",
-    "ja": "ソフトウェアアップデート",
-    "zh-Hans": "软件更新"
-  },
-  "That key combination can’t be used as a shortcut.": {
-    "tr": "Bu tuş birleşimi kısayol olarak kullanılamaz.",
-    "de": "Diese Tastenkombination kann nicht als Tastenkürzel verwendet werden.",
-    "fr": "Cette combinaison de touches ne peut pas servir de raccourci.",
-    "es": "Esa combinación de teclas no se puede usar como atajo.",
-    "pt-BR": "Essa combinação de teclas não pode ser usada como atalho.",
-    "ja": "このキーの組み合わせはショートカットに使用できません。",
-    "zh-Hans": "此按键组合不能用作快捷键。"
-  },
-  "The clipboard has no file or image to upload.": {
-    "tr": "Panoda yüklenecek bir dosya ya da görsel yok.",
-    "de": "In der Zwischenablage ist keine Datei und kein Bild zum Hochladen.",
-    "fr": "Le presse-papiers ne contient aucun fichier ni image à envoyer.",
-    "es": "El portapapeles no tiene ningún archivo ni imagen para subir.",
-    "pt-BR": "A área de transferência não tem arquivo nem imagem para enviar.",
-    "ja": "クリップボードにアップロードできるファイルや画像がありません。",
-    "zh-Hans": "剪贴板中没有可上传的文件或图片。"
-  },
-  "The connection stopped responding.": {
-    "tr": "Bağlantı yanıt vermeyi bıraktı.",
-    "de": "Die Verbindung reagiert nicht mehr.",
-    "fr": "La connexion ne répond plus.",
-    "es": "La conexión dejó de responder.",
-    "pt-BR": "A conexão parou de responder.",
-    "ja": "接続が応答しなくなりました。",
-    "zh-Hans": "连接已停止响应。"
-  },
-  "The folder name is required.": {
-    "tr": "Klasör adı gerekli.",
-    "de": "Ein Ordnername ist erforderlich.",
-    "fr": "Le nom du dossier est obligatoire.",
-    "es": "El nombre de la carpeta es obligatorio.",
-    "pt-BR": "O nome da pasta é obrigatório.",
-    "ja": "フォルダ名を入力してください。",
-    "zh-Hans": "需要填写文件夹名称。"
-  },
-  "This item can’t be uploaded. Save it as a file first, then drop the file.": {
-    "tr": "Bu öge yüklenemiyor. Önce bir dosya olarak kaydet, sonra dosyayı bırak.",
-    "de": "Dieses Element kann nicht hochgeladen werden. Speichere es zuerst als Datei und zieh dann die Datei hierher.",
-    "fr": "Cet élément ne peut pas être téléversé. Enregistrez-le d’abord comme fichier, puis déposez le fichier.",
-    "es": "Este elemento no se puede subir. Guárdalo primero como archivo y luego suelta el archivo.",
-    "pt-BR": "Este item não pode ser enviado. Salve-o primeiro como arquivo e depois solte o arquivo.",
-    "ja": "この項目はアップロードできません。まずファイルとして保存してから、そのファイルをドロップしてください。",
-    "zh-Hans": "无法上传此项目。请先将其保存为文件，然后拖放该文件。"
-  },
-  "This shortcut is already used by another app. Try a different one.": {
-    "tr": "Bu kısayolu başka bir uygulama kullanıyor. Farklı bir tane dene.",
-    "de": "Dieses Tastenkürzel wird schon von einer anderen App verwendet. Probier ein anderes.",
-    "fr": "Ce raccourci est déjà utilisé par une autre app. Essayez-en un autre.",
-    "es": "Otra app ya usa este atajo. Prueba con otro.",
-    "pt-BR": "Outro app já usa este atalho. Tente um diferente.",
-    "ja": "このショートカットはほかのアプリで使用されています。別のショートカットを試してください。",
-    "zh-Hans": "此快捷键已被其他应用使用，请换一个。"
-  },
-  "Turn on for servers without a subdomain for each bucket, such as MinIO or a server reached by IP address.": {
-    "tr": "Her bucket için alt alan adı olmayan sunucularda aç; örneğin MinIO ya da IP adresiyle erişilen bir sunucu.",
-    "de": "Für Server ohne eigene Subdomain pro Bucket einschalten, etwa MinIO oder einen Server, der per IP-Adresse erreicht wird.",
-    "fr": "À activer pour les serveurs sans sous-domaine par bucket, comme MinIO ou un serveur joint par son adresse IP.",
-    "es": "Actívalo para servidores sin un subdominio por bucket, como MinIO o un servidor al que se accede por dirección IP.",
-    "pt-BR": "Ative para servidores sem um subdomínio para cada bucket, como o MinIO ou um servidor acessado por endereço IP.",
-    "ja": "MinIOやIPアドレスで接続するサーバーなど、バケットごとのサブドメインがないサーバーではオンにします。",
-    "zh-Hans": "适用于没有为每个存储桶提供子域名的服务器，例如 MinIO 或通过 IP 地址访问的服务器。"
-  },
-  "Update check failed": {
-    "tr": "Güncelleme denetlenemedi",
-    "de": "Suche nach Updates fehlgeschlagen",
-    "fr": "La recherche de mises à jour a échoué",
-    "es": "No se pudieron buscar actualizaciones",
-    "pt-BR": "Não foi possível verificar atualizações",
-    "ja": "アップデートを確認できませんでした",
-    "zh-Hans": "检查更新失败"
-  },
-  "Upload Clipboard": {
-    "tr": "Panoyu Yükle",
-    "de": "Zwischenablage hochladen",
-    "fr": "Envoyer le presse-papiers",
-    "es": "Subir el portapapeles",
-    "pt-BR": "Enviar área de transferência",
-    "ja": "クリップボードをアップロード",
-    "zh-Hans": "上传剪贴板内容"
-  },
-  "Upload with Aktar": {
-    "tr": "Aktar ile Yükle",
-    "de": "Mit Aktar hochladen",
-    "fr": "Envoyer avec Aktar",
-    "es": "Subir con Aktar",
-    "pt-BR": "Enviar com o Aktar",
-    "ja": "Aktarでアップロード",
-    "zh-Hans": "使用 Aktar 上传"
-  },
-  "Uploads with “Delete after” turned on are removed by lifecycle rules in the bucket.": {
-    "tr": "“Silinme süresi” açık olan yüklemeler, bucket'taki yaşam döngüsü kurallarıyla silinir.",
-    "de": "Uploads mit „Löschen nach“ werden durch Lebenszyklusregeln im Bucket entfernt.",
-    "fr": "Les envois avec « Supprimer après » activé sont supprimés par les règles de cycle de vie du bucket.",
-    "es": "Las subidas con “Eliminar tras” activado se eliminan mediante reglas de ciclo de vida del bucket.",
-    "pt-BR": "Os envios com “Excluir após” ativado são removidos por regras de ciclo de vida do bucket.",
-    "ja": "「削除まで」を設定したアップロードは、バケットのライフサイクルルールで削除されます。",
-    "zh-Hans": "开启“删除期限”的上传会由存储桶的生命周期规则删除。"
-  },
-  "Use Aktar from other apps on this PC.": {
-    "tr": "Aktar'ı bu bilgisayardaki diğer uygulamalardan kullan.",
-    "de": "Nutze Aktar aus anderen Apps auf diesem PC.",
-    "fr": "Utilisez Aktar depuis d’autres apps sur ce PC.",
-    "es": "Usa Aktar desde otras apps de este PC.",
-    "pt-BR": "Use o Aktar a partir de outros apps neste PC.",
-    "ja": "このPC上のほかのアプリからAktarを使います。",
-    "zh-Hans": "在这台电脑上通过其他应用使用 Aktar。"
-  },
-  "Use path-style addressing": {
-    "tr": "Yol tarzı adresleme kullan",
-    "de": "Pfadbasierte Adressierung verwenden",
-    "fr": "Utiliser l’adressage par chemin",
-    "es": "Usar direccionamiento por ruta",
-    "pt-BR": "Usar endereçamento por caminho",
-    "ja": "パス形式のアドレス指定を使用",
-    "zh-Hans": "使用路径样式寻址"
-  },
-  "Version {0}": {
-    "tr": "Sürüm {0}",
-    "de": "Version {0}",
-    "fr": "Version {0}",
-    "es": "Versión {0}",
-    "pt-BR": "Versão {0}",
-    "ja": "バージョン {0}",
-    "zh-Hans": "版本 {0}"
-  },
-  "Welcome to Aktar": {
-    "tr": "Aktar'a Hoş Geldin",
-    "de": "Willkommen bei Aktar",
-    "fr": "Bienvenue dans Aktar",
-    "es": "Te damos la bienvenida a Aktar",
-    "pt-BR": "Boas-vindas ao Aktar",
-    "ja": "Aktarへようこそ",
-    "zh-Hans": "欢迎使用 Aktar"
-  },
-  "Windows has reserved this port for another feature. Pick a different port.": {
-    "tr": "Windows bu portu başka bir özellik için ayırmış. Farklı bir port seç.",
-    "de": "Windows hat diesen Port für eine andere Funktion reserviert. Wähle einen anderen Port.",
-    "fr": "Windows a réservé ce port à une autre fonctionnalité. Choisissez un autre port.",
-    "es": "Windows ha reservado este puerto para otra función. Elige otro puerto.",
-    "pt-BR": "O Windows reservou esta porta para outro recurso. Escolha uma porta diferente.",
-    "ja": "Windowsがこのポートを別の機能用に予約しています。別のポートを選んでください。",
-    "zh-Hans": "Windows 已将此端口保留给其他功能。请选择其他端口。"
-  },
-  "Windows has turned off starting Aktar at sign-in. Turn it back on in Settings > Apps > Startup.": {
-    "tr": "Windows, Aktar'ın oturum açılışında başlamasını kapatmış. Ayarlar > Uygulamalar > Başlangıç'tan yeniden açabilirsin.",
-    "de": "Windows hat den Start von Aktar bei der Anmeldung deaktiviert. Schalte ihn unter Einstellungen > Apps > Autostart wieder ein.",
-    "fr": "Windows a désactivé le lancement d’Aktar à l’ouverture de session. Réactivez-le dans Paramètres > Applications > Démarrage.",
-    "es": "Windows ha desactivado el inicio de Aktar al iniciar sesión. Vuelve a activarlo en Configuración > Aplicaciones > Inicio.",
-    "pt-BR": "O Windows desativou a abertura do Aktar ao entrar. Ative novamente em Configurações > Aplicativos > Inicialização.",
-    "ja": "Windowsによって、サインイン時のAktarの起動がオフになっています。［設定］>［アプリ］>［スタートアップ］でオンに戻してください。",
-    "zh-Hans": "Windows 已关闭登录时启动 Aktar。请在“设置”>“应用”>“启动”中重新打开。"
-  },
-  "You’re up to date!": {
-    "tr": "Güncelsin!",
-    "de": "Du bist auf dem neuesten Stand!",
-    "fr": "Vous êtes à jour !",
-    "es": "¡Estás al día!",
-    "pt-BR": "Você está atualizado!",
-    "ja": "最新の状態です！",
-    "zh-Hans": "已是最新版本！"
-  },
-  "{0} days": {
-    "tr": "{0} gün",
-    "de": "{0} Tage",
-    "fr": "{0} jours",
-    "es": "{0} días",
-    "pt-BR": "{0} dias",
-    "ja": "{0}日",
-    "zh-Hans": "{0} 天"
-  },
-  "Name the rules aktar-expire-1d, aktar-expire-7d, aktar-expire-14d, and aktar-expire-30d, or Aktar won't recognize them.": {
-    "tr": "Kuralları aktar-expire-1d, aktar-expire-7d, aktar-expire-14d ve aktar-expire-30d olarak adlandırın; aksi halde Aktar onları tanımaz.",
-    "de": "Benenne die Regeln aktar-expire-1d, aktar-expire-7d, aktar-expire-14d und aktar-expire-30d, sonst erkennt Aktar sie nicht.",
-    "fr": "Nommez les règles aktar-expire-1d, aktar-expire-7d, aktar-expire-14d et aktar-expire-30d, sinon Aktar ne les reconnaîtra pas.",
-    "es": "Nombra las reglas aktar-expire-1d, aktar-expire-7d, aktar-expire-14d y aktar-expire-30d, o Aktar no las reconocerá.",
-    "pt-BR": "Nomeie as regras aktar-expire-1d, aktar-expire-7d, aktar-expire-14d e aktar-expire-30d, ou o Aktar não as reconhecerá.",
-    "ja": "ルール名は aktar-expire-1d、aktar-expire-7d、aktar-expire-14d、aktar-expire-30d にしてください。それ以外の名前では Aktar が認識しません。",
-    "zh-Hans": "请将规则命名为 aktar-expire-1d、aktar-expire-7d、aktar-expire-14d 和 aktar-expire-30d，否则 Aktar 无法识别。"
-  },
-  "Files already in these folders will be deleted": {
-    "tr": "Bu klasörlerdeki mevcut dosyalar silinecek",
-    "de": "Dateien, die schon in diesen Ordnern liegen, werden gelöscht",
-    "fr": "Les fichiers déjà présents dans ces dossiers seront supprimés",
-    "es": "Se eliminarán los archivos que ya están en estas carpetas",
-    "pt-BR": "Os arquivos que já estão nessas pastas serão apagados",
-    "ja": "これらのフォルダにある既存のファイルは削除されます",
-    "zh-Hans": "这些文件夹中已有的文件将被删除"
-  },
-  "{0} already hold files. Once the rules are set up, the bucket deletes them too when they're older than the folder's number of days.": {
-    "tr": "{0} içinde zaten dosyalar var. Kurallar kurulunca bucket, klasörün gün sayısından eski olan bu dosyaları da siler.",
-    "de": "In {0} liegen schon Dateien. Sobald die Regeln eingerichtet sind, löscht der Bucket auch diese, wenn sie älter als die Tage des Ordners sind.",
-    "fr": "{0} contiennent déjà des fichiers. Une fois les règles en place, le bucket les supprime aussi lorsqu'ils dépassent le nombre de jours du dossier.",
-    "es": "{0} ya contienen archivos. Una vez configuradas las reglas, el bucket también los eliminará cuando superen los días de la carpeta.",
-    "pt-BR": "{0} já contêm arquivos. Depois que as regras forem configuradas, o bucket também os apagará quando passarem do número de dias da pasta.",
-    "ja": "{0} にはすでにファイルがあります。ルールを設定すると、フォルダの日数より古いファイルもバケットが削除します。",
-    "zh-Hans": "{0} 中已有文件。规则设置后，存储桶也会删除其中超过该文件夹天数的文件。"
-  },
-  "Set Up Anyway": {
-    "tr": "Yine de Kur",
-    "de": "Trotzdem einrichten",
-    "fr": "Configurer quand même",
-    "es": "Configurar de todos modos",
-    "pt-BR": "Configurar mesmo assim",
-    "ja": "このまま設定",
-    "zh-Hans": "仍然设置"
-  },
-  "The provider didn't keep the lifecycle rules.": {
-    "tr": "Sağlayıcı yaşam döngüsü kurallarını saklamadı.",
-    "de": "Der Anbieter hat die Lebenszyklusregeln nicht übernommen.",
-    "fr": "Le fournisseur n'a pas conservé les règles de cycle de vie.",
-    "es": "El proveedor no conservó las reglas de ciclo de vida.",
-    "pt-BR": "O provedor não manteve as regras de ciclo de vida.",
-    "ja": "プロバイダがライフサイクルルールを保持しませんでした。",
-    "zh-Hans": "服务商未保留生命周期规则。"
-  },
-  "The bucket's lifecycle rules couldn't be read, so nothing was changed.": {
-    "tr": "Bucket'ın yaşam döngüsü kuralları okunamadı, bu yüzden hiçbir şey değiştirilmedi.",
-    "de": "Die Lebenszyklusregeln des Buckets konnten nicht gelesen werden, daher wurde nichts geändert.",
-    "fr": "Les règles de cycle de vie du bucket n'ont pas pu être lues, donc rien n'a été modifié.",
-    "es": "No se pudieron leer las reglas de ciclo de vida del bucket, así que no se cambió nada.",
-    "pt-BR": "Não foi possível ler as regras de ciclo de vida do bucket, então nada foi alterado.",
-    "ja": "バケットのライフサイクルルールを読み取れなかったため、何も変更していません。",
-    "zh-Hans": "无法读取存储桶的生命周期规则，因此未做任何更改。"
-  },
-  "Show QR Code": {
-    "tr": "QR Kodunu Göster",
-    "de": "QR-Code zeigen",
-    "fr": "Afficher le code QR",
-    "es": "Mostrar código QR",
-    "pt-BR": "Mostrar código QR",
-    "ja": "QRコードを表示",
-    "zh-Hans": "显示二维码"
-  },
-  "QR Code": {
-    "tr": "QR Kodu",
-    "de": "QR-Code",
-    "fr": "Code QR",
-    "es": "Código QR",
-    "pt-BR": "Código QR",
-    "ja": "QRコード",
-    "zh-Hans": "二维码"
-  },
-  "Copy Image": {
-    "tr": "Görseli Kopyala",
-    "de": "Bild kopieren",
-    "fr": "Copier l’image",
-    "es": "Copiar imagen",
-    "pt-BR": "Copiar imagem",
-    "ja": "画像をコピー",
-    "zh-Hans": "复制图片"
-  },
-  "Save Image…": {
-    "tr": "Görseli Kaydet…",
-    "de": "Bild sichern …",
-    "fr": "Enregistrer l’image…",
-    "es": "Guardar imagen…",
-    "pt-BR": "Salvar imagem…",
-    "ja": "画像を保存…",
-    "zh-Hans": "保存图片…"
-  },
-  "Scan to open the link": {
-    "tr": "Bağlantıyı açmak için tara",
-    "de": "Scannen, um den Link zu öffnen",
-    "fr": "Scannez pour ouvrir le lien",
-    "es": "Escanea para abrir el enlace",
-    "pt-BR": "Escaneie para abrir o link",
-    "ja": "スキャンしてリンクを開く",
-    "zh-Hans": "扫描以打开链接"
-  },
-  "Reuse links for duplicate files": {
-    "tr": "Aynı dosyalarda bağlantıyı yeniden kullan",
-    "de": "Links für doppelte Dateien wiederverwenden",
-    "fr": "Réutiliser les liens des fichiers en double",
-    "es": "Reutilizar enlaces de archivos duplicados",
-    "pt-BR": "Reutilizar links de arquivos duplicados",
-    "ja": "重複ファイルのリンクを再利用",
-    "zh-Hans": "重复文件复用链接"
-  },
-  "When a file you already uploaded to the same destination comes up again, Aktar copies its existing link instead of uploading it again.": {
-    "tr": "Aynı hedefe daha önce yüklediğin bir dosya tekrar gelirse Aktar onu yeniden yüklemek yerine mevcut bağlantısını kopyalar.",
-    "de": "Wenn eine Datei, die du schon zum selben Ziel hochgeladen hast, erneut kommt, kopiert Aktar den vorhandenen Link, statt sie noch einmal hochzuladen.",
-    "fr": "Lorsqu’un fichier que vous avez déjà envoyé vers la même destination revient, Aktar copie son lien existant au lieu de l’envoyer à nouveau.",
-    "es": "Cuando vuelve a aparecer un archivo que ya subiste al mismo destino, Aktar copia su enlace existente en lugar de subirlo otra vez.",
-    "pt-BR": "Quando um arquivo que você já enviou para o mesmo destino aparece de novo, o Aktar copia o link existente em vez de enviá-lo outra vez.",
-    "ja": "同じアップロード先にアップロード済みのファイルがもう一度来たときは、再アップロードせずに既存のリンクをコピーします。",
-    "zh-Hans": "当你已上传到同一上传目标的文件再次出现时，Aktar 会复制现有链接，而不是再次上传。"
-  },
-  "Already uploaded - copied the existing link": {
-    "tr": "Zaten yüklenmiş, mevcut bağlantı kopyalandı",
-    "de": "Schon hochgeladen, vorhandener Link kopiert",
-    "fr": "Déjà envoyé : lien existant copié",
-    "es": "Ya estaba subido: se copió el enlace existente",
-    "pt-BR": "Já enviado: o link existente foi copiado",
-    "ja": "アップロード済みです。既存のリンクをコピーしました",
-    "zh-Hans": "已上传过，已复制现有链接"
-  },
-  "Rename and upload clipboard": {
-    "tr": "Panoyu yeniden adlandırıp yükle",
-    "de": "Zwischenablage umbenennen und hochladen",
-    "fr": "Renommer et envoyer le presse-papiers",
-    "es": "Renombrar y subir el portapapeles",
-    "pt-BR": "Renomear e enviar a área de transferência",
-    "ja": "名前を付けてクリップボードをアップロード",
-    "zh-Hans": "重命名并上传剪贴板"
-  },
-  "Asks for the upload’s name first. The extension stays.": {
-    "tr": "Önce yüklemenin adını sorar. Uzantı aynı kalır.",
-    "de": "Fragt zuerst nach dem Namen des Uploads. Die Dateiendung bleibt.",
-    "fr": "Demande d’abord le nom de l’envoi. L’extension est conservée.",
-    "es": "Primero pide el nombre de la subida. La extensión se mantiene.",
-    "pt-BR": "Pergunta primeiro o nome do envio. A extensão é mantida.",
-    "ja": "先にアップロードの名前を尋ねます。拡張子はそのままです。",
-    "zh-Hans": "先询问上传的名称，扩展名保持不变。"
-  },
-  "Name This Upload": {
-    "tr": "Bu Yüklemeye Ad Ver",
-    "de": "Upload benennen",
-    "fr": "Nommer cet envoi",
-    "es": "Nombrar esta subida",
-    "pt-BR": "Nomear este envio",
-    "ja": "アップロードに名前を付ける",
-    "zh-Hans": "为此上传命名"
-  },
-  "Hold Alt to rename files before they upload": {
-    "tr": "Dosyaları yüklenmeden önce yeniden adlandırmak için Alt tuşunu basılı tut",
-    "de": "Halte Alt gedrückt, um Dateien vor dem Hochladen umzubenennen",
-    "fr": "Maintenez Alt pour renommer les fichiers avant leur envoi",
-    "es": "Mantén pulsada Alt para renombrar los archivos antes de subirlos",
-    "pt-BR": "Segure Alt para renomear os arquivos antes do envio",
-    "ja": "Altキーを押したままにすると、アップロード前にファイル名を変更できます",
-    "zh-Hans": "按住 Alt 键可在上传前重命名文件"
-  },
-  "Image Processing": {
-    "tr": "Görsel İşleme",
-    "de": "Bildbearbeitung",
-    "fr": "Traitement des images",
-    "es": "Procesamiento de imágenes",
-    "pt-BR": "Processamento de imagens",
-    "ja": "画像の処理",
-    "zh-Hans": "图片处理"
-  },
-  "Format": {
-    "tr": "Biçim",
-    "de": "Format",
-    "fr": "Format",
-    "es": "Formato",
-    "pt-BR": "Formato",
-    "ja": "フォーマット",
-    "zh-Hans": "格式"
-  },
-  "Keep Original": {
-    "tr": "Orijinali Koru",
-    "de": "Original behalten",
-    "fr": "Conserver l’original",
-    "es": "Mantener original",
-    "pt-BR": "Manter original",
-    "ja": "元のまま",
-    "zh-Hans": "保持原格式"
-  },
-  "Compression": {
-    "tr": "Sıkıştırma",
-    "de": "Komprimierung",
-    "fr": "Compression",
-    "es": "Compresión",
-    "pt-BR": "Compressão",
-    "ja": "圧縮",
-    "zh-Hans": "压缩"
-  },
-  "Light (90%)": {
-    "tr": "Hafif (%90)",
-    "de": "Leicht (90 %)",
-    "fr": "Légère (90 %)",
-    "es": "Ligera (90 %)",
-    "pt-BR": "Leve (90%)",
-    "ja": "弱（90%）",
-    "zh-Hans": "轻度 (90%)"
-  },
-  "Medium (80%)": {
-    "tr": "Orta (%80)",
-    "de": "Mittel (80 %)",
-    "fr": "Moyenne (80 %)",
-    "es": "Media (80 %)",
-    "pt-BR": "Média (80%)",
-    "ja": "中（80%）",
-    "zh-Hans": "中度 (80%)"
-  },
-  "Strong (65%)": {
-    "tr": "Güçlü (%65)",
-    "de": "Stark (65 %)",
-    "fr": "Forte (65 %)",
-    "es": "Fuerte (65 %)",
-    "pt-BR": "Forte (65%)",
-    "ja": "強（65%）",
-    "zh-Hans": "高度 (65%)"
-  },
-  "Resize": {
-    "tr": "Yeniden Boyutlandır",
-    "de": "Größe ändern",
-    "fr": "Redimensionner",
-    "es": "Cambiar tamaño",
-    "pt-BR": "Redimensionar",
-    "ja": "サイズ変更",
-    "zh-Hans": "调整大小"
-  },
-  "Longest side {0} px": {
-    "tr": "En uzun kenar {0} px",
-    "de": "Längste Seite {0} px",
-    "fr": "Côté le plus long : {0} px",
-    "es": "Lado más largo: {0} px",
-    "pt-BR": "Lado maior: {0} px",
-    "ja": "長辺 {0} px",
-    "zh-Hans": "最长边 {0} 像素"
-  },
-  "Applies to JPEG, PNG, HEIC, WebP, TIFF and BMP photos and screenshots. GIFs, SVGs and files inside ZIPs are left as they are.": {
-    "tr": "JPEG, PNG, HEIC, WebP, TIFF ve BMP fotoğraflara ve ekran görüntülerine uygulanır. GIF'ler, SVG'ler ve ZIP içindeki dosyalar olduğu gibi kalır.",
-    "de": "Gilt für Fotos und Bildschirmfotos im Format JPEG, PNG, HEIC, WebP, TIFF und BMP. GIFs, SVGs und Dateien in ZIPs bleiben unverändert.",
-    "fr": "S’applique aux photos et captures d’écran JPEG, PNG, HEIC, WebP, TIFF et BMP. Les GIF, les SVG et les fichiers dans des ZIP restent tels quels.",
-    "es": "Se aplica a fotos y capturas de pantalla JPEG, PNG, HEIC, WebP, TIFF y BMP. Los GIF, los SVG y los archivos dentro de ZIP no se modifican.",
-    "pt-BR": "Vale para fotos e capturas de tela JPEG, PNG, HEIC, WebP, TIFF e BMP. GIFs, SVGs e arquivos dentro de ZIPs ficam como estão.",
-    "ja": "JPEG、PNG、HEIC、WebP、TIFF、BMP の写真とスクリーンショットに適用されます。GIF、SVG、ZIP 内のファイルはそのままです。",
-    "zh-Hans": "适用于 JPEG、PNG、HEIC、WebP、TIFF 和 BMP 格式的照片与截图。GIF、SVG 以及 ZIP 中的文件保持不变。"
-  },
-  "MD5 of the file’s contents": {
-    "tr": "Dosya içeriğinin MD5 değeri",
-    "de": "MD5 des Dateiinhalts",
-    "fr": "MD5 du contenu du fichier",
-    "es": "MD5 del contenido del archivo",
-    "pt-BR": "MD5 do conteúdo do arquivo",
-    "ja": "ファイル内容の MD5",
-    "zh-Hans": "文件内容的 MD5"
-  },
-  "SHA-256 of the file’s contents": {
-    "tr": "Dosya içeriğinin SHA-256 değeri",
-    "de": "SHA-256 des Dateiinhalts",
-    "fr": "SHA-256 du contenu du fichier",
-    "es": "SHA-256 del contenido del archivo",
-    "pt-BR": "SHA-256 do conteúdo do arquivo",
-    "ja": "ファイル内容の SHA-256",
-    "zh-Hans": "文件内容的 SHA-256"
-  },
-  "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}": {
-    "tr": "Değişkenler: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "de": "Variablen: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "fr": "Variables : {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "es": "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "pt-BR": "Variáveis: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "ja": "変数: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "zh-Hans": "变量：{year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}"
-  },
-  "Resuming upload…": {
-    "tr": "Yükleme sürdürülüyor…",
-    "de": "Upload wird fortgesetzt …",
-    "fr": "Reprise de l’envoi…",
-    "es": "Reanudando la subida…",
-    "pt-BR": "Retomando o envio…",
-    "ja": "アップロードを再開中…",
-    "zh-Hans": "正在继续上传…"
-  },
-  "This shortcut is already in use. Try a different one.": {
-    "tr": "Bu kısayol zaten kullanılıyor. Farklı bir tane dene.",
-    "de": "Dieses Tastenkürzel wird schon verwendet. Probier ein anderes.",
-    "fr": "Ce raccourci est déjà utilisé. Essayez-en un autre.",
-    "es": "Este atajo ya está en uso. Prueba con otro.",
-    "pt-BR": "Este atalho já está em uso. Tente um diferente.",
-    "ja": "このショートカットはすでに使用されています。別のショートカットを試してください。",
-    "zh-Hans": "此快捷键已在使用中，请换一个。"
-  },
-  "// Watched folders": "Settings > Watched Folders, the panel's watching row, the tray's Pause Watching, and their notifications. English keys match the shared Mac/Windows spec, so the Mac catalog's translations can replace these once it has them.",
   "A whole drive can’t be watched. Pick a folder on it.": {
     "tr": "Bir sürücünün tamamı izlenemez. İçinden bir klasör seç.",
     "de": "Ein ganzes Laufwerk kann nicht überwacht werden. Wähle einen Ordner darauf.",
@@ -1000,6 +128,42 @@
     "ja": "アップロード後",
     "zh-Hans": "上传后"
   },
+  "Aktar asks before it deletes anything from the bucket.": {
+    "tr": "Aktar bucket'tan bir şey silmeden önce sorar.",
+    "de": "Aktar fragt, bevor etwas aus dem Bucket gelöscht wird.",
+    "fr": "Aktar demande avant de supprimer quoi que ce soit du bucket.",
+    "es": "Aktar pregunta antes de eliminar cualquier cosa del bucket.",
+    "pt-BR": "O Aktar pergunta antes de excluir qualquer coisa do bucket.",
+    "ja": "Aktarはバケットから何かを削除する前に確認します。",
+    "zh-Hans": "Aktar 从存储桶删除任何内容前都会先询问。"
+  },
+  "Aktar couldn’t start. {0}": {
+    "tr": "Aktar başlatılamadı. {0}",
+    "de": "Aktar konnte nicht starten. {0}",
+    "fr": "Impossible de démarrer Aktar. {0}",
+    "es": "Aktar no pudo iniciarse. {0}",
+    "pt-BR": "Não foi possível iniciar o Aktar. {0}",
+    "ja": "Aktarを起動できませんでした。{0}",
+    "zh-Hans": "Aktar 无法启动。{0}"
+  },
+  "Aktar forgets this destination and its keys. Files already in the bucket aren’t touched.": {
+    "tr": "Aktar bu hedefi ve anahtarlarını unutur. Bucket'taki dosyalara dokunulmaz.",
+    "de": "Aktar vergisst dieses Ziel und seine Schlüssel. Dateien im Bucket bleiben unverändert.",
+    "fr": "Aktar oublie cette destination et ses clés. Les fichiers déjà dans le bucket ne sont pas modifiés.",
+    "es": "Aktar olvida este destino y sus claves. Los archivos que ya están en el bucket no se tocan.",
+    "pt-BR": "O Aktar esquece este destino e suas chaves. Os arquivos que já estão no bucket não são alterados.",
+    "ja": "Aktarはこのアップロード先とそのキーを削除します。バケット内のファイルはそのまま残ります。",
+    "zh-Hans": "Aktar 将忘记此上传目标及其密钥。存储桶中已有的文件不受影响。"
+  },
+  "Aktar lives in the notification area, next to the clock. If you don’t see its icon, click the arrow there and drag Aktar onto the taskbar.": {
+    "tr": "Aktar, görev çubuğunda saatin yanındaki bildirim alanında yaşar. Simgesini göremiyorsan oradaki oka tıkla ve Aktar'ı görev çubuğuna sürükle.",
+    "de": "Aktar wohnt im Infobereich neben der Uhr. Wenn du das Symbol nicht siehst, klicke dort auf den Pfeil und zieh Aktar auf die Taskleiste.",
+    "fr": "Aktar se trouve dans la zone de notification, à côté de l’horloge. Si vous ne voyez pas son icône, cliquez sur la flèche à cet endroit et faites glisser Aktar dans la barre des tâches.",
+    "es": "Aktar vive en el área de notificación, junto al reloj. Si no ves su icono, haz clic en la flecha que hay allí y arrastra Aktar a la barra de tareas.",
+    "pt-BR": "O Aktar fica na área de notificação, ao lado do relógio. Se não encontrar o ícone, clique na seta ali e arraste o Aktar para a barra de tarefas.",
+    "ja": "Aktarはタスクバーの時計の横にある通知領域に常駐します。アイコンが見つからない場合は、そこにある矢印をクリックして、Aktarをタスクバーにドラッグしてください。",
+    "zh-Hans": "Aktar 位于任务栏时钟旁的通知区域。如果看不到它的图标，请点击那里的箭头，然后将 Aktar 拖到任务栏上。"
+  },
   "Aktar sends a POST request with the upload’s details as JSON after each upload.": {
     "tr": "Aktar her yüklemeden sonra yüklemenin ayrıntılarını JSON olarak bir POST isteğiyle gönderir.",
     "de": "Aktar sendet nach jedem Upload eine POST-Anfrage mit den Details als JSON.",
@@ -1008,6 +172,33 @@
     "pt-BR": "O Aktar envia uma solicitação POST com os detalhes do envio em JSON após cada envio.",
     "ja": "Aktarはアップロードのたびに、その詳細をJSONにしてPOSTリクエストで送信します。",
     "zh-Hans": "每次上传后，Aktar 会发送一个包含上传详情 JSON 的 POST 请求。"
+  },
+  "Aktar {0} is available. You have {1}. Would you like to install it now?": {
+    "tr": "Aktar {0} çıktı. Sende {1} var. Şimdi yüklemek ister misin?",
+    "de": "Aktar {0} ist verfügbar. Du hast {1}. Möchtest du es jetzt installieren?",
+    "fr": "Aktar {0} est disponible. Vous avez la version {1}. Voulez-vous l’installer maintenant ?",
+    "es": "Aktar {0} está disponible. Tienes la {1}. ¿Quieres instalarla ahora?",
+    "pt-BR": "O Aktar {0} está disponível. Você tem a versão {1}. Deseja instalar agora?",
+    "ja": "Aktar {0}が利用可能です。現在のバージョンは{1}です。今すぐインストールしますか？",
+    "zh-Hans": "Aktar {0} 已推出，你当前的版本是 {1}。要现在安装吗？"
+  },
+  "Aktar {0} is currently the newest version available.": {
+    "tr": "Aktar {0} şu anki en yeni sürüm.",
+    "de": "Aktar {0} ist die neueste verfügbare Version.",
+    "fr": "Aktar {0} est actuellement la version la plus récente.",
+    "es": "Aktar {0} es la versión más reciente disponible.",
+    "pt-BR": "O Aktar {0} é a versão mais recente disponível.",
+    "ja": "Aktar {0}は現在入手できる最新バージョンです。",
+    "zh-Hans": "Aktar {0} 已是当前可用的最新版本。"
+  },
+  "Aktar {0} is ready to install": {
+    "tr": "Aktar {0} yüklenmeye hazır",
+    "de": "Aktar {0} kann installiert werden",
+    "fr": "Aktar {0} est prêt à être installé",
+    "es": "Aktar {0} está listo para instalarse",
+    "pt-BR": "O Aktar {0} está pronto para ser instalado",
+    "ja": "Aktar {0}をインストールする準備ができました",
+    "zh-Hans": "Aktar {0} 已可安装"
   },
   "Aktar’s own folders can’t be watched.": {
     "tr": "Aktar'ın kendi klasörleri izlenemez.",
@@ -1026,6 +217,69 @@
     "pt-BR": "Todos os arquivos",
     "ja": "すべてのファイル",
     "zh-Hans": "所有文件"
+  },
+  "Already uploaded - copied the existing link": {
+    "tr": "Zaten yüklenmiş, mevcut bağlantı kopyalandı",
+    "de": "Schon hochgeladen, vorhandener Link kopiert",
+    "fr": "Déjà envoyé : lien existant copié",
+    "es": "Ya estaba subido: se copió el enlace existente",
+    "pt-BR": "Já enviado: o link existente foi copiado",
+    "ja": "アップロード済みです。既存のリンクをコピーしました",
+    "zh-Hans": "已上传过，已复制现有链接"
+  },
+  "Another app is already using this port. Pick a different port.": {
+    "tr": "Bu port zaten başka bir uygulama tarafından kullanılıyor. Farklı bir port seç.",
+    "de": "Eine andere App verwendet diesen Port bereits. Wähle einen anderen Port.",
+    "fr": "Une autre app utilise déjà ce port. Choisissez un autre port.",
+    "es": "Otra app ya está usando este puerto. Elige otro puerto.",
+    "pt-BR": "Outro app já está usando esta porta. Escolha uma porta diferente.",
+    "ja": "このポートは別のアプリがすでに使用しています。別のポートを選んでください。",
+    "zh-Hans": "另一个应用已在使用此端口。请选择其他端口。"
+  },
+  "Applied whenever this destination is picked. Add one destination per kind of file, such as Builds, Logs or Screenshots, each with its own path and defaults. A temporary link stops working after the time you pick and works for private buckets too. Image metadata applies to photos: Remove location drops the GPS position, Remove all also drops the camera, date and other details. A folder is uploaded as one ZIP file, or file by file with its subfolders.": {
+    "tr": "Bu hedef seçiliyken uygulanır. Builds, Logs ya da Screenshots gibi her dosya türü için ayrı bir hedef ekleyebilirsin; her biri kendi yolunu ve varsayılanlarını kullanır. Süreli bağlantı seçtiğin süre dolunca çalışmayı bırakır ve gizli bucket'larda da çalışır. Görsel meta verileri fotoğraflar için geçerlidir: Konumu kaldır GPS konumunu siler, Tümünü kaldır kamera, tarih ve diğer bilgileri de siler. Bir klasör tek bir ZIP dosyası olarak ya da alt klasörleriyle birlikte dosya dosya yüklenir.",
+    "de": "Gilt, sobald dieses Ziel ausgewählt ist. Lege für jede Art von Datei ein eigenes Ziel an, etwa Builds, Logs oder Screenshots, jeweils mit eigenem Pfad und eigenen Standards. Ein temporärer Link funktioniert nach der gewählten Zeit nicht mehr und auch bei privaten Buckets. Bild-Metadaten gelten für Fotos: „Standort entfernen“ löscht die GPS-Position, „Alle entfernen“ auch Kamera, Datum und weitere Angaben. Ein Ordner wird als eine ZIP-Datei hochgeladen oder Datei für Datei mit seinen Unterordnern.",
+    "fr": "S’applique dès que cette destination est choisie. Ajoutez une destination par type de fichier, comme Builds, Logs ou Captures, chacune avec son propre chemin et ses réglages. Un lien temporaire cesse de fonctionner après le délai choisi et marche aussi avec les buckets privés. Les métadonnées des images concernent les photos : Supprimer la position retire la position GPS, Tout supprimer retire aussi l’appareil, la date et d’autres détails. Un dossier est envoyé sous forme d’un seul fichier ZIP, ou fichier par fichier avec ses sous-dossiers.",
+    "es": "Se aplica siempre que eliges este destino. Añade un destino por tipo de archivo, como Builds, Logs o Capturas, cada uno con su propia ruta y valores. Un enlace temporal deja de funcionar pasado el tiempo que elijas y también sirve para buckets privados. Metadatos de imagen se aplica a las fotos: Quitar ubicación elimina la posición GPS y Quitar todo también la cámara, la fecha y otros datos. Una carpeta se sube como un solo archivo ZIP o archivo por archivo con sus subcarpetas.",
+    "pt-BR": "Aplicado sempre que este destino é escolhido. Adicione um destino por tipo de arquivo, como Builds, Logs ou Capturas, cada um com seu próprio caminho e padrões. Um link temporário para de funcionar após o tempo escolhido e também funciona com buckets privados. Metadados da imagem valem para fotos: Remover localização apaga a posição GPS e Remover tudo também apaga a câmera, a data e outros detalhes. Uma pasta é enviada como um único arquivo ZIP ou arquivo por arquivo com as subpastas.",
+    "ja": "このアップロード先を選んでいるときに使われます。ビルド、ログ、スクリーンショットなど、ファイルの種類ごとにアップロード先を作れば、それぞれのパスと既定値を持てます。期限付きリンクは選んだ時間が過ぎると使えなくなり、非公開のバケットでも使えます。画像のメタデータは写真に適用されます。「位置情報を削除」はGPSの位置を、「すべて削除」はカメラや日時などの情報も削除します。フォルダは1つのZIPファイルとして、またはサブフォルダを保ったままファイルごとにアップロードされます。",
+    "zh-Hans": "选中此上传目标时生效。可以为每类文件（如构建、日志或截图）各添加一个上传目标，分别使用自己的路径和默认设置。临时链接会在所选时长后失效，也适用于私有存储桶。图片元数据适用于照片：“移除位置信息”会删除 GPS 位置，“全部移除”还会删除相机、日期等其他信息。文件夹会作为一个 ZIP 文件上传，或连同子文件夹逐个文件上传。"
+  },
+  "Applies to JPEG, PNG, HEIC, WebP, TIFF and BMP photos and screenshots. GIFs, SVGs and files inside ZIPs are left as they are.": {
+    "tr": "JPEG, PNG, HEIC, WebP, TIFF ve BMP fotoğraflara ve ekran görüntülerine uygulanır. GIF'ler, SVG'ler ve ZIP içindeki dosyalar olduğu gibi kalır.",
+    "de": "Gilt für Fotos und Bildschirmfotos im Format JPEG, PNG, HEIC, WebP, TIFF und BMP. GIFs, SVGs und Dateien in ZIPs bleiben unverändert.",
+    "fr": "S’applique aux photos et captures d’écran JPEG, PNG, HEIC, WebP, TIFF et BMP. Les GIF, les SVG et les fichiers dans des ZIP restent tels quels.",
+    "es": "Se aplica a fotos y capturas de pantalla JPEG, PNG, HEIC, WebP, TIFF y BMP. Los GIF, los SVG y los archivos dentro de ZIP no se modifican.",
+    "pt-BR": "Vale para fotos e capturas de tela JPEG, PNG, HEIC, WebP, TIFF e BMP. GIFs, SVGs e arquivos dentro de ZIPs ficam como estão.",
+    "ja": "JPEG、PNG、HEIC、WebP、TIFF、BMP の写真とスクリーンショットに適用されます。GIF、SVG、ZIP 内のファイルはそのままです。",
+    "zh-Hans": "适用于 JPEG、PNG、HEIC、WebP、TIFF 和 BMP 格式的照片与截图。GIF、SVG 以及 ZIP 中的文件保持不变。"
+  },
+  "Ask before deleting": {
+    "tr": "Silmeden önce sor",
+    "de": "Vor dem Löschen fragen",
+    "fr": "Demander avant de supprimer",
+    "es": "Preguntar antes de eliminar",
+    "pt-BR": "Perguntar antes de excluir",
+    "ja": "削除する前に確認",
+    "zh-Hans": "删除前询问"
+  },
+  "Asks for the upload’s name first. The extension stays.": {
+    "tr": "Önce yüklemenin adını sorar. Uzantı aynı kalır.",
+    "de": "Fragt zuerst nach dem Namen des Uploads. Die Dateiendung bleibt.",
+    "fr": "Demande d’abord le nom de l’envoi. L’extension est conservée.",
+    "es": "Primero pide el nombre de la subida. La extensión se mantiene.",
+    "pt-BR": "Pergunta primeiro o nome do envio. A extensão é mantida.",
+    "ja": "先にアップロードの名前を尋ねます。拡張子はそのままです。",
+    "zh-Hans": "先询问上传的名称，扩展名保持不变。"
+  },
+  "Auto-delete": {
+    "tr": "Otomatik silme",
+    "de": "Automatisch löschen",
+    "fr": "Suppression automatique",
+    "es": "Eliminación automática",
+    "pt-BR": "Exclusão automática",
+    "ja": "自動削除",
+    "zh-Hans": "自动删除"
   },
   "Automation": {
     "tr": "Otomasyon",
@@ -1054,6 +308,51 @@
     "ja": "変更…",
     "zh-Hans": "更改…"
   },
+  "Check Again": {
+    "tr": "Tekrar Kontrol Et",
+    "de": "Erneut prüfen",
+    "fr": "Vérifier à nouveau",
+    "es": "Comprobar de nuevo",
+    "pt-BR": "Verificar novamente",
+    "ja": "再確認",
+    "zh-Hans": "重新检查"
+  },
+  "Checking for updates…": {
+    "tr": "Güncellemeler denetleniyor…",
+    "de": "Nach Updates suchen …",
+    "fr": "Recherche de mises à jour…",
+    "es": "Buscando actualizaciones…",
+    "pt-BR": "Verificando atualizações…",
+    "ja": "アップデートを確認中…",
+    "zh-Hans": "正在检查更新…"
+  },
+  "Checking…": {
+    "tr": "Kontrol ediliyor…",
+    "de": "Wird geprüft…",
+    "fr": "Vérification…",
+    "es": "Comprobando…",
+    "pt-BR": "Verificando…",
+    "ja": "確認中…",
+    "zh-Hans": "正在检查…"
+  },
+  "Clear": {
+    "tr": "Temizle",
+    "de": "Löschen",
+    "fr": "Effacer",
+    "es": "Borrar",
+    "pt-BR": "Limpar",
+    "ja": "消去",
+    "zh-Hans": "清除"
+  },
+  "Clear thumbnails on this PC?": {
+    "tr": "Bu bilgisayardaki küçük resimler temizlensin mi?",
+    "de": "Vorschaubilder auf diesem PC löschen?",
+    "fr": "Effacer les vignettes de ce PC ?",
+    "es": "¿Borrar las miniaturas de este PC?",
+    "pt-BR": "Limpar as miniaturas deste PC?",
+    "ja": "このPC上のサムネイルを消去しますか?",
+    "zh-Hans": "清除这台电脑上的缩略图吗？"
+  },
   "Clipboard": {
     "tr": "Pano",
     "de": "Zwischenablage",
@@ -1063,6 +362,42 @@
     "ja": "クリップボード",
     "zh-Hans": "剪贴板"
   },
+  "Close": {
+    "tr": "Kapat",
+    "de": "Schließen",
+    "fr": "Fermer",
+    "es": "Cerrar",
+    "pt-BR": "Fechar",
+    "ja": "閉じる",
+    "zh-Hans": "关闭"
+  },
+  "Close panel after upload": {
+    "tr": "Yüklemeden sonra paneli kapat",
+    "de": "Panel nach dem Upload schließen",
+    "fr": "Fermer le panneau après l’envoi",
+    "es": "Cerrar el panel tras la subida",
+    "pt-BR": "Fechar o painel após o envio",
+    "ja": "アップロード後にパネルを閉じる",
+    "zh-Hans": "上传后关闭面板"
+  },
+  "Compression": {
+    "tr": "Sıkıştırma",
+    "de": "Komprimierung",
+    "fr": "Compression",
+    "es": "Compresión",
+    "pt-BR": "Compressão",
+    "ja": "圧縮",
+    "zh-Hans": "压缩"
+  },
+  "Copy Image": {
+    "tr": "Görseli Kopyala",
+    "de": "Bild kopieren",
+    "fr": "Copier l’image",
+    "es": "Copiar imagen",
+    "pt-BR": "Copiar imagem",
+    "ja": "画像をコピー",
+    "zh-Hans": "复制图片"
+  },
   "Copy the link": {
     "tr": "Bağlantıyı kopyala",
     "de": "Link kopieren",
@@ -1071,6 +406,24 @@
     "pt-BR": "Copiar o link",
     "ja": "リンクをコピー",
     "zh-Hans": "复制链接"
+  },
+  "Could not connect. {0}": {
+    "tr": "Bağlanılamadı. {0}",
+    "de": "Verbindung fehlgeschlagen. {0}",
+    "fr": "Connexion impossible. {0}",
+    "es": "No se pudo conectar. {0}",
+    "pt-BR": "Não foi possível conectar. {0}",
+    "ja": "接続できませんでした。{0}",
+    "zh-Hans": "无法连接。{0}"
+  },
+  "Couldn't delete {0} from the bucket": {
+    "tr": "{0} bucket'tan silinemedi",
+    "de": "{0} konnte nicht aus dem Bucket gelöscht werden",
+    "fr": "Impossible de supprimer {0} du bucket",
+    "es": "No se pudo eliminar {0} del bucket",
+    "pt-BR": "Não foi possível excluir {0} do bucket",
+    "ja": "{0}をバケットから削除できませんでした",
+    "zh-Hans": "无法从存储桶删除 {0}"
   },
   "Couldn’t find the Screenshots folder.": {
     "tr": "Ekran Görüntüleri klasörü bulunamadı.",
@@ -1099,6 +452,15 @@
     "ja": "{0}をごみ箱に移動できませんでした。{1}",
     "zh-Hans": "无法将 {0} 移到回收站。{1}"
   },
+  "Credential Manager error ({0}).": {
+    "tr": "Kimlik Bilgileri Yöneticisi hatası ({0}).",
+    "de": "Fehler der Anmeldeinformationsverwaltung ({0}).",
+    "fr": "Erreur du Gestionnaire d’identification ({0}).",
+    "es": "Error del Administrador de credenciales ({0}).",
+    "pt-BR": "Erro do Gerenciador de Credenciais ({0}).",
+    "ja": "資格情報マネージャーのエラー({0})。",
+    "zh-Hans": "凭据管理器错误（{0}）。"
+  },
   "Default destination": {
     "tr": "Varsayılan hedef",
     "de": "Standardziel",
@@ -1116,6 +478,105 @@
     "pt-BR": "Destino padrão ({0})",
     "ja": "デフォルトのアップロード先（{0}）",
     "zh-Hans": "默认上传目标（{0}）"
+  },
+  "Delete after": {
+    "tr": "Silinme süresi",
+    "de": "Löschen nach",
+    "fr": "Supprimer après",
+    "es": "Eliminar tras",
+    "pt-BR": "Excluir após",
+    "ja": "削除まで",
+    "zh-Hans": "删除期限"
+  },
+  "Delete from Bucket": {
+    "tr": "Bucket'tan Sil",
+    "de": "Aus dem Bucket löschen",
+    "fr": "Supprimer du bucket",
+    "es": "Eliminar del bucket",
+    "pt-BR": "Excluir do bucket",
+    "ja": "バケットから削除",
+    "zh-Hans": "从存储桶删除"
+  },
+  "Delete it from the bucket too": {
+    "tr": "Bucket'tan da sil",
+    "de": "Auch aus dem Bucket löschen",
+    "fr": "Le supprimer aussi du bucket",
+    "es": "Eliminarlo también del bucket",
+    "pt-BR": "Excluí-lo também do bucket",
+    "ja": "バケットからも削除する",
+    "zh-Hans": "也从存储桶中删除"
+  },
+  "Deleted {0} files from the bucket": {
+    "tr": "{0} dosya bucket'tan silindi",
+    "de": "{0} Dateien wurden aus dem Bucket gelöscht",
+    "fr": "{0} fichiers ont été supprimés du bucket",
+    "es": "Se eliminaron {0} archivos del bucket",
+    "pt-BR": "{0} arquivos foram excluídos do bucket",
+    "ja": "{0}個のファイルをバケットから削除しました",
+    "zh-Hans": "已从存储桶删除 {0} 个文件"
+  },
+  "Deleted {0} from the bucket": {
+    "tr": "{0} bucket'tan silindi",
+    "de": "{0} wurde aus dem Bucket gelöscht",
+    "fr": "{0} a été supprimé du bucket",
+    "es": "Se eliminó {0} del bucket",
+    "pt-BR": "{0} foi excluído do bucket",
+    "ja": "{0}をバケットから削除しました",
+    "zh-Hans": "已从存储桶删除 {0}"
+  },
+  "Deletes after 1 day": {
+    "tr": "1 gün sonra silinir",
+    "de": "Wird nach 1 Tag gelöscht",
+    "fr": "Supprimé après 1 jour",
+    "es": "Se elimina tras 1 día",
+    "pt-BR": "Excluído após 1 dia",
+    "ja": "1日後に削除されます",
+    "zh-Hans": "1 天后删除"
+  },
+  "Deletes after {0} days": {
+    "tr": "{0} gün sonra silinir",
+    "de": "Wird nach {0} Tagen gelöscht",
+    "fr": "Supprimé après {0} jours",
+    "es": "Se elimina tras {0} días",
+    "pt-BR": "Excluído após {0} dias",
+    "ja": "{0}日後に削除されます",
+    "zh-Hans": "{0} 天后删除"
+  },
+  "Deletes in 1 day": {
+    "tr": "1 gün içinde silinecek",
+    "de": "Wird in 1 Tag gelöscht",
+    "fr": "Supprimé dans 1 jour",
+    "es": "Se elimina en 1 día",
+    "pt-BR": "Será excluído em 1 dia",
+    "ja": "あと1日で削除",
+    "zh-Hans": "将在 1 天后删除"
+  },
+  "Deletes in {0} days": {
+    "tr": "{0} gün içinde silinecek",
+    "de": "Wird in {0} Tagen gelöscht",
+    "fr": "Supprimé dans {0} jours",
+    "es": "Se elimina en {0} días",
+    "pt-BR": "Será excluído em {0} dias",
+    "ja": "あと{0}日で削除",
+    "zh-Hans": "将在 {0} 天后删除"
+  },
+  "Deletes today": {
+    "tr": "Bugün silinecek",
+    "de": "Wird heute gelöscht",
+    "fr": "Supprimé aujourd’hui",
+    "es": "Se elimina hoy",
+    "pt-BR": "Será excluído hoje",
+    "ja": "今日削除",
+    "zh-Hans": "今天删除"
+  },
+  "Deleting a file from this folder also deletes its upload. Links to it stop working.": {
+    "tr": "Bu klasörden bir dosyayı silmek yüklemesini de siler. Ona giden bağlantılar çalışmaz olur.",
+    "de": "Wenn du eine Datei aus diesem Ordner löschst, wird auch ihr Upload gelöscht. Links darauf funktionieren dann nicht mehr.",
+    "fr": "Supprimer un fichier de ce dossier supprime aussi son envoi. Les liens vers celui-ci cessent de fonctionner.",
+    "es": "Eliminar un archivo de esta carpeta también elimina su subida. Los enlaces dejan de funcionar.",
+    "pt-BR": "Excluir um arquivo desta pasta também exclui o envio dele. Os links param de funcionar.",
+    "ja": "このフォルダからファイルを削除すると、そのアップロードも削除されます。リンクは使えなくなります。",
+    "zh-Hans": "从此文件夹删除文件也会删除其上传内容，相关链接将失效。"
   },
   "Destination default": {
     "tr": "Hedefin ayarı",
@@ -1135,6 +596,24 @@
     "ja": "クリップボードを変更しない",
     "zh-Hans": "不改动剪贴板"
   },
+  "Download new versions in the background and install them when you’re not using Aktar": {
+    "tr": "Yeni sürümleri arka planda indir ve Aktar'ı kullanmadığın bir anda yükle",
+    "de": "Neue Versionen im Hintergrund laden und installieren, wenn du Aktar gerade nicht verwendest",
+    "fr": "Télécharger les nouvelles versions en arrière-plan et les installer lorsque vous n’utilisez pas Aktar",
+    "es": "Descargar nuevas versiones en segundo plano e instalarlas cuando no estés usando Aktar",
+    "pt-BR": "Baixar novas versões em segundo plano e instalá-las quando você não estiver usando o Aktar",
+    "ja": "新しいバージョンをバックグラウンドでダウンロードし、Aktarを使っていないときにインストール",
+    "zh-Hans": "在后台下载新版本，并在你未使用 Aktar 时安装"
+  },
+  "Downloading Aktar {0}…": {
+    "tr": "Aktar {0} indiriliyor…",
+    "de": "Aktar {0} wird geladen …",
+    "fr": "Téléchargement d’Aktar {0}…",
+    "es": "Descargando Aktar {0}…",
+    "pt-BR": "Baixando o Aktar {0}…",
+    "ja": "Aktar {0}をダウンロード中…",
+    "zh-Hans": "正在下载 Aktar {0}…"
+  },
   "Edit Watched Folder": {
     "tr": "İzlenen Klasörü Düzenle",
     "de": "Überwachten Ordner bearbeiten",
@@ -1152,6 +631,15 @@
     "pt-BR": "De qualquer forma, o Aktar enviará a partir de agora todo arquivo novo que chegar em “{0}”.",
     "ja": "どちらを選んでも、今後「{0}」に入る新しいファイルはすべてアップロードされます。",
     "zh-Hans": "无论如何，Aktar 今后都会上传进入“{0}”的每个新文件。"
+  },
+  "Enter an Access Key ID and Secret Access Key.": {
+    "tr": "Bir Access Key ID ve Secret Access Key gir.",
+    "de": "Gib eine Access Key ID und einen Secret Access Key ein.",
+    "fr": "Saisissez un Access Key ID et une Secret Access Key.",
+    "es": "Introduce un Access Key ID y una Secret Access Key.",
+    "pt-BR": "Insira um Access Key ID e uma Secret Access Key.",
+    "ja": "アクセスキーIDとシークレットアクセスキーを入力してください。",
+    "zh-Hans": "请输入 Access Key ID 和 Secret Access Key。"
   },
   "Every file in the folder counts as new again, and Aktar asks before uploading many at once.": {
     "tr": "Klasördeki her dosya yeniden yeni sayılır; Aktar çok sayıda dosyayı bir kerede yüklemeden önce sorar.",
@@ -1171,6 +659,15 @@
     "ja": "除外パターン",
     "zh-Hans": "排除规则"
   },
+  "Expired": {
+    "tr": "Süresi doldu",
+    "de": "Abgelaufen",
+    "fr": "Expiré",
+    "es": "Caducado",
+    "pt-BR": "Expirado",
+    "ja": "期限切れ",
+    "zh-Hans": "已过期"
+  },
   "Files": {
     "tr": "Dosyalar",
     "de": "Dateien",
@@ -1179,6 +676,15 @@
     "pt-BR": "Arquivos",
     "ja": "ファイル",
     "zh-Hans": "文件"
+  },
+  "Files already in these folders will be deleted": {
+    "tr": "Bu klasörlerdeki mevcut dosyalar silinecek",
+    "de": "Dateien, die schon in diesen Ordnern liegen, werden gelöscht",
+    "fr": "Les fichiers déjà présents dans ces dossiers seront supprimés",
+    "es": "Se eliminarán los archivos que ya están en estas carpetas",
+    "pt-BR": "Os arquivos que já estão nessas pastas serão apagados",
+    "ja": "これらのフォルダにある既存のファイルは削除されます",
+    "zh-Hans": "这些文件夹中已有的文件将被删除"
   },
   "Folder": {
     "tr": "Klasör",
@@ -1198,6 +704,24 @@
     "ja": "フォルダが見つかりません",
     "zh-Hans": "找不到文件夹"
   },
+  "Folders": {
+    "tr": "Klasörler",
+    "de": "Ordner",
+    "fr": "Dossiers",
+    "es": "Carpetas",
+    "pt-BR": "Pastas",
+    "ja": "フォルダ",
+    "zh-Hans": "文件夹"
+  },
+  "Follows your Windows display language unless you pick one here.": {
+    "tr": "Burada bir dil seçmezsen Windows'un görüntüleme dilini kullanır.",
+    "de": "Verwendet die Anzeigesprache von Windows, sofern du hier keine andere wählst.",
+    "fr": "Utilise la langue d’affichage de Windows, sauf si vous en choisissez une ici.",
+    "es": "Usa el idioma de Windows, a menos que elijas otro aquí.",
+    "pt-BR": "Usa o idioma de exibição do Windows, a menos que você escolha outro aqui.",
+    "ja": "ここで選択しない場合は、Windowsの表示言語が使われます。",
+    "zh-Hans": "除非在此处选择，否则将使用 Windows 的显示语言。"
+  },
   "For 1 Hour": {
     "tr": "1 Saatliğine",
     "de": "Für 1 Stunde",
@@ -1215,6 +739,24 @@
     "pt-BR": "Esquecer o que “{0}” enviou?",
     "ja": "「{0}」のアップロード済みの記録を消去しますか？",
     "zh-Hans": "要忘记“{0}”已上传的内容吗？"
+  },
+  "Format": {
+    "tr": "Biçim",
+    "de": "Format",
+    "fr": "Format",
+    "es": "Formato",
+    "pt-BR": "Formato",
+    "ja": "フォーマット",
+    "zh-Hans": "格式"
+  },
+  "Hold Alt to rename files before they upload": {
+    "tr": "Dosyaları yüklenmeden önce yeniden adlandırmak için Alt tuşunu basılı tut",
+    "de": "Halte Alt gedrückt, um Dateien vor dem Hochladen umzubenennen",
+    "fr": "Maintenez Alt pour renommer les fichiers avant leur envoi",
+    "es": "Mantén pulsada Alt para renombrar los archivos antes de subirlos",
+    "pt-BR": "Segure Alt para renomear os arquivos antes do envio",
+    "ja": "Altキーを押したままにすると、アップロード前にファイル名を変更できます",
+    "zh-Hans": "按住 Alt 键可在上传前重命名文件"
   },
   "Ignore changes": {
     "tr": "Değişiklikleri yok say",
@@ -1234,6 +776,15 @@
     "ja": "サブフォルダを無視",
     "zh-Hans": "忽略子文件夹"
   },
+  "Image Processing": {
+    "tr": "Görsel İşleme",
+    "de": "Bildbearbeitung",
+    "fr": "Traitement des images",
+    "es": "Procesamiento de imágenes",
+    "pt-BR": "Processamento de imagens",
+    "ja": "画像の処理",
+    "zh-Hans": "图片处理"
+  },
   "Images": {
     "tr": "Görseller",
     "de": "Bilder",
@@ -1242,6 +793,15 @@
     "pt-BR": "Imagens",
     "ja": "画像",
     "zh-Hans": "图片"
+  },
+  "Include Ctrl, Alt, or the Windows key in the shortcut.": {
+    "tr": "Kısayola Ctrl, Alt veya Windows tuşunu ekle.",
+    "de": "Nimm Strg, Alt oder die Windows-Taste in das Tastenkürzel auf.",
+    "fr": "Incluez Ctrl, Alt ou la touche Windows dans le raccourci.",
+    "es": "Incluye Ctrl, Alt o la tecla Windows en el atajo.",
+    "pt-BR": "Inclua Ctrl, Alt ou a tecla Windows no atalho.",
+    "ja": "ショートカットにはCtrl、Alt、またはWindowsキーを含めてください。",
+    "zh-Hans": "快捷键需要包含 Ctrl、Alt 或 Windows 键。"
   },
   "Include patterns": {
     "tr": "Dahil etme kalıpları",
@@ -1270,6 +830,15 @@
     "ja": "含める（フラットにアップロード）",
     "zh-Hans": "包含，平铺上传"
   },
+  "Install and Relaunch": {
+    "tr": "Yükle ve Yeniden Başlat",
+    "de": "Installieren und neu starten",
+    "fr": "Installer et relancer",
+    "es": "Instalar y reiniciar",
+    "pt-BR": "Instalar e reabrir",
+    "ja": "インストールして再起動",
+    "zh-Hans": "安装并重新启动"
+  },
   "It exited with code {0}.": {
     "tr": "{0} koduyla çıktı.",
     "de": "Es wurde mit Code {0} beendet.",
@@ -1287,6 +856,24 @@
     "pt-BR": "Demorou mais de 10 segundos.",
     "ja": "10秒以上かかりました。",
     "zh-Hans": "耗时超过 10 秒。"
+  },
+  "It will be installed the next time you quit Aktar.": {
+    "tr": "Aktar'dan bir sonraki çıkışında yüklenecek.",
+    "de": "Es wird installiert, wenn du Aktar das nächste Mal beendest.",
+    "fr": "Elle sera installée la prochaine fois que vous quitterez Aktar.",
+    "es": "Se instalará la próxima vez que cierres Aktar.",
+    "pt-BR": "Ela será instalada na próxima vez que você fechar o Aktar.",
+    "ja": "次にAktarを終了したときにインストールされます。",
+    "zh-Hans": "将在你下次退出 Aktar 时安装。"
+  },
+  "It will be installed when you’re not using Aktar, or the next time you quit it.": {
+    "tr": "Aktar'ı kullanmadığın bir anda ya da ondan bir sonraki çıkışında yüklenecek.",
+    "de": "Es wird installiert, wenn du Aktar gerade nicht verwendest, oder wenn du Aktar das nächste Mal beendest.",
+    "fr": "Elle sera installée lorsque vous n’utilisez pas Aktar, ou la prochaine fois que vous le quitterez.",
+    "es": "Se instalará cuando no estés usando Aktar o la próxima vez que lo cierres.",
+    "pt-BR": "Ela será instalada quando você não estiver usando o Aktar ou na próxima vez que você o encerrar.",
+    "ja": "Aktarを使っていないとき、または次にAktarを終了したときにインストールされます。",
+    "zh-Hans": "将在你未使用 Aktar 时或下次退出 Aktar 时安装。"
   },
   "It worked.": {
     "tr": "Çalıştı.",
@@ -1306,6 +893,24 @@
     "ja": "フォルダ内のファイルとアップロード済みのファイルはそのまま残ります。",
     "zh-Hans": "其中的文件和已上传的内容都保持不变。"
   },
+  "Keep Original": {
+    "tr": "Orijinali Koru",
+    "de": "Original behalten",
+    "fr": "Conserver l’original",
+    "es": "Mantener original",
+    "pt-BR": "Manter original",
+    "ja": "元のまま",
+    "zh-Hans": "保持原格式"
+  },
+  "Keep Uploaded Files": {
+    "tr": "Yüklenen Dosyaları Koru",
+    "de": "Hochgeladene Dateien behalten",
+    "fr": "Conserver les fichiers envoyés",
+    "es": "Conservar los archivos subidos",
+    "pt-BR": "Manter arquivos enviados",
+    "ja": "アップロード済みのファイルを残す",
+    "zh-Hans": "保留已上传的文件"
+  },
   "Keep it": {
     "tr": "Olduğu gibi bırak",
     "de": "Behalten",
@@ -1314,6 +919,24 @@
     "pt-BR": "Manter",
     "ja": "そのまま残す",
     "zh-Hans": "保留"
+  },
+  "Keep the uploaded file": {
+    "tr": "Yüklenen dosyayı koru",
+    "de": "Hochgeladene Datei behalten",
+    "fr": "Conserver le fichier envoyé",
+    "es": "Conservar el archivo subido",
+    "pt-BR": "Manter o arquivo enviado",
+    "ja": "アップロード済みのファイルを残す",
+    "zh-Hans": "保留已上传的文件"
+  },
+  "Last checked {0}": {
+    "tr": "Son kontrol: {0}",
+    "de": "Zuletzt geprüft: {0}",
+    "fr": "Dernière vérification : {0}",
+    "es": "Última comprobación: {0}",
+    "pt-BR": "Última verificação: {0}",
+    "ja": "最終確認：{0}",
+    "zh-Hans": "上次检查：{0}"
   },
   "Last upload {0}": {
     "tr": "Son yükleme {0}",
@@ -1324,6 +947,51 @@
     "ja": "最終アップロード：{0}",
     "zh-Hans": "上次上传：{0}"
   },
+  "Later": {
+    "tr": "Sonra",
+    "de": "Später",
+    "fr": "Plus tard",
+    "es": "Más tarde",
+    "pt-BR": "Mais tarde",
+    "ja": "あとで",
+    "zh-Hans": "稍后"
+  },
+  "Lifecycle rules are set up.": {
+    "tr": "Yaşam döngüsü kuralları kurulu.",
+    "de": "Lebenszyklusregeln sind eingerichtet.",
+    "fr": "Les règles de cycle de vie sont configurées.",
+    "es": "Las reglas de ciclo de vida están configuradas.",
+    "pt-BR": "As regras de ciclo de vida estão configuradas.",
+    "ja": "ライフサイクルルールは設定済みです。",
+    "zh-Hans": "生命周期规则已设置。"
+  },
+  "Light (90%)": {
+    "tr": "Hafif (%90)",
+    "de": "Leicht (90 %)",
+    "fr": "Légère (90 %)",
+    "es": "Ligera (90 %)",
+    "pt-BR": "Leve (90%)",
+    "ja": "弱（90%）",
+    "zh-Hans": "轻度 (90%)"
+  },
+  "Longest side {0} px": {
+    "tr": "En uzun kenar {0} px",
+    "de": "Längste Seite {0} px",
+    "fr": "Côté le plus long : {0} px",
+    "es": "Lado más largo: {0} px",
+    "pt-BR": "Lado maior: {0} px",
+    "ja": "長辺 {0} px",
+    "zh-Hans": "最长边 {0} 像素"
+  },
+  "MD5 of the file’s contents": {
+    "tr": "Dosya içeriğinin MD5 değeri",
+    "de": "MD5 des Dateiinhalts",
+    "fr": "MD5 du contenu du fichier",
+    "es": "MD5 del contenido del archivo",
+    "pt-BR": "MD5 do conteúdo do arquivo",
+    "ja": "ファイル内容の MD5",
+    "zh-Hans": "文件内容的 MD5"
+  },
   "Maximum size": {
     "tr": "En büyük boyut",
     "de": "Maximale Größe",
@@ -1333,6 +1001,15 @@
     "ja": "最大サイズ",
     "zh-Hans": "最大大小"
   },
+  "Medium (80%)": {
+    "tr": "Orta (%80)",
+    "de": "Mittel (80 %)",
+    "fr": "Moyenne (80 %)",
+    "es": "Media (80 %)",
+    "pt-BR": "Média (80%)",
+    "ja": "中（80%）",
+    "zh-Hans": "中度 (80%)"
+  },
   "Minimum size": {
     "tr": "En küçük boyut",
     "de": "Minimale Größe",
@@ -1341,6 +1018,15 @@
     "pt-BR": "Tamanho mínimo",
     "ja": "最小サイズ",
     "zh-Hans": "最小大小"
+  },
+  "More": {
+    "tr": "Daha Fazla",
+    "de": "Mehr",
+    "fr": "Plus",
+    "es": "Más",
+    "pt-BR": "Mais",
+    "ja": "その他",
+    "zh-Hans": "更多"
   },
   "Move to Recycle Bin": {
     "tr": "Geri Dönüşüm Kutusu'na taşı",
@@ -1369,6 +1055,42 @@
     "ja": "名前",
     "zh-Hans": "名称"
   },
+  "Name This Upload": {
+    "tr": "Bu Yüklemeye Ad Ver",
+    "de": "Upload benennen",
+    "fr": "Nommer cet envoi",
+    "es": "Nombrar esta subida",
+    "pt-BR": "Nomear este envio",
+    "ja": "アップロードに名前を付ける",
+    "zh-Hans": "为此上传命名"
+  },
+  "Name the rules aktar-expire-1d, aktar-expire-7d, aktar-expire-14d, and aktar-expire-30d, or Aktar won't recognize them.": {
+    "tr": "Kuralları aktar-expire-1d, aktar-expire-7d, aktar-expire-14d ve aktar-expire-30d olarak adlandırın; aksi halde Aktar onları tanımaz.",
+    "de": "Benenne die Regeln aktar-expire-1d, aktar-expire-7d, aktar-expire-14d und aktar-expire-30d, sonst erkennt Aktar sie nicht.",
+    "fr": "Nommez les règles aktar-expire-1d, aktar-expire-7d, aktar-expire-14d et aktar-expire-30d, sinon Aktar ne les reconnaîtra pas.",
+    "es": "Nombra las reglas aktar-expire-1d, aktar-expire-7d, aktar-expire-14d y aktar-expire-30d, o Aktar no las reconocerá.",
+    "pt-BR": "Nomeie as regras aktar-expire-1d, aktar-expire-7d, aktar-expire-14d e aktar-expire-30d, ou o Aktar não as reconhecerá.",
+    "ja": "ルール名は aktar-expire-1d、aktar-expire-7d、aktar-expire-14d、aktar-expire-30d にしてください。それ以外の名前では Aktar が認識しません。",
+    "zh-Hans": "请将规则命名为 aktar-expire-1d、aktar-expire-7d、aktar-expire-14d 和 aktar-expire-30d，否则 Aktar 无法识别。"
+  },
+  "No credentials found in Credential Manager for this destination.": {
+    "tr": "Bu hedef için Kimlik Bilgileri Yöneticisi'nde kimlik bilgisi bulunamadı.",
+    "de": "Für dieses Ziel wurden keine Zugangsdaten in der Anmeldeinformationsverwaltung gefunden.",
+    "fr": "Aucun identifiant trouvé dans le Gestionnaire d’identification pour cette destination.",
+    "es": "No se han encontrado credenciales en el Administrador de credenciales para este destino.",
+    "pt-BR": "Nenhuma credencial encontrada no Gerenciador de Credenciais para este destino.",
+    "ja": "このアップロード先の認証情報が資格情報マネージャーに見つかりません。",
+    "zh-Hans": "凭据管理器中找不到此上传目标的凭证。"
+  },
+  "No destination to upload to. Add one in Settings.": {
+    "tr": "Yüklenecek bir hedef yok. Ayarlar'dan bir tane ekle.",
+    "de": "Kein Ziel zum Hochladen. Füge in den Einstellungen eines hinzu.",
+    "fr": "Aucune destination d’envoi. Ajoutez-en une dans les Réglages.",
+    "es": "No hay ningún destino al que subir. Añade uno en Ajustes.",
+    "pt-BR": "Não há destino para enviar. Adicione um em Ajustes.",
+    "ja": "アップロード先がありません。設定で追加してください。",
+    "zh-Hans": "没有可上传的目标。请在设置中添加一个。"
+  },
   "No watched folders yet": {
     "tr": "Henüz izlenen klasör yok",
     "de": "Noch keine überwachten Ordner",
@@ -1378,6 +1100,15 @@
     "ja": "監視フォルダはまだありません",
     "zh-Hans": "还没有监视文件夹"
   },
+  "Not set up yet.": {
+    "tr": "Henüz kurulmadı.",
+    "de": "Noch nicht eingerichtet.",
+    "fr": "Pas encore configuré.",
+    "es": "Aún no está configurado.",
+    "pt-BR": "Ainda não configurado.",
+    "ja": "まだ設定されていません。",
+    "zh-Hans": "尚未设置。"
+  },
   "Notifications": {
     "tr": "Bildirimler",
     "de": "Mitteilungen",
@@ -1386,6 +1117,24 @@
     "pt-BR": "Notificações",
     "ja": "通知",
     "zh-Hans": "通知"
+  },
+  "On This PC": {
+    "tr": "Bu Bilgisayarda",
+    "de": "Auf diesem PC",
+    "fr": "Sur ce PC",
+    "es": "En este PC",
+    "pt-BR": "Neste PC",
+    "ja": "このPC",
+    "zh-Hans": "在这台电脑上"
+  },
+  "On many keyboards Ctrl+Alt types characters like @ or €. Add Shift or the Windows key.": {
+    "tr": "Birçok klavyede Ctrl+Alt, @ ya da € gibi karakterler yazar. Shift ya da Windows tuşunu da ekle.",
+    "de": "Auf vielen Tastaturen tippt Strg+Alt Zeichen wie @ oder €. Nimm Umschalt oder die Windows-Taste dazu.",
+    "fr": "Sur de nombreux claviers, Ctrl+Alt sert à taper des caractères comme @ ou €. Ajoutez Maj ou la touche Windows.",
+    "es": "En muchos teclados, Ctrl+Alt escribe caracteres como @ o €. Añade Mayús o la tecla Windows.",
+    "pt-BR": "Em muitos teclados, Ctrl+Alt digita caracteres como @ ou €. Adicione Shift ou a tecla Windows.",
+    "ja": "多くのキーボードでは、Ctrl+Altで@や€などの文字を入力します。ShiftキーかWindowsキーを追加してください。",
+    "zh-Hans": "在许多键盘上，Ctrl+Alt 用于输入 @ 或 € 等字符。请加上 Shift 或 Windows 键。"
   },
   "One per batch": {
     "tr": "Her toplu yükleme için bir tane",
@@ -1405,6 +1154,15 @@
     "ja": "ファイルごとに1件",
     "zh-Hans": "每个文件一条"
   },
+  "Only available when the original file stays in the folder.": {
+    "tr": "Yalnızca asıl dosya klasörde kaldığında kullanılabilir.",
+    "de": "Nur verfügbar, wenn die Originaldatei im Ordner bleibt.",
+    "fr": "Disponible uniquement si le fichier d’origine reste dans le dossier.",
+    "es": "Solo disponible cuando el archivo original se queda en la carpeta.",
+    "pt-BR": "Disponível só quando o arquivo original fica na pasta.",
+    "ja": "元のファイルがフォルダに残る場合のみ使用できます。",
+    "zh-Hans": "仅在原文件保留在文件夹中时可用。"
+  },
   "Only failures": {
     "tr": "Yalnızca hatalar",
     "de": "Nur Fehler",
@@ -1414,6 +1172,15 @@
     "ja": "失敗のみ",
     "zh-Hans": "仅失败时"
   },
+  "Only files can be uploaded, not folders.": {
+    "tr": "Yalnızca dosyalar yüklenebilir, klasörler yüklenemez.",
+    "de": "Nur Dateien können hochgeladen werden, keine Ordner.",
+    "fr": "Seuls les fichiers peuvent être téléversés, pas les dossiers.",
+    "es": "Solo se pueden subir archivos, no carpetas.",
+    "pt-BR": "Só é possível enviar arquivos, não pastas.",
+    "ja": "アップロードできるのはファイルのみで、フォルダはアップロードできません。",
+    "zh-Hans": "只能上传文件，不能上传文件夹。"
+  },
   "Only once auto-delete is set up for the destination.": {
     "tr": "Yalnızca hedef için otomatik silme kurulduysa geçerlidir.",
     "de": "Nur, wenn automatisches Löschen für das Ziel eingerichtet ist.",
@@ -1422,6 +1189,15 @@
     "pt-BR": "Só depois que a exclusão automática estiver configurada no destino.",
     "ja": "アップロード先で自動削除を設定した場合のみ有効です。",
     "zh-Hans": "仅在上传目标设置了自动删除后生效。"
+  },
+  "Open Aktar to delete or keep them.": {
+    "tr": "Silmek ya da korumak için Aktar'ı aç.",
+    "de": "Öffne Aktar, um sie zu löschen oder zu behalten.",
+    "fr": "Ouvrez Aktar pour les supprimer ou les conserver.",
+    "es": "Abre Aktar para eliminarlos o conservarlos.",
+    "pt-BR": "Abra o Aktar para excluí-los ou mantê-los.",
+    "ja": "Aktarを開いて、削除するか残すか選んでください。",
+    "zh-Hans": "打开 Aktar 选择删除或保留。"
   },
   "Open Aktar to upload or skip them.": {
     "tr": "Yüklemek ya da atlamak için Aktar'ı aç.",
@@ -1450,6 +1226,24 @@
     "ja": "一時停止",
     "zh-Hans": "暂停"
   },
+  "Pause Watched Folders?": {
+    "tr": "İzlenen Klasörler Duraklatılsın mı?",
+    "de": "Überwachte Ordner pausieren?",
+    "fr": "Mettre en pause les dossiers surveillés ?",
+    "es": "¿Pausar las carpetas vigiladas?",
+    "pt-BR": "Pausar as pastas monitoradas?",
+    "ja": "監視フォルダを一時停止しますか？",
+    "zh-Hans": "暂停监视文件夹？"
+  },
+  "Pause Watching": {
+    "tr": "İzlemeyi Duraklat",
+    "de": "Überwachung pausieren",
+    "fr": "Suspendre la surveillance",
+    "es": "Pausar la vigilancia",
+    "pt-BR": "Pausar monitoramento",
+    "ja": "監視を一時停止",
+    "zh-Hans": "暂停监视"
+  },
   "Pause on battery power": {
     "tr": "Pille çalışırken duraklat",
     "de": "Im Akkubetrieb pausieren",
@@ -1467,15 +1261,6 @@
     "pt-BR": "Pausar em conexões limitadas",
     "ja": "従量制課金接続では一時停止",
     "zh-Hans": "使用按流量计费的网络时暂停"
-  },
-  "Pause Watching": {
-    "tr": "İzlemeyi Duraklat",
-    "de": "Überwachung pausieren",
-    "fr": "Suspendre la surveillance",
-    "es": "Pausar la vigilancia",
-    "pt-BR": "Pausar monitoramento",
-    "ja": "監視を一時停止",
-    "zh-Hans": "暂停监视"
   },
   "Paused": {
     "tr": "Duraklatıldı",
@@ -1513,6 +1298,69 @@
     "ja": "{0}まで一時停止中",
     "zh-Hans": "已暂停至 {0}"
   },
+  "Pick the script with “Add Script…”.": {
+    "tr": "Betiği “Betik Ekle…” ile seç.",
+    "de": "Wähle das Skript mit „Skript hinzufügen …“ aus.",
+    "fr": "Choisissez le script avec « Ajouter un script… ».",
+    "es": "Elige el script con «Añadir script…».",
+    "pt-BR": "Escolha o script com “Adicionar script…”.",
+    "ja": "「スクリプトを追加…」でスクリプトを選んでください。",
+    "zh-Hans": "请通过“添加脚本…”选择脚本。"
+  },
+  "Press a shortcut…": {
+    "tr": "Bir kısayola bas…",
+    "de": "Tastenkürzel drücken …",
+    "fr": "Appuyez sur un raccourci…",
+    "es": "Pulsa un atajo…",
+    "pt-BR": "Pressione um atalho…",
+    "ja": "ショートカットを押してください…",
+    "zh-Hans": "请按下快捷键…"
+  },
+  "QR Code": {
+    "tr": "QR Kodu",
+    "de": "QR-Code",
+    "fr": "Code QR",
+    "es": "Código QR",
+    "pt-BR": "Código QR",
+    "ja": "QRコード",
+    "zh-Hans": "二维码"
+  },
+  "Quit Aktar": {
+    "tr": "Aktar'dan Çık",
+    "de": "Aktar beenden",
+    "fr": "Quitter Aktar",
+    "es": "Salir de Aktar",
+    "pt-BR": "Sair do Aktar",
+    "ja": "Aktarを終了",
+    "zh-Hans": "退出 Aktar"
+  },
+  "Record Shortcut": {
+    "tr": "Kısayol Kaydet",
+    "de": "Tastenkürzel aufnehmen",
+    "fr": "Enregistrer un raccourci",
+    "es": "Grabar atajo",
+    "pt-BR": "Gravar atalho",
+    "ja": "ショートカットを記録",
+    "zh-Hans": "录制快捷键"
+  },
+  "Remind Me Later": {
+    "tr": "Daha Sonra Hatırlat",
+    "de": "Später erinnern",
+    "fr": "Me le rappeler plus tard",
+    "es": "Recordármelo más tarde",
+    "pt-BR": "Lembrar mais tarde",
+    "ja": "あとで通知",
+    "zh-Hans": "稍后提醒我"
+  },
+  "Remove “{0}”?": {
+    "tr": "“{0}” kaldırılsın mı?",
+    "de": "„{0}“ entfernen?",
+    "fr": "Supprimer « {0} » ?",
+    "es": "¿Quitar “{0}”?",
+    "pt-BR": "Remover “{0}”?",
+    "ja": "“{0}”を削除しますか？",
+    "zh-Hans": "要移除“{0}”吗？"
+  },
   "Removed destination": {
     "tr": "Kaldırılmış hedef",
     "de": "Entferntes Ziel",
@@ -1521,6 +1369,15 @@
     "pt-BR": "Destino removido",
     "ja": "削除されたアップロード先",
     "zh-Hans": "已移除的上传目标"
+  },
+  "Rename and upload clipboard": {
+    "tr": "Panoyu yeniden adlandırıp yükle",
+    "de": "Zwischenablage umbenennen und hochladen",
+    "fr": "Renommer et envoyer le presse-papiers",
+    "es": "Renombrar y subir el portapapeles",
+    "pt-BR": "Renomear e enviar a área de transferência",
+    "ja": "名前を付けてクリップボードをアップロード",
+    "zh-Hans": "重命名并上传剪贴板"
   },
   "Replace the uploaded file (keeps the link)": {
     "tr": "Yüklenen dosyanın yerine koy (bağlantı aynı kalır)",
@@ -1549,6 +1406,15 @@
     "ja": "リセット…",
     "zh-Hans": "重置…"
   },
+  "Resize": {
+    "tr": "Yeniden Boyutlandır",
+    "de": "Größe ändern",
+    "fr": "Redimensionner",
+    "es": "Cambiar tamaño",
+    "pt-BR": "Redimensionar",
+    "ja": "サイズ変更",
+    "zh-Hans": "调整大小"
+  },
   "Resume": {
     "tr": "Sürdür",
     "de": "Fortsetzen",
@@ -1567,6 +1433,15 @@
     "ja": "監視を再開",
     "zh-Hans": "恢复监视"
   },
+  "Resuming upload…": {
+    "tr": "Yükleme sürdürülüyor…",
+    "de": "Upload wird fortgesetzt …",
+    "fr": "Reprise de l’envoi…",
+    "es": "Reanudando la subida…",
+    "pt-BR": "Retomando o envio…",
+    "ja": "アップロードを再開中…",
+    "zh-Hans": "正在继续上传…"
+  },
   "Retry Failed": {
     "tr": "Başarısızları Tekrar Dene",
     "de": "Fehlgeschlagene erneut versuchen",
@@ -1575,6 +1450,42 @@
     "pt-BR": "Tentar falhas novamente",
     "ja": "失敗したものを再試行",
     "zh-Hans": "重试失败的文件"
+  },
+  "Reuse links for duplicate files": {
+    "tr": "Aynı dosyalarda bağlantıyı yeniden kullan",
+    "de": "Links für doppelte Dateien wiederverwenden",
+    "fr": "Réutiliser les liens des fichiers en double",
+    "es": "Reutilizar enlaces de archivos duplicados",
+    "pt-BR": "Reutilizar links de arquivos duplicados",
+    "ja": "重複ファイルのリンクを再利用",
+    "zh-Hans": "重复文件复用链接"
+  },
+  "SHA-256 of the file’s contents": {
+    "tr": "Dosya içeriğinin SHA-256 değeri",
+    "de": "SHA-256 des Dateiinhalts",
+    "fr": "SHA-256 du contenu du fichier",
+    "es": "SHA-256 del contenido del archivo",
+    "pt-BR": "SHA-256 do conteúdo do arquivo",
+    "ja": "ファイル内容の SHA-256",
+    "zh-Hans": "文件内容的 SHA-256"
+  },
+  "Save Image…": {
+    "tr": "Görseli Kaydet…",
+    "de": "Bild sichern …",
+    "fr": "Enregistrer l’image…",
+    "es": "Guardar imagen…",
+    "pt-BR": "Salvar imagem…",
+    "ja": "画像を保存…",
+    "zh-Hans": "保存图片…"
+  },
+  "Scan to open the link": {
+    "tr": "Bağlantıyı açmak için tara",
+    "de": "Scannen, um den Link zu öffnen",
+    "fr": "Scannez pour ouvrir le lien",
+    "es": "Escanea para abrir el enlace",
+    "pt-BR": "Escaneie para abrir o link",
+    "ja": "スキャンしてリンクを開く",
+    "zh-Hans": "扫描以打开链接"
   },
   "Screenshots only": {
     "tr": "Yalnızca ekran görüntüleri",
@@ -1621,6 +1532,33 @@
     "ja": "カンマ区切り（例：*.png, *.jpg）",
     "zh-Hans": "用逗号分隔，例如 *.png, *.jpg"
   },
+  "Set Up": {
+    "tr": "Kur",
+    "de": "Einrichten",
+    "fr": "Configurer",
+    "es": "Configurar",
+    "pt-BR": "Configurar",
+    "ja": "設定",
+    "zh-Hans": "设置"
+  },
+  "Set Up Anyway": {
+    "tr": "Yine de Kur",
+    "de": "Trotzdem einrichten",
+    "fr": "Configurer quand même",
+    "es": "Configurar de todos modos",
+    "pt-BR": "Configurar mesmo assim",
+    "ja": "このまま設定",
+    "zh-Hans": "仍然设置"
+  },
+  "Show QR Code": {
+    "tr": "QR Kodunu Göster",
+    "de": "QR-Code zeigen",
+    "fr": "Afficher le code QR",
+    "es": "Mostrar código QR",
+    "pt-BR": "Mostrar código QR",
+    "ja": "QRコードを表示",
+    "zh-Hans": "显示二维码"
+  },
   "Show in Explorer": {
     "tr": "Dosya Gezgini'nde Göster",
     "de": "Im Explorer anzeigen",
@@ -1648,6 +1586,24 @@
     "ja": "既存のファイルをスキップ",
     "zh-Hans": "跳过现有文件"
   },
+  "Software Update": {
+    "tr": "Yazılım Güncelleme",
+    "de": "Softwareupdate",
+    "fr": "Mise à jour",
+    "es": "Actualización de software",
+    "pt-BR": "Atualização de Software",
+    "ja": "ソフトウェアアップデート",
+    "zh-Hans": "软件更新"
+  },
+  "Something else was uploaded under this name at the same time.": {
+    "tr": "Aynı anda bu adla başka bir şey yüklendi.",
+    "de": "Gleichzeitig wurde etwas anderes unter diesem Namen hochgeladen.",
+    "fr": "Autre chose a été envoyé sous ce nom au même moment.",
+    "es": "Se subió otra cosa con este nombre al mismo tiempo.",
+    "pt-BR": "Outra coisa foi enviada com este nome ao mesmo tempo.",
+    "ja": "同時に別のものがこの名前でアップロードされました。",
+    "zh-Hans": "同一时间有其他内容以此名称上传。"
+  },
   "Source": {
     "tr": "Kaynak",
     "de": "Quelle",
@@ -1665,6 +1621,15 @@
     "pt-BR": "Parar de monitorar “{0}”?",
     "ja": "「{0}」の監視をやめますか？",
     "zh-Hans": "要停止监视“{0}”吗？"
+  },
+  "Strong (65%)": {
+    "tr": "Güçlü (%65)",
+    "de": "Stark (65 %)",
+    "fr": "Forte (65 %)",
+    "es": "Fuerte (65 %)",
+    "pt-BR": "Forte (65%)",
+    "ja": "強（65%）",
+    "zh-Hans": "高度 (65%)"
   },
   "Subfolders": {
     "tr": "Alt klasörler",
@@ -1711,14 +1676,14 @@
     "ja": "そのフォルダは存在しません。",
     "zh-Hans": "该文件夹不存在。"
   },
-  "the file’s folder inside it": {
-    "tr": "içindeki dosyanın klasörü",
-    "de": "der Ordner der Datei darin",
-    "fr": "le dossier du fichier à l’intérieur",
-    "es": "la carpeta del archivo dentro de ella",
-    "pt-BR": "a pasta do arquivo dentro dela",
-    "ja": "その中でのファイルのフォルダ",
-    "zh-Hans": "文件在其中所在的文件夹"
+  "That key combination can’t be used as a shortcut.": {
+    "tr": "Bu tuş birleşimi kısayol olarak kullanılamaz.",
+    "de": "Diese Tastenkombination kann nicht als Tastenkürzel verwendet werden.",
+    "fr": "Cette combinaison de touches ne peut pas servir de raccourci.",
+    "es": "Esa combinación de teclas no se puede usar como atajo.",
+    "pt-BR": "Essa combinação de teclas não pode ser usada como atalho.",
+    "ja": "このキーの組み合わせはショートカットに使用できません。",
+    "zh-Hans": "此按键组合不能用作快捷键。"
   },
   "The URL must start with https:// or http://.": {
     "tr": "URL https:// veya http:// ile başlamalı.",
@@ -1729,14 +1694,50 @@
     "ja": "URLはhttps://またはhttp://で始まる必要があります。",
     "zh-Hans": "URL 必须以 https:// 或 http:// 开头。"
   },
-  "the watched folder’s name": {
-    "tr": "izlenen klasörün adı",
-    "de": "der Name des überwachten Ordners",
-    "fr": "le nom du dossier surveillé",
-    "es": "el nombre de la carpeta vigilada",
-    "pt-BR": "o nome da pasta monitorada",
-    "ja": "監視フォルダの名前",
-    "zh-Hans": "监视文件夹的名称"
+  "The bucket's lifecycle rules couldn't be read, so nothing was changed.": {
+    "tr": "Bucket'ın yaşam döngüsü kuralları okunamadı, bu yüzden hiçbir şey değiştirilmedi.",
+    "de": "Die Lebenszyklusregeln des Buckets konnten nicht gelesen werden, daher wurde nichts geändert.",
+    "fr": "Les règles de cycle de vie du bucket n'ont pas pu être lues, donc rien n'a été modifié.",
+    "es": "No se pudieron leer las reglas de ciclo de vida del bucket, así que no se cambió nada.",
+    "pt-BR": "Não foi possível ler as regras de ciclo de vida do bucket, então nada foi alterado.",
+    "ja": "バケットのライフサイクルルールを読み取れなかったため、何も変更していません。",
+    "zh-Hans": "无法读取存储桶的生命周期规则，因此未做任何更改。"
+  },
+  "The clipboard has no file or image to upload.": {
+    "tr": "Panoda yüklenecek bir dosya ya da görsel yok.",
+    "de": "In der Zwischenablage ist keine Datei und kein Bild zum Hochladen.",
+    "fr": "Le presse-papiers ne contient aucun fichier ni image à envoyer.",
+    "es": "El portapapeles no tiene ningún archivo ni imagen para subir.",
+    "pt-BR": "A área de transferência não tem arquivo nem imagem para enviar.",
+    "ja": "クリップボードにアップロードできるファイルや画像がありません。",
+    "zh-Hans": "剪贴板中没有可上传的文件或图片。"
+  },
+  "The connection stopped responding.": {
+    "tr": "Bağlantı yanıt vermeyi bıraktı.",
+    "de": "Die Verbindung reagiert nicht mehr.",
+    "fr": "La connexion ne répond plus.",
+    "es": "La conexión dejó de responder.",
+    "pt-BR": "A conexão parou de responder.",
+    "ja": "接続が応答しなくなりました。",
+    "zh-Hans": "连接已停止响应。"
+  },
+  "The folder name is required.": {
+    "tr": "Klasör adı gerekli.",
+    "de": "Ein Ordnername ist erforderlich.",
+    "fr": "Le nom du dossier est obligatoire.",
+    "es": "El nombre de la carpeta es obligatorio.",
+    "pt-BR": "O nome da pasta é obrigatório.",
+    "ja": "フォルダ名を入力してください。",
+    "zh-Hans": "需要填写文件夹名称。"
+  },
+  "The provider didn't keep the lifecycle rules.": {
+    "tr": "Sağlayıcı yaşam döngüsü kurallarını saklamadı.",
+    "de": "Der Anbieter hat die Lebenszyklusregeln nicht übernommen.",
+    "fr": "Le fournisseur n'a pas conservé les règles de cycle de vie.",
+    "es": "El proveedor no conservó las reglas de ciclo de vida.",
+    "pt-BR": "O provedor não manteve as regras de ciclo de vida.",
+    "ja": "プロバイダがライフサイクルルールを保持しませんでした。",
+    "zh-Hans": "服务商未保留生命周期规则。"
   },
   "This folder already has 1 file. Upload it now?": {
     "tr": "Bu klasörde zaten 1 dosya var. Şimdi yüklensin mi?",
@@ -1765,6 +1766,60 @@
     "ja": "このフォルダは、すでに監視中の「{0}」と重なっています。",
     "zh-Hans": "此文件夹与已在监视的“{0}”重叠。"
   },
+  "This item can’t be uploaded. Save it as a file first, then drop the file.": {
+    "tr": "Bu öge yüklenemiyor. Önce bir dosya olarak kaydet, sonra dosyayı bırak.",
+    "de": "Dieses Element kann nicht hochgeladen werden. Speichere es zuerst als Datei und zieh dann die Datei hierher.",
+    "fr": "Cet élément ne peut pas être téléversé. Enregistrez-le d’abord comme fichier, puis déposez le fichier.",
+    "es": "Este elemento no se puede subir. Guárdalo primero como archivo y luego suelta el archivo.",
+    "pt-BR": "Este item não pode ser enviado. Salve-o primeiro como arquivo e depois solte o arquivo.",
+    "ja": "この項目はアップロードできません。まずファイルとして保存してから、そのファイルをドロップしてください。",
+    "zh-Hans": "无法上传此项目。请先将其保存为文件，然后拖放该文件。"
+  },
+  "This shortcut is already in use. Try a different one.": {
+    "tr": "Bu kısayol zaten kullanılıyor. Farklı bir tane dene.",
+    "de": "Dieses Tastenkürzel wird schon verwendet. Probier ein anderes.",
+    "fr": "Ce raccourci est déjà utilisé. Essayez-en un autre.",
+    "es": "Este atajo ya está en uso. Prueba con otro.",
+    "pt-BR": "Este atalho já está em uso. Tente um diferente.",
+    "ja": "このショートカットはすでに使用されています。別のショートカットを試してください。",
+    "zh-Hans": "此快捷键已在使用中，请换一个。"
+  },
+  "This shortcut is already used by another app. Try a different one.": {
+    "tr": "Bu kısayolu başka bir uygulama kullanıyor. Farklı bir tane dene.",
+    "de": "Dieses Tastenkürzel wird schon von einer anderen App verwendet. Probier ein anderes.",
+    "fr": "Ce raccourci est déjà utilisé par une autre app. Essayez-en un autre.",
+    "es": "Otra app ya usa este atajo. Prueba con otro.",
+    "pt-BR": "Outro app já usa este atalho. Tente um diferente.",
+    "ja": "このショートカットはほかのアプリで使用されています。別のショートカットを試してください。",
+    "zh-Hans": "此快捷键已被其他应用使用，请换一个。"
+  },
+  "This transfer link has expired. Make a new one on the other device.": {
+    "tr": "Bu aktarım bağlantısının süresi doldu. Diğer cihazda yeni bir tane oluştur.",
+    "de": "Dieser Übertragungslink ist abgelaufen. Erstelle auf dem anderen Gerät einen neuen.",
+    "fr": "Ce lien de transfert a expiré. Créez-en un nouveau sur l’autre appareil.",
+    "es": "Este enlace de transferencia ha caducado. Crea uno nuevo en el otro dispositivo.",
+    "pt-BR": "Este link de transferência expirou. Crie um novo no outro dispositivo.",
+    "ja": "この転送リンクは期限切れです。もう一方のデバイスで新しく作成してください。",
+    "zh-Hans": "此传输链接已过期。请在另一台设备上重新生成。"
+  },
+  "Thumbnails of photos, videos, PDFs and documents are made on this PC and kept only here. Files already in the bucket get one when they’re shown, if they’re under 25 MB.": {
+    "tr": "Fotoğraf, video, PDF ve belgelerin küçük resimleri bu bilgisayarda oluşturulur ve yalnızca burada tutulur. Bucket'ta zaten bulunan dosyalar, 25 MB'tan küçüklerse gösterildiklerinde bir küçük resim alır.",
+    "de": "Vorschaubilder von Fotos, Videos, PDFs und Dokumenten werden auf diesem PC erstellt und nur hier gespeichert. Dateien, die schon im Bucket liegen, bekommen eines, sobald sie angezeigt werden, wenn sie kleiner als 25 MB sind.",
+    "fr": "Les vignettes des photos, vidéos, PDF et documents sont créées sur ce PC et conservées uniquement ici. Les fichiers déjà présents dans le bucket en reçoivent une lorsqu’ils sont affichés, s’ils font moins de 25 Mo.",
+    "es": "Las miniaturas de fotos, vídeos, PDF y documentos se crean en este PC y solo se guardan aquí. Los archivos que ya están en el bucket reciben una al mostrarse, si ocupan menos de 25 MB.",
+    "pt-BR": "As miniaturas de fotos, vídeos, PDFs e documentos são criadas neste PC e guardadas só aqui. Arquivos que já estão no bucket ganham uma quando são exibidos, se tiverem menos de 25 MB.",
+    "ja": "写真、ビデオ、PDF、書類のサムネイルはこのPCで作成され、ここにだけ保存されます。すでにバケットにあるファイルは、25 MB未満なら表示されたときにサムネイルが作成されます。",
+    "zh-Hans": "照片、视频、PDF 和文稿的缩略图会在这台电脑上生成，并只保存在这里。已在存储桶中的文件若小于 25 MB，会在显示时生成缩略图。"
+  },
+  "Thumbnails on this PC": {
+    "tr": "Bu bilgisayardaki küçük resimler",
+    "de": "Vorschaubilder auf diesem PC",
+    "fr": "Vignettes sur ce PC",
+    "es": "Miniaturas en este PC",
+    "pt-BR": "Miniaturas neste PC",
+    "ja": "このPC上のサムネイル",
+    "zh-Hans": "这台电脑上的缩略图"
+  },
   "Turn On": {
     "tr": "Aç",
     "de": "Einschalten",
@@ -1782,6 +1837,15 @@
     "pt-BR": "Ative “Abrir ao iniciar sessão” para o monitoramento continuar depois de reiniciar",
     "ja": "再起動後も監視を続けるには「ログイン時に起動」をオンにしてください",
     "zh-Hans": "打开“登录时启动”，重启后也能继续监视"
+  },
+  "Turn on for servers without a subdomain for each bucket, such as MinIO or a server reached by IP address.": {
+    "tr": "Her bucket için alt alan adı olmayan sunucularda aç; örneğin MinIO ya da IP adresiyle erişilen bir sunucu.",
+    "de": "Für Server ohne eigene Subdomain pro Bucket einschalten, etwa MinIO oder einen Server, der per IP-Adresse erreicht wird.",
+    "fr": "À activer pour les serveurs sans sous-domaine par bucket, comme MinIO ou un serveur joint par son adresse IP.",
+    "es": "Actívalo para servidores sin un subdominio por bucket, como MinIO o un servidor al que se accede por dirección IP.",
+    "pt-BR": "Ative para servidores sem um subdomínio para cada bucket, como o MinIO ou um servidor acessado por endereço IP.",
+    "ja": "MinIOやIPアドレスで接続するサーバーなど、バケットごとのサブドメインがないサーバーではオンにします。",
+    "zh-Hans": "适用于没有为每个存储桶提供子域名的服务器，例如 MinIO 或通过 IP 地址访问的服务器。"
   },
   "Until I Resume": {
     "tr": "Ben sürdürene kadar",
@@ -1801,32 +1865,23 @@
     "ja": "明日まで",
     "zh-Hans": "直到明天"
   },
-  "Upload again with a new link": {
-    "tr": "Yeni bir bağlantıyla tekrar yükle",
-    "de": "Mit neuem Link erneut hochladen",
-    "fr": "Renvoyer avec un nouveau lien",
-    "es": "Volver a subir con un enlace nuevo",
-    "pt-BR": "Enviar de novo com um novo link",
-    "ja": "新しいリンクで再アップロード",
-    "zh-Hans": "以新链接重新上传"
+  "Update check failed": {
+    "tr": "Güncelleme denetlenemedi",
+    "de": "Suche nach Updates fehlgeschlagen",
+    "fr": "La recherche de mises à jour a échoué",
+    "es": "No se pudieron buscar actualizaciones",
+    "pt-BR": "Não foi possível verificar atualizações",
+    "ja": "アップデートを確認できませんでした",
+    "zh-Hans": "检查更新失败"
   },
-  "Upload files the moment they land in a folder.": {
-    "tr": "Dosyaları bir klasöre düştükleri anda yükle.",
-    "de": "Lade Dateien hoch, sobald sie in einem Ordner landen.",
-    "fr": "Envoyez les fichiers dès qu’ils arrivent dans un dossier.",
-    "es": "Sube los archivos en cuanto llegan a una carpeta.",
-    "pt-BR": "Envie arquivos assim que chegarem a uma pasta.",
-    "ja": "フォルダに入った瞬間にファイルをアップロードします。",
-    "zh-Hans": "文件一进入文件夹就立即上传。"
-  },
-  "Upload online-only files (downloads them first)": {
-    "tr": "Yalnızca çevrimiçi dosyaları da yükle (önce indirir)",
-    "de": "Nur online verfügbare Dateien hochladen (lädt sie zuerst herunter)",
-    "fr": "Envoyer les fichiers uniquement en ligne (les télécharge d’abord)",
-    "es": "Subir archivos solo en línea (los descarga primero)",
-    "pt-BR": "Enviar arquivos somente online (baixa-os antes)",
-    "ja": "オンライン専用のファイルもアップロード（先にダウンロードします）",
-    "zh-Hans": "上传仅联机文件（会先下载）"
+  "Upload Clipboard": {
+    "tr": "Panoyu Yükle",
+    "de": "Zwischenablage hochladen",
+    "fr": "Envoyer le presse-papiers",
+    "es": "Subir el portapapeles",
+    "pt-BR": "Enviar área de transferência",
+    "ja": "クリップボードをアップロード",
+    "zh-Hans": "上传剪贴板内容"
   },
   "Upload Pending Now": {
     "tr": "Bekleyenleri Şimdi Yükle",
@@ -1855,6 +1910,51 @@
     "ja": "アップロードする",
     "zh-Hans": "上传"
   },
+  "Upload again with a new link": {
+    "tr": "Yeni bir bağlantıyla tekrar yükle",
+    "de": "Mit neuem Link erneut hochladen",
+    "fr": "Renvoyer avec un nouveau lien",
+    "es": "Volver a subir con un enlace nuevo",
+    "pt-BR": "Enviar de novo com um novo link",
+    "ja": "新しいリンクで再アップロード",
+    "zh-Hans": "以新链接重新上传"
+  },
+  "Upload files the moment they land in a folder.": {
+    "tr": "Dosyaları bir klasöre düştükleri anda yükle.",
+    "de": "Lade Dateien hoch, sobald sie in einem Ordner landen.",
+    "fr": "Envoyez les fichiers dès qu’ils arrivent dans un dossier.",
+    "es": "Sube los archivos en cuanto llegan a una carpeta.",
+    "pt-BR": "Envie arquivos assim que chegarem a uma pasta.",
+    "ja": "フォルダに入った瞬間にファイルをアップロードします。",
+    "zh-Hans": "文件一进入文件夹就立即上传。"
+  },
+  "Upload online-only files (downloads them first)": {
+    "tr": "Yalnızca çevrimiçi dosyaları da yükle (önce indirir)",
+    "de": "Nur online verfügbare Dateien hochladen (lädt sie zuerst herunter)",
+    "fr": "Envoyer les fichiers uniquement en ligne (les télécharge d’abord)",
+    "es": "Subir archivos solo en línea (los descarga primero)",
+    "pt-BR": "Enviar arquivos somente online (baixa-os antes)",
+    "ja": "オンライン専用のファイルもアップロード（先にダウンロードします）",
+    "zh-Hans": "上传仅联机文件（会先下载）"
+  },
+  "Upload the Clipboard?": {
+    "tr": "Pano Yüklensin mi?",
+    "de": "Zwischenablage hochladen?",
+    "fr": "Envoyer le presse-papiers ?",
+    "es": "¿Subir el portapapeles?",
+    "pt-BR": "Enviar a área de transferência?",
+    "ja": "クリップボードをアップロードしますか？",
+    "zh-Hans": "上传剪贴板？"
+  },
+  "Upload with Aktar": {
+    "tr": "Aktar ile Yükle",
+    "de": "Mit Aktar hochladen",
+    "fr": "Envoyer avec Aktar",
+    "es": "Subir con Aktar",
+    "pt-BR": "Enviar com o Aktar",
+    "ja": "Aktarでアップロード",
+    "zh-Hans": "使用 Aktar 上传"
+  },
   "Uploaded {0} files from {1}": {
     "tr": "{1} klasöründen {0} dosya yüklendi",
     "de": "{0} Dateien aus {1} hochgeladen",
@@ -1873,6 +1973,24 @@
     "ja": "{0}件アップロード中",
     "zh-Hans": "正在上传 {0} 个"
   },
+  "Uploads with “Delete after” turned on are removed by lifecycle rules in the bucket.": {
+    "tr": "“Silinme süresi” açık olan yüklemeler, bucket'taki yaşam döngüsü kurallarıyla silinir.",
+    "de": "Uploads mit „Löschen nach“ werden durch Lebenszyklusregeln im Bucket entfernt.",
+    "fr": "Les envois avec « Supprimer après » activé sont supprimés par les règles de cycle de vie du bucket.",
+    "es": "Las subidas con “Eliminar tras” activado se eliminan mediante reglas de ciclo de vida del bucket.",
+    "pt-BR": "Os envios com “Excluir após” ativado são removidos por regras de ciclo de vida do bucket.",
+    "ja": "「削除まで」を設定したアップロードは、バケットのライフサイクルルールで削除されます。",
+    "zh-Hans": "开启“删除期限”的上传会由存储桶的生命周期规则删除。"
+  },
+  "Use Aktar from other apps on this PC.": {
+    "tr": "Aktar'ı bu bilgisayardaki diğer uygulamalardan kullan.",
+    "de": "Nutze Aktar aus anderen Apps auf diesem PC.",
+    "fr": "Utilisez Aktar depuis d’autres apps sur ce PC.",
+    "es": "Usa Aktar desde otras apps de este PC.",
+    "pt-BR": "Use o Aktar a partir de outros apps neste PC.",
+    "ja": "このPC上のほかのアプリからAktarを使います。",
+    "zh-Hans": "在这台电脑上通过其他应用使用 Aktar。"
+  },
   "Use destination’s path": {
     "tr": "Hedefin yolunu kullan",
     "de": "Pfad des Ziels verwenden",
@@ -1882,6 +2000,42 @@
     "ja": "アップロード先のパスを使用",
     "zh-Hans": "使用上传目标的路径"
   },
+  "Use https:// for this webhook. Plain http:// only works for this PC or your local network.": {
+    "tr": "Bu webhook için https:// kullan. Düz http:// yalnızca bu bilgisayar veya yerel ağın için çalışır.",
+    "de": "Verwende https:// für diesen Webhook. Einfaches http:// funktioniert nur für diesen PC oder dein lokales Netzwerk.",
+    "fr": "Utilisez https:// pour ce webhook. Le simple http:// ne fonctionne que pour ce PC ou votre réseau local.",
+    "es": "Usa https:// para este webhook. El http:// simple solo funciona para este PC o tu red local.",
+    "pt-BR": "Use https:// para este webhook. O http:// simples só funciona para este PC ou sua rede local.",
+    "ja": "このWebhookにはhttps://を使ってください。http://はこのPCまたはローカルネットワーク内でのみ使えます。",
+    "zh-Hans": "请为此 Webhook 使用 https://。普通的 http:// 仅适用于这台电脑或你的本地网络。"
+  },
+  "Use path-style addressing": {
+    "tr": "Yol tarzı adresleme kullan",
+    "de": "Pfadbasierte Adressierung verwenden",
+    "fr": "Utiliser l’adressage par chemin",
+    "es": "Usar direccionamiento por ruta",
+    "pt-BR": "Usar endereçamento por caminho",
+    "ja": "パス形式のアドレス指定を使用",
+    "zh-Hans": "使用路径样式寻址"
+  },
+  "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}": {
+    "tr": "Değişkenler: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "de": "Variablen: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "fr": "Variables : {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "es": "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "pt-BR": "Variáveis: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "ja": "変数: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
+    "zh-Hans": "变量：{year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}"
+  },
+  "Version {0}": {
+    "tr": "Sürüm {0}",
+    "de": "Version {0}",
+    "fr": "Version {0}",
+    "es": "Versión {0}",
+    "pt-BR": "Versão {0}",
+    "ja": "バージョン {0}",
+    "zh-Hans": "版本 {0}"
+  },
   "Videos": {
     "tr": "Videolar",
     "de": "Videos",
@@ -1890,6 +2044,15 @@
     "pt-BR": "Vídeos",
     "ja": "動画",
     "zh-Hans": "视频"
+  },
+  "Videos (MOV, MP4) are uploaded with their location.": {
+    "tr": "Videolar (MOV, MP4) konumlarıyla birlikte yüklenir.",
+    "de": "Videos (MOV, MP4) werden mit ihrem Standort hochgeladen.",
+    "fr": "Les vidéos (MOV, MP4) sont envoyées avec leur position.",
+    "es": "Los vídeos (MOV, MP4) se suben con su ubicación.",
+    "pt-BR": "Vídeos (MOV, MP4) são enviados com a localização.",
+    "ja": "動画（MOV、MP4）は位置情報付きでアップロードされます。",
+    "zh-Hans": "视频（MOV、MP4）会连同位置信息一起上传。"
   },
   "Wait for a connection that isn’t metered, like your home Wi-Fi.": {
     "tr": "Ev Wi-Fi'ın gibi tarifesiz bir bağlantıyı bekle.",
@@ -2008,6 +2171,15 @@
     "ja": "Webhook {0}が失敗しました：{1}",
     "zh-Hans": "Webhook {0} 失败：{1}"
   },
+  "Welcome to Aktar": {
+    "tr": "Aktar'a Hoş Geldin",
+    "de": "Willkommen bei Aktar",
+    "fr": "Bienvenue dans Aktar",
+    "es": "Te damos la bienvenida a Aktar",
+    "pt-BR": "Boas-vindas ao Aktar",
+    "ja": "Aktarへようこそ",
+    "zh-Hans": "欢迎使用 Aktar"
+  },
   "When a file changes": {
     "tr": "Bir dosya değiştiğinde",
     "de": "Wenn sich eine Datei ändert",
@@ -2016,6 +2188,42 @@
     "pt-BR": "Quando um arquivo muda",
     "ja": "ファイルが変更されたとき",
     "zh-Hans": "文件更改时"
+  },
+  "When a file is deleted": {
+    "tr": "Bir dosya silindiğinde",
+    "de": "Wenn eine Datei gelöscht wird",
+    "fr": "Quand un fichier est supprimé",
+    "es": "Cuando se elimina un archivo",
+    "pt-BR": "Quando um arquivo é excluído",
+    "ja": "ファイルが削除されたとき",
+    "zh-Hans": "文件被删除时"
+  },
+  "When a file you already uploaded to the same destination comes up again, Aktar copies its existing link instead of uploading it again.": {
+    "tr": "Aynı hedefe daha önce yüklediğin bir dosya tekrar gelirse Aktar onu yeniden yüklemek yerine mevcut bağlantısını kopyalar.",
+    "de": "Wenn eine Datei, die du schon zum selben Ziel hochgeladen hast, erneut kommt, kopiert Aktar den vorhandenen Link, statt sie noch einmal hochzuladen.",
+    "fr": "Lorsqu’un fichier que vous avez déjà envoyé vers la même destination revient, Aktar copie son lien existant au lieu de l’envoyer à nouveau.",
+    "es": "Cuando vuelve a aparecer un archivo que ya subiste al mismo destino, Aktar copia su enlace existente en lugar de subirlo otra vez.",
+    "pt-BR": "Quando um arquivo que você já enviou para o mesmo destino aparece de novo, o Aktar copia o link existente em vez de enviá-lo outra vez.",
+    "ja": "同じアップロード先にアップロード済みのファイルがもう一度来たときは、再アップロードせずに既存のリンクをコピーします。",
+    "zh-Hans": "当你已上传到同一上传目标的文件再次出现时，Aktar 会复制现有链接，而不是再次上传。"
+  },
+  "Windows has reserved this port for another feature. Pick a different port.": {
+    "tr": "Windows bu portu başka bir özellik için ayırmış. Farklı bir port seç.",
+    "de": "Windows hat diesen Port für eine andere Funktion reserviert. Wähle einen anderen Port.",
+    "fr": "Windows a réservé ce port à une autre fonctionnalité. Choisissez un autre port.",
+    "es": "Windows ha reservado este puerto para otra función. Elige otro puerto.",
+    "pt-BR": "O Windows reservou esta porta para outro recurso. Escolha uma porta diferente.",
+    "ja": "Windowsがこのポートを別の機能用に予約しています。別のポートを選んでください。",
+    "zh-Hans": "Windows 已将此端口保留给其他功能。请选择其他端口。"
+  },
+  "Windows has turned off starting Aktar at sign-in. Turn it back on in Settings > Apps > Startup.": {
+    "tr": "Windows, Aktar'ın oturum açılışında başlamasını kapatmış. Ayarlar > Uygulamalar > Başlangıç'tan yeniden açabilirsin.",
+    "de": "Windows hat den Start von Aktar bei der Anmeldung deaktiviert. Schalte ihn unter Einstellungen > Apps > Autostart wieder ein.",
+    "fr": "Windows a désactivé le lancement d’Aktar à l’ouverture de session. Réactivez-le dans Paramètres > Applications > Démarrage.",
+    "es": "Windows ha desactivado el inicio de Aktar al iniciar sesión. Vuelve a activarlo en Configuración > Aplicaciones > Inicio.",
+    "pt-BR": "O Windows desativou a abertura do Aktar ao entrar. Ative novamente em Configurações > Aplicativos > Inicialização.",
+    "ja": "Windowsによって、サインイン時のAktarの起動がオフになっています。［設定］>［アプリ］>［スタートアップ］でオンに戻してください。",
+    "zh-Hans": "Windows 已关闭登录时启动 Aktar。请在“设置”>“应用”>“启动”中重新打开。"
   },
   "Your whole user folder can’t be watched. Pick a folder inside it.": {
     "tr": "Kullanıcı klasörünün tamamı izlenemez. İçinden bir klasör seç.",
@@ -2026,6 +2234,60 @@
     "ja": "ユーザーフォルダ全体は監視できません。その中のフォルダを選択してください。",
     "zh-Hans": "无法监视整个用户文件夹。请选择其中的一个文件夹。"
   },
+  "You’re up to date!": {
+    "tr": "Güncelsin!",
+    "de": "Du bist auf dem neuesten Stand!",
+    "fr": "Vous êtes à jour !",
+    "es": "¡Estás al día!",
+    "pt-BR": "Você está atualizado!",
+    "ja": "最新の状態です！",
+    "zh-Hans": "已是最新版本！"
+  },
+  "an image from the clipboard": {
+    "tr": "panodaki bir görüntü",
+    "de": "ein Bild aus der Zwischenablage",
+    "fr": "une image du presse-papiers",
+    "es": "una imagen del portapapeles",
+    "pt-BR": "uma imagem da área de transferência",
+    "ja": "クリップボードの画像",
+    "zh-Hans": "剪贴板中的一张图片"
+  },
+  "the file’s folder inside it": {
+    "tr": "içindeki dosyanın klasörü",
+    "de": "der Ordner der Datei darin",
+    "fr": "le dossier du fichier à l’intérieur",
+    "es": "la carpeta del archivo dentro de ella",
+    "pt-BR": "a pasta do arquivo dentro dela",
+    "ja": "その中でのファイルのフォルダ",
+    "zh-Hans": "文件在其中所在的文件夹"
+  },
+  "the watched folder’s name": {
+    "tr": "izlenen klasörün adı",
+    "de": "der Name des überwachten Ordners",
+    "fr": "le nom du dossier surveillé",
+    "es": "el nombre de la carpeta vigilada",
+    "pt-BR": "o nome da pasta monitorada",
+    "ja": "監視フォルダの名前",
+    "zh-Hans": "监视文件夹的名称"
+  },
+  "{0} already hold files. Once the rules are set up, the bucket deletes them too when they're older than the folder's number of days.": {
+    "tr": "{0} içinde zaten dosyalar var. Kurallar kurulunca bucket, klasörün gün sayısından eski olan bu dosyaları da siler.",
+    "de": "In {0} liegen schon Dateien. Sobald die Regeln eingerichtet sind, löscht der Bucket auch diese, wenn sie älter als die Tage des Ordners sind.",
+    "fr": "{0} contiennent déjà des fichiers. Une fois les règles en place, le bucket les supprime aussi lorsqu'ils dépassent le nombre de jours du dossier.",
+    "es": "{0} ya contienen archivos. Una vez configuradas las reglas, el bucket también los eliminará cuando superen los días de la carpeta.",
+    "pt-BR": "{0} já contêm arquivos. Depois que as regras forem configuradas, o bucket também os apagará quando passarem do número de dias da pasta.",
+    "ja": "{0} にはすでにファイルがあります。ルールを設定すると、フォルダの日数より古いファイルもバケットが削除します。",
+    "zh-Hans": "{0} 中已有文件。规则设置后，存储桶也会删除其中超过该文件夹天数的文件。"
+  },
+  "{0} days": {
+    "tr": "{0} gün",
+    "de": "{0} Tage",
+    "fr": "{0} jours",
+    "es": "{0} días",
+    "pt-BR": "{0} dias",
+    "ja": "{0}日",
+    "zh-Hans": "{0} 天"
+  },
   "{0} failed": {
     "tr": "{0} başarısız",
     "de": "{0} fehlgeschlagen",
@@ -2035,6 +2297,15 @@
     "ja": "{0}件失敗",
     "zh-Hans": "{0} 个失败"
   },
+  "{0} files": {
+    "tr": "{0} dosya",
+    "de": "{0} Dateien",
+    "fr": "{0} fichiers",
+    "es": "{0} archivos",
+    "pt-BR": "{0} arquivos",
+    "ja": "{0}個のファイル",
+    "zh-Hans": "{0} 个文件"
+  },
   "{0} files from {1} couldn’t be uploaded.": {
     "tr": "{1} klasöründen {0} dosya yüklenemedi.",
     "de": "{0} Dateien aus {1} konnten nicht hochgeladen werden.",
@@ -2043,6 +2314,15 @@
     "pt-BR": "Não foi possível enviar {0} arquivos de {1}.",
     "ja": "{1}の{0}個のファイルをアップロードできませんでした。",
     "zh-Hans": "{1} 中有 {0} 个文件无法上传。"
+  },
+  "{0} files were removed from {1}. Delete them from the bucket too?": {
+    "tr": "{1} klasöründen {0} dosya kaldırıldı. Bucket'tan da silinsinler mi?",
+    "de": "{0} Dateien wurden aus {1} entfernt. Auch aus dem Bucket löschen?",
+    "fr": "{0} fichiers ont été retirés de {1}. Les supprimer aussi du bucket ?",
+    "es": "Se quitaron {0} archivos de {1}. ¿Eliminarlos también del bucket?",
+    "pt-BR": "{0} arquivos foram removidos de {1}. Excluí-los também do bucket?",
+    "ja": "{1}から{0}個のファイルが削除されました。バケットからも削除しますか？",
+    "zh-Hans": "已从 {1} 中移除 {0} 个文件。也从存储桶中删除它们吗？"
   },
   "{0} new files in {1}": {
     "tr": "{1} klasöründe {0} yeni dosya",
@@ -2071,141 +2351,6 @@
     "ja": "{0}件待機中",
     "zh-Hans": "{0} 个等待中"
   },
-  "{0} was uploaded, but Aktar couldn’t confirm it in the bucket, so the original was kept.": {
-    "tr": "{0} yüklendi, ancak Aktar bucket'ta doğrulayamadığı için asıl dosya yerinde bırakıldı.",
-    "de": "{0} wurde hochgeladen, aber Aktar konnte sie im Bucket nicht bestätigen, daher wurde das Original behalten.",
-    "fr": "{0} a été envoyé, mais Aktar n’a pas pu le confirmer dans le bucket : l’original a été conservé.",
-    "es": "{0} se subió, pero Aktar no pudo confirmarlo en el bucket, así que se conservó el original.",
-    "pt-BR": "{0} foi enviado, mas o Aktar não conseguiu confirmá-lo no bucket, então o original foi mantido.",
-    "ja": "{0}はアップロードされましたが、バケット内で確認できなかったため、元のファイルは残しました。",
-    "zh-Hans": "{0} 已上传，但 Aktar 无法在存储桶中确认，因此保留了原文件。"
-  },
-  "Couldn't delete {0} from the bucket": {
-    "tr": "{0} bucket'tan silinemedi",
-    "de": "{0} konnte nicht aus dem Bucket gelöscht werden",
-    "fr": "Impossible de supprimer {0} du bucket",
-    "es": "No se pudo eliminar {0} del bucket",
-    "pt-BR": "Não foi possível excluir {0} do bucket",
-    "ja": "{0}をバケットから削除できませんでした",
-    "zh-Hans": "无法从存储桶删除 {0}"
-  },
-  "Delete from Bucket": {
-    "tr": "Bucket'tan Sil",
-    "de": "Aus dem Bucket löschen",
-    "fr": "Supprimer du bucket",
-    "es": "Eliminar del bucket",
-    "pt-BR": "Excluir do bucket",
-    "ja": "バケットから削除",
-    "zh-Hans": "从存储桶删除"
-  },
-  "Delete it from the bucket too": {
-    "tr": "Bucket'tan da sil",
-    "de": "Auch aus dem Bucket löschen",
-    "fr": "Le supprimer aussi du bucket",
-    "es": "Eliminarlo también del bucket",
-    "pt-BR": "Excluí-lo também do bucket",
-    "ja": "バケットからも削除する",
-    "zh-Hans": "也从存储桶中删除"
-  },
-  "Deleted {0} files from the bucket": {
-    "tr": "{0} dosya bucket'tan silindi",
-    "de": "{0} Dateien wurden aus dem Bucket gelöscht",
-    "fr": "{0} fichiers ont été supprimés du bucket",
-    "es": "Se eliminaron {0} archivos del bucket",
-    "pt-BR": "{0} arquivos foram excluídos do bucket",
-    "ja": "{0}個のファイルをバケットから削除しました",
-    "zh-Hans": "已从存储桶删除 {0} 个文件"
-  },
-  "Deleted {0} from the bucket": {
-    "tr": "{0} bucket'tan silindi",
-    "de": "{0} wurde aus dem Bucket gelöscht",
-    "fr": "{0} a été supprimé du bucket",
-    "es": "Se eliminó {0} del bucket",
-    "pt-BR": "{0} foi excluído do bucket",
-    "ja": "{0}をバケットから削除しました",
-    "zh-Hans": "已从存储桶删除 {0}"
-  },
-  "Deleting a file from this folder also deletes its upload. Links to it stop working.": {
-    "tr": "Bu klasörden bir dosyayı silmek yüklemesini de siler. Ona giden bağlantılar çalışmaz olur.",
-    "de": "Wenn du eine Datei aus diesem Ordner löschst, wird auch ihr Upload gelöscht. Links darauf funktionieren dann nicht mehr.",
-    "fr": "Supprimer un fichier de ce dossier supprime aussi son envoi. Les liens vers celui-ci cessent de fonctionner.",
-    "es": "Eliminar un archivo de esta carpeta también elimina su subida. Los enlaces dejan de funcionar.",
-    "pt-BR": "Excluir um arquivo desta pasta também exclui o envio dele. Os links param de funcionar.",
-    "ja": "このフォルダからファイルを削除すると、そのアップロードも削除されます。リンクは使えなくなります。",
-    "zh-Hans": "从此文件夹删除文件也会删除其上传内容，相关链接将失效。"
-  },
-  "Keep the uploaded file": {
-    "tr": "Yüklenen dosyayı koru",
-    "de": "Hochgeladene Datei behalten",
-    "fr": "Conserver le fichier envoyé",
-    "es": "Conservar el archivo subido",
-    "pt-BR": "Manter o arquivo enviado",
-    "ja": "アップロード済みのファイルを残す",
-    "zh-Hans": "保留已上传的文件"
-  },
-  "Keep Uploaded Files": {
-    "tr": "Yüklenen Dosyaları Koru",
-    "de": "Hochgeladene Dateien behalten",
-    "fr": "Conserver les fichiers envoyés",
-    "es": "Conservar los archivos subidos",
-    "pt-BR": "Manter arquivos enviados",
-    "ja": "アップロード済みのファイルを残す",
-    "zh-Hans": "保留已上传的文件"
-  },
-  "Only available when the original file stays in the folder.": {
-    "tr": "Yalnızca asıl dosya klasörde kaldığında kullanılabilir.",
-    "de": "Nur verfügbar, wenn die Originaldatei im Ordner bleibt.",
-    "fr": "Disponible uniquement si le fichier d’origine reste dans le dossier.",
-    "es": "Solo disponible cuando el archivo original se queda en la carpeta.",
-    "pt-BR": "Disponível só quando o arquivo original fica na pasta.",
-    "ja": "元のファイルがフォルダに残る場合のみ使用できます。",
-    "zh-Hans": "仅在原文件保留在文件夹中时可用。"
-  },
-  "When a file is deleted": {
-    "tr": "Bir dosya silindiğinde",
-    "de": "Wenn eine Datei gelöscht wird",
-    "fr": "Quand un fichier est supprimé",
-    "es": "Cuando se elimina un archivo",
-    "pt-BR": "Quando um arquivo é excluído",
-    "ja": "ファイルが削除されたとき",
-    "zh-Hans": "文件被删除时"
-  },
-  "{0} files were removed from {1}. Delete them from the bucket too?": {
-    "tr": "{1} klasöründen {0} dosya kaldırıldı. Bucket'tan da silinsinler mi?",
-    "de": "{0} Dateien wurden aus {1} entfernt. Auch aus dem Bucket löschen?",
-    "fr": "{0} fichiers ont été retirés de {1}. Les supprimer aussi du bucket ?",
-    "es": "Se quitaron {0} archivos de {1}. ¿Eliminarlos también del bucket?",
-    "pt-BR": "{0} arquivos foram removidos de {1}. Excluí-los também do bucket?",
-    "ja": "{1}から{0}個のファイルが削除されました。バケットからも削除しますか？",
-    "zh-Hans": "已从 {1} 中移除 {0} 个文件。也从存储桶中删除它们吗？"
-  },
-  "Open Aktar to delete or keep them.": {
-    "tr": "Silmek ya da korumak için Aktar'ı aç.",
-    "de": "Öffne Aktar, um sie zu löschen oder zu behalten.",
-    "fr": "Ouvrez Aktar pour les supprimer ou les conserver.",
-    "es": "Abre Aktar para eliminarlos o conservarlos.",
-    "pt-BR": "Abra o Aktar para excluí-los ou mantê-los.",
-    "ja": "Aktarを開いて、削除するか残すか選んでください。",
-    "zh-Hans": "打开 Aktar 选择删除或保留。"
-  },
-  "Ask before deleting": {
-    "tr": "Silmeden önce sor",
-    "de": "Vor dem Löschen fragen",
-    "fr": "Demander avant de supprimer",
-    "es": "Preguntar antes de eliminar",
-    "pt-BR": "Perguntar antes de excluir",
-    "ja": "削除する前に確認",
-    "zh-Hans": "删除前询问"
-  },
-  "Aktar asks before it deletes anything from the bucket.": {
-    "tr": "Aktar bucket'tan bir şey silmeden önce sorar.",
-    "de": "Aktar fragt, bevor etwas aus dem Bucket gelöscht wird.",
-    "fr": "Aktar demande avant de supprimer quoi que ce soit du bucket.",
-    "es": "Aktar pregunta antes de eliminar cualquier cosa del bucket.",
-    "pt-BR": "O Aktar pergunta antes de excluir qualquer coisa do bucket.",
-    "ja": "Aktarはバケットから何かを削除する前に確認します。",
-    "zh-Hans": "Aktar 从存储桶删除任何内容前都会先询问。"
-  },
   "{0} was removed from {1}. Delete it from the bucket too?": {
     "tr": "{0}, {1} klasöründen kaldırıldı. Bucket'tan da silinsin mi?",
     "de": "{0} wurde aus {1} entfernt. Auch aus dem Bucket löschen?",
@@ -2215,7 +2360,15 @@
     "ja": "{1}から{0}が削除されました。バケットからも削除しますか？",
     "zh-Hans": "已从 {1} 中移除 {0}。也从存储桶中删除它吗？"
   },
-  "// Security fixes": "Strings from the security fixes of October 2026 (link confirmations, key checks, webhooks, transfer link expiry).",
+  "{0} was uploaded, but Aktar couldn’t confirm it in the bucket, so the original was kept.": {
+    "tr": "{0} yüklendi, ancak Aktar bucket'ta doğrulayamadığı için asıl dosya yerinde bırakıldı.",
+    "de": "{0} wurde hochgeladen, aber Aktar konnte sie im Bucket nicht bestätigen, daher wurde das Original behalten.",
+    "fr": "{0} a été envoyé, mais Aktar n’a pas pu le confirmer dans le bucket : l’original a été conservé.",
+    "es": "{0} se subió, pero Aktar no pudo confirmarlo en el bucket, así que se conservó el original.",
+    "pt-BR": "{0} foi enviado, mas o Aktar não conseguiu confirmá-lo no bucket, então o original foi mantido.",
+    "ja": "{0}はアップロードされましたが、バケット内で確認できなかったため、元のファイルは残しました。",
+    "zh-Hans": "{0} 已上传，但 Aktar 无法在存储桶中确认，因此保留了原文件。"
+  },
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": {
     "tr": "“{0}” bucket'ta ad olarak kullanılamaz. Başta “/”, klasör adı olarak “.” ve “..”, boş klasör adları (“//”) ve kontrol karakterleri olmamalı.",
     "de": "„{0}“ kann im Bucket nicht als Name verwendet werden. Lass ein „/“ am Anfang, „.“ und „..“ als Ordnernamen, leere Ordnernamen („//“) und Steuerzeichen weg.",
@@ -2224,113 +2377,5 @@
     "pt-BR": "“{0}” não pode ser usado como nome no bucket. Tire a “/” do início, “.” e “..” como nomes de pasta, nomes de pasta vazios (“//”) e caracteres de controle.",
     "ja": "「{0}」はバケット内の名前として使えません。先頭の「/」、フォルダ名としての「.」と「..」、空のフォルダ名（「//」）、制御文字を含めないでください。",
     "zh-Hans": "“{0}”不能用作存储桶中的名称。请去掉开头的“/”、作为文件夹名的“.”和“..”、空文件夹名（“//”）以及控制字符。"
-  },
-  "Something else was uploaded under this name at the same time.": {
-    "tr": "Aynı anda bu adla başka bir şey yüklendi.",
-    "de": "Gleichzeitig wurde etwas anderes unter diesem Namen hochgeladen.",
-    "fr": "Autre chose a été envoyé sous ce nom au même moment.",
-    "es": "Se subió otra cosa con este nombre al mismo tiempo.",
-    "pt-BR": "Outra coisa foi enviada com este nome ao mesmo tempo.",
-    "ja": "同時に別のものがこの名前でアップロードされました。",
-    "zh-Hans": "同一时间有其他内容以此名称上传。"
-  },
-  "A link asked Aktar to pause watched folders for {0} minutes.": {
-    "tr": "Bir bağlantı, Aktar'dan izlenen klasörleri {0} dakika duraklatmasını istedi.",
-    "de": "Ein Link möchte, dass Aktar überwachte Ordner für {0} Minuten pausiert.",
-    "fr": "Un lien demande à Aktar de mettre en pause les dossiers surveillés pendant {0} minutes.",
-    "es": "Un enlace ha pedido a Aktar que pause las carpetas vigiladas durante {0} minutos.",
-    "pt-BR": "Um link pediu ao Aktar para pausar as pastas monitoradas por {0} minutos.",
-    "ja": "リンクがAktarに監視フォルダを{0}分間一時停止するよう求めています。",
-    "zh-Hans": "有链接请求 Aktar 将监视文件夹暂停 {0} 分钟。"
-  },
-  "A link asked Aktar to pause watched folders until you resume them.": {
-    "tr": "Bir bağlantı, Aktar'dan izlenen klasörleri sen devam ettirene kadar duraklatmasını istedi.",
-    "de": "Ein Link möchte, dass Aktar überwachte Ordner pausiert, bis du sie fortsetzt.",
-    "fr": "Un lien demande à Aktar de mettre en pause les dossiers surveillés jusqu’à ce que vous les repreniez.",
-    "es": "Un enlace ha pedido a Aktar que pause las carpetas vigiladas hasta que las reanudes.",
-    "pt-BR": "Um link pediu ao Aktar para pausar as pastas monitoradas até você retomá-las.",
-    "ja": "リンクがAktarに、再開するまで監視フォルダを一時停止するよう求めています。",
-    "zh-Hans": "有链接请求 Aktar 暂停监视文件夹，直到你恢复。"
-  },
-  "Pause Watched Folders?": {
-    "tr": "İzlenen Klasörler Duraklatılsın mı?",
-    "de": "Überwachte Ordner pausieren?",
-    "fr": "Mettre en pause les dossiers surveillés ?",
-    "es": "¿Pausar las carpetas vigiladas?",
-    "pt-BR": "Pausar as pastas monitoradas?",
-    "ja": "監視フォルダを一時停止しますか？",
-    "zh-Hans": "暂停监视文件夹？"
-  },
-  "an image from the clipboard": {
-    "tr": "panodaki bir görüntü",
-    "de": "ein Bild aus der Zwischenablage",
-    "fr": "une image du presse-papiers",
-    "es": "una imagen del portapapeles",
-    "pt-BR": "uma imagem da área de transferência",
-    "ja": "クリップボードの画像",
-    "zh-Hans": "剪贴板中的一张图片"
-  },
-  "{0} files": {
-    "tr": "{0} dosya",
-    "de": "{0} Dateien",
-    "fr": "{0} fichiers",
-    "es": "{0} archivos",
-    "pt-BR": "{0} arquivos",
-    "ja": "{0}個のファイル",
-    "zh-Hans": "{0} 个文件"
-  },
-  "A link asked Aktar to upload {0} from the clipboard to “{1}”.": {
-    "tr": "Bir bağlantı, Aktar'dan panodaki {0} öğesini “{1}” hedefine yüklemesini istedi.",
-    "de": "Ein Link möchte, dass Aktar {0} aus der Zwischenablage nach „{1}“ hochlädt.",
-    "fr": "Un lien demande à Aktar d’envoyer {0} depuis le presse-papiers vers « {1} ».",
-    "es": "Un enlace ha pedido a Aktar que suba {0} del portapapeles a «{1}».",
-    "pt-BR": "Um link pediu ao Aktar para enviar {0} da área de transferência para “{1}”.",
-    "ja": "リンクがAktarに、クリップボードの{0}を「{1}」にアップロードするよう求めています。",
-    "zh-Hans": "有链接请求 Aktar 将剪贴板中的{0}上传到“{1}”。"
-  },
-  "Upload the Clipboard?": {
-    "tr": "Pano Yüklensin mi?",
-    "de": "Zwischenablage hochladen?",
-    "fr": "Envoyer le presse-papiers ?",
-    "es": "¿Subir el portapapeles?",
-    "pt-BR": "Enviar a área de transferência?",
-    "ja": "クリップボードをアップロードしますか？",
-    "zh-Hans": "上传剪贴板？"
-  },
-  "Use https:// for this webhook. Plain http:// only works for this PC or your local network.": {
-    "tr": "Bu webhook için https:// kullan. Düz http:// yalnızca bu bilgisayar veya yerel ağın için çalışır.",
-    "de": "Verwende https:// für diesen Webhook. Einfaches http:// funktioniert nur für diesen PC oder dein lokales Netzwerk.",
-    "fr": "Utilisez https:// pour ce webhook. Le simple http:// ne fonctionne que pour ce PC ou votre réseau local.",
-    "es": "Usa https:// para este webhook. El http:// simple solo funciona para este PC o tu red local.",
-    "pt-BR": "Use https:// para este webhook. O http:// simples só funciona para este PC ou sua rede local.",
-    "ja": "このWebhookにはhttps://を使ってください。http://はこのPCまたはローカルネットワーク内でのみ使えます。",
-    "zh-Hans": "请为此 Webhook 使用 https://。普通的 http:// 仅适用于这台电脑或你的本地网络。"
-  },
-  "Pick the script with “Add Script…”.": {
-    "tr": "Betiği “Betik Ekle…” ile seç.",
-    "de": "Wähle das Skript mit „Skript hinzufügen …“ aus.",
-    "fr": "Choisissez le script avec « Ajouter un script… ».",
-    "es": "Elige el script con «Añadir script…».",
-    "pt-BR": "Escolha o script com “Adicionar script…”.",
-    "ja": "「スクリプトを追加…」でスクリプトを選んでください。",
-    "zh-Hans": "请通过“添加脚本…”选择脚本。"
-  },
-  "This transfer link has expired. Make a new one on the other device.": {
-    "tr": "Bu aktarım bağlantısının süresi doldu. Diğer cihazda yeni bir tane oluştur.",
-    "de": "Dieser Übertragungslink ist abgelaufen. Erstelle auf dem anderen Gerät einen neuen.",
-    "fr": "Ce lien de transfert a expiré. Créez-en un nouveau sur l’autre appareil.",
-    "es": "Este enlace de transferencia ha caducado. Crea uno nuevo en el otro dispositivo.",
-    "pt-BR": "Este link de transferência expirou. Crie um novo no outro dispositivo.",
-    "ja": "この転送リンクは期限切れです。もう一方のデバイスで新しく作成してください。",
-    "zh-Hans": "此传输链接已过期。请在另一台设备上重新生成。"
-  },
-  "Videos (MOV, MP4) are uploaded with their location.": {
-    "tr": "Videolar (MOV, MP4) konumlarıyla birlikte yüklenir.",
-    "de": "Videos (MOV, MP4) werden mit ihrem Standort hochgeladen.",
-    "fr": "Les vidéos (MOV, MP4) sont envoyées avec leur position.",
-    "es": "Los vídeos (MOV, MP4) se suben con su ubicación.",
-    "pt-BR": "Vídeos (MOV, MP4) são enviados com a localização.",
-    "ja": "動画（MOV、MP4）は位置情報付きでアップロードされます。",
-    "zh-Hans": "视频（MOV、MP4）会连同位置信息一起上传。"
   }
 }

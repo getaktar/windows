@@ -45,7 +45,16 @@ export function fileKind(filename: string): FileKind {
   return "other";
 }
 
-export type PreviewKind = { kind: "image" } | { kind: "pdf" } | { kind: "text"; markdown: boolean } | { kind: "unsupported" };
+export type PreviewKind =
+  | { kind: "image" }
+  | { kind: "pdf" }
+  | { kind: "text"; markdown: boolean }
+  /** Played in place (WebView2 plays these; MKV, AVI and the like it can't). */
+  | { kind: "media"; video: boolean }
+  | { kind: "unsupported" };
+
+const playableVideo = new Set(["mp4", "m4v", "mov", "webm"]);
+const playableAudio = new Set(["mp3", "m4a", "aac", "wav", "ogg", "opus", "flac"]);
 
 export function previewKind(filename: string, mimeType?: string): PreviewKind {
   const ext = extensionOf(filename);
@@ -54,6 +63,8 @@ export function previewKind(filename: string, mimeType?: string): PreviewKind {
   // Browsers can't show HEIC or TIFF, so those fall back to the file icon.
   if (imageExtensions.has(ext) && !["heic", "heif", "tif", "tiff"].includes(ext)) return { kind: "image" };
   if (ext === "pdf" || mimeType === "application/pdf") return { kind: "pdf" };
+  if (playableVideo.has(ext)) return { kind: "media", video: true };
+  if (playableAudio.has(ext)) return { kind: "media", video: false };
   return { kind: "unsupported" };
 }
 

@@ -67,7 +67,7 @@ pub struct BucketListing {
     pub next_continuation_token: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BucketObject {
     pub key: String,
@@ -412,6 +412,91 @@ impl S3Provider {
             .await
             .map_err(|error| map_error(error, self.bucket()))?;
         Ok(())
+    }
+
+    /// Up to 1000 keys per request. A provider that doesn't take batch
+    /// deletes gets them one by one.
+    pub async fn delete_many(&self, keys: &[String]) -> Result<(), StorageError> {
+        use aws_sdk_s3::types::{Delete, ObjectIdentifier};
+        for batch in keys.chunks(1000) {
+            let objects: Vec<ObjectIdentifier> =
+                batch.iter().filter_map(|key| ObjectIdentifier::builder().key(key).build().ok()).collect();
+            let request = Delete::builder().set_objects(Some(objects)).quiet(true).build();
+            let sent = match request {
+                Ok(delete) => self.client.delete_objects().bucket(self.bucket()).delete(delete).send().await.ok(),
+                Err(_) => None,
+            };
+            let failed: Vec<String> = match &sent {
+                Some(output) => output.errors().iter().filter_map(|error| error.key().map(str::to_string)).collect(),
+                None => batch.to_vec(),
+            };
+            for key in failed {
+                self.delete(&key).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// One small PUT from memory, such as a thumbnail.
+    pub async fn put_bytes(&self, object_key: &str, data: Vec<u8>, content_type: &str) -> Result<(), StorageError> {
+        self.client
+            .put_object()
+            .bucket(self.bucket())
+            .key(object_key)
+            .content_type(content_type)
+            .body(ByteStream::from(data))
+            .send()
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(())
+    }
+
+    /// The object at `key` and when it was last written (Unix
+    /// milliseconds), or None when there's no such object. For small
+    /// objects only: anything over `max_bytes` is refused.
+    pub async fn get_small(&self, key: &str, max_bytes: u64) -> Result<Option<(Vec<u8>, Option<i64>)>, StorageError> {
+        let output = match self.client.get_object().bucket(self.bucket()).key(key).send().await {
+            Ok(output) => output,
+            Err(error) if is_missing(&error) => return Ok(None),
+            Err(error) => return Err(map_error(error, self.bucket())),
+        };
+        if output.content_length().is_some_and(|length| length < 0 || length as u64 > max_bytes) {
+            return Err(StorageError::Unknown("The object is too large.".into()));
+        }
+        let last_modified = output.last_modified().map(|date| date.secs() * 1000);
+        let data = output.body.collect().await.map_err(|error| StorageError::Connection(error.to_string()))?.to_vec();
+        if data.len() as u64 > max_bytes {
+            return Err(StorageError::Unknown("The object is too large.".into()));
+        }
+        Ok(Some((data, last_modified)))
+    }
+
+    /// Downloads the object at `key` to `destination`, streamed, stopping
+    /// past `max_bytes`. False when there's no such object.
+    pub async fn download(&self, key: &str, destination: &Path, max_bytes: u64) -> Result<bool, StorageError> {
+        use tokio::io::AsyncWriteExt;
+        let mut output = match self.client.get_object().bucket(self.bucket()).key(key).send().await {
+            Ok(output) => output,
+            Err(error) if is_missing(&error) => return Ok(false),
+            Err(error) => return Err(map_error(error, self.bucket())),
+        };
+        let too_large = || StorageError::Unknown("The object is too large.".into());
+        if output.content_length().is_some_and(|length| length < 0 || length as u64 > max_bytes) {
+            return Err(too_large());
+        }
+        let mut file = tokio::fs::File::create(destination).await.map_err(|error| StorageError::Unknown(error.to_string()))?;
+        let mut written = 0u64;
+        while let Some(chunk) = output.body.try_next().await.map_err(|error| StorageError::Connection(error.to_string()))? {
+            written += chunk.len() as u64;
+            if written > max_bytes {
+                drop(file);
+                let _ = tokio::fs::remove_file(destination).await;
+                return Err(too_large());
+            }
+            file.write_all(&chunk).await.map_err(|error| StorageError::Unknown(error.to_string()))?;
+        }
+        file.flush().await.map_err(|error| StorageError::Unknown(error.to_string()))?;
+        Ok(true)
     }
 
     /// One level under `prefix`: its folders and the objects directly in it.
@@ -945,6 +1030,12 @@ async fn probe(url: &str) -> PublicLinkCheck {
     }
 }
 
+/// A GET for a key the bucket doesn't have (NoSuchKey, or a bare 404).
+fn is_missing<E: ProvideErrorMetadata>(error: &SdkError<E, HttpResponse>) -> bool {
+    error.raw_response().is_some_and(|response| response.status().as_u16() == 404)
+        || error.code().is_some_and(|code| code.eq_ignore_ascii_case("NoSuchKey"))
+}
+
 fn map_error<E>(error: SdkError<E, HttpResponse>, bucket: &str) -> StorageError
 where
     E: ProvideErrorMetadata + std::error::Error + Send + Sync + 'static,
@@ -1092,6 +1183,8 @@ mod tests {
             image_metadata: None,
             folder_upload: None,
             image_processing: None,
+            thumbnails: None,
+            thumbnail_prefix: None,
         }
     }
 
@@ -1163,6 +1256,8 @@ mod live_tests {
             image_metadata: None,
             folder_upload: None,
             image_processing: None,
+            thumbnails: None,
+            thumbnail_prefix: None,
         };
         // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
@@ -1204,7 +1299,7 @@ mod live_tests {
         let key = crate::bucket::available_key(&storage, "aktar test ü.txt", "live/", &[]).await.unwrap();
         assert_eq!(key, "live/aktar test ü 2.txt");
 
-        assert!(crate::bucket::move_object(&storage, "live/aktar test ü.txt", "moved/renamed.txt").await.is_ok());
+        assert!(crate::bucket::move_object(&storage, "live/aktar test ü.txt", "moved/renamed.txt", &[]).await.is_ok());
         assert!(!storage.object_exists("live/aktar test ü.txt").await.unwrap());
         let signed = storage.temporary_url("moved/renamed.txt", 600).await.unwrap();
         assert!(signed.contains("X-Amz-Signature="));
@@ -1214,7 +1309,7 @@ mod live_tests {
         // "+" and parentheses survive both the public URL and CopyObject.
         let plus = storage.upload(&file, "live/a+b (1).txt", "text/plain", Arc::new(Progress::default()), false).await.unwrap();
         assert!(plus.public_url.ends_with("/live/a%2Bb%20(1).txt"));
-        assert!(crate::bucket::move_object(&storage, "live/a+b (1).txt", "live/c+d (2).txt").await.is_ok());
+        assert!(crate::bucket::move_object(&storage, "live/a+b (1).txt", "live/c+d (2).txt", &[]).await.is_ok());
         assert!(storage.object_exists("live/c+d (2).txt").await.unwrap());
         assert!(!storage.object_exists("live/a+b (1).txt").await.unwrap());
         storage.delete("live/c+d (2).txt").await.unwrap();
@@ -1254,6 +1349,59 @@ mod live_tests {
         let directory = std::env::temp_dir().join(format!("aktar-sessions-{}", crate::util::new_id()));
         std::fs::create_dir_all(&directory).unwrap();
         (crate::multipart::SessionStore::load(&directory), directory)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn keeps_thumbnails_with_their_files() {
+        use crate::thumbnails::{bucket as thumbnails, key_for, DEFAULT_PREFIX};
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+        let prefixes = vec![DEFAULT_PREFIX.to_string(), "previews/".to_string()];
+        let file = std::env::temp_dir().join("aktar-thumbnail-source.txt");
+        std::fs::write(&file, b"a photo, say").unwrap();
+        for key in ["thumbs/a.png", "tmp/7d/thumbs/b.png"] {
+            storage.upload(&file, key, "image/png", Arc::new(Progress::default()), false).await.unwrap();
+            for prefix in &prefixes {
+                thumbnails::save(&storage, b"RIFF....WEBPdata".to_vec(), key, prefix).await.unwrap();
+            }
+        }
+        let thumbnail = key_for("tmp/7d/thumbs/b.png", DEFAULT_PREFIX).unwrap();
+        assert_eq!(thumbnail, "tmp/7d/.aktar/thumbnails/thumbs/b.png.webp");
+        let (data, written) = storage.get_small(&thumbnail, 1024).await.unwrap().unwrap();
+        assert_eq!(data, b"RIFF....WEBPdata");
+        assert!(written.is_some());
+        assert!(storage.get_small("thumbs/missing.webp", 1024).await.unwrap().is_none());
+        assert!(storage.get_small(&thumbnail, 4).await.is_err());
+        assert!(thumbnails::fetch(&storage, "tmp/7d/thumbs/b.png", DEFAULT_PREFIX, Some(i64::MAX)).await.is_none());
+
+        let downloaded = std::env::temp_dir().join(format!("aktar-download-{}", crate::util::new_id()));
+        assert!(storage.download("thumbs/a.png", &downloaded, 1024).await.unwrap());
+        assert_eq!(std::fs::read(&downloaded).unwrap(), b"a photo, say");
+        assert!(!storage.download("thumbs/missing.png", &downloaded, 1024).await.unwrap());
+        assert!(storage.download("thumbs/a.png", &downloaded, 4).await.is_err());
+        let _ = std::fs::remove_file(&downloaded);
+
+        // Moved: the thumbnails go along. Deleted: they go first.
+        crate::bucket::move_object(&storage, "thumbs/a.png", "thumbs/c.png", &prefixes).await.ok().unwrap();
+        for prefix in &prefixes {
+            assert!(!storage.object_exists(&key_for("thumbs/a.png", prefix).unwrap()).await.unwrap());
+            assert!(storage.object_exists(&key_for("thumbs/c.png", prefix).unwrap()).await.unwrap());
+        }
+        assert!(crate::bucket::move_object(&storage, "thumbs/c.png", ".aktar/thumbnails/c.png", &prefixes).await.is_err());
+        crate::bucket::delete_object(&storage, "thumbs/c.png", &prefixes).await.unwrap();
+        for prefix in &prefixes {
+            assert!(!storage.object_exists(&key_for("thumbs/c.png", prefix).unwrap()).await.unwrap());
+        }
+
+        // Emptying a folder takes only its WebP files, also in tmp/.
+        storage.put_bytes("previews/notes.txt", b"mine".to_vec(), "text/plain").await.unwrap();
+        thumbnails::delete_all(&storage, "previews/").await.unwrap();
+        assert!(!storage.object_exists(&key_for("tmp/7d/thumbs/b.png", "previews/").unwrap()).await.unwrap());
+        assert!(storage.object_exists("previews/notes.txt").await.unwrap());
+        assert!(storage.object_exists(&thumbnail).await.unwrap());
+        storage.delete_many(&["previews/notes.txt".to_string(), thumbnail.clone(), "tmp/7d/thumbs/b.png".to_string()]).await.unwrap();
+        assert!(!storage.object_exists(&thumbnail).await.unwrap());
+        assert!(!storage.object_exists("previews/notes.txt").await.unwrap());
     }
 
     #[tokio::test]

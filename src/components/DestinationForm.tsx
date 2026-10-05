@@ -25,6 +25,7 @@ import {
   imageQualities,
   imageSizes,
   temporaryLinkDurations,
+  thumbnailModes,
   type ConnectionResult,
   type DestinationConfig,
   type ExpiryRulesCheck,
@@ -35,6 +36,7 @@ import {
   type ImageProcessing,
   type OutputMode,
   type ProviderPreset,
+  type ThumbnailMode,
 } from "../lib/api";
 import {
   durationLabel,
@@ -46,6 +48,7 @@ import {
 } from "../lib/format";
 import { useSettings } from "../lib/hooks";
 import { useI18n, type Translate } from "../lib/i18n";
+import { defaultThumbnailPrefix, normalizedThumbnailPrefix, thumbnailPrefixProblem } from "../lib/thumbnails";
 import { ConnectionTestResult } from "./ConnectionTestResult";
 import { ConfirmDialog } from "./Dialogs";
 
@@ -89,6 +92,11 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [imageFormat, setImageFormat] = useState<ImageFormat>("original");
   const [imageQuality, setImageQuality] = useState<number | null>(null);
   const [imageMaxLongEdge, setImageMaxLongEdge] = useState<number | null>(null);
+  const [thumbnailMode, setThumbnailMode] = useState<ThumbnailMode>("local");
+  const [thumbnailPrefix, setThumbnailPrefix] = useState(defaultThumbnailPrefix);
+  /** Saving stopped to ask what happens to the thumbnails already in this
+   * bucket folder, which the destination would stop using. */
+  const [oldThumbnailPrefix, setOldThumbnailPrefix] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionResult | null>(null);
   /** Why the test couldn't reach the bucket at all. */
   const [testError, setTestError] = useState<string | null>(null);
@@ -139,6 +147,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setImageFormat(existing?.imageProcessing?.format ?? "original");
     setImageQuality(existing?.imageProcessing?.quality ?? null);
     setImageMaxLongEdge(existing?.imageProcessing?.maxLongEdge ?? null);
+    setThumbnailMode(existing?.thumbnails ?? "local");
+    setThumbnailPrefix(normalizedThumbnailPrefix(existing?.thumbnailPrefix ?? "") ?? defaultThumbnailPrefix);
+    setOldThumbnailPrefix(null);
     setTestResult(null);
     setTestError(null);
     setSaveError(null);
@@ -147,11 +158,13 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
 
   const hasNewCredentials = accessKeyId.trim() !== "" && secretAccessKey !== "";
   const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || existing !== null);
+  const prefixProblem = thumbnailMode === "bucket" ? thumbnailPrefixProblem(thumbnailPrefix, t) : null;
   const canSave =
     name.trim() !== "" &&
     bucket.trim() !== "" &&
     endpoint.trim() !== "" &&
     publicBaseURL.trim() !== "" &&
+    prefixProblem === null &&
     (existing !== null || hasNewCredentials);
 
   const currentConfig = (): DestinationConfig => ({
@@ -172,7 +185,17 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     imageMetadata,
     folderUpload,
     imageProcessing: imageProcessingConfig(),
+    thumbnails: thumbnailMode,
+    thumbnailPrefix: thumbnailPrefixConfig(),
   });
+
+  /** Kept while thumbnails aren't in the bucket, so switching back finds
+   * the same folder; null for the default one. */
+  const thumbnailPrefixConfig = (): string | null => {
+    const prefix = normalizedThumbnailPrefix(thumbnailPrefix);
+    if (!prefix || thumbnailPrefixProblem(thumbnailPrefix, t) !== null) return existing?.thumbnailPrefix ?? null;
+    return prefix === defaultThumbnailPrefix ? null : prefix;
+  };
 
   /** None when it's all off, so photos go up untouched. */
   const imageProcessingConfig = (): ImageProcessing | null =>
@@ -266,11 +289,22 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     }
   };
 
-  const save = async () => {
+  /** `deleteOldThumbnails`: the answer about the bucket folder of
+   * thumbnails saving would stop using; asked first when there's one. */
+  const save = async (deleteOldThumbnails?: boolean) => {
+    setOldThumbnailPrefix(null);
     setIsSaving(true);
     setSaveError(null);
     try {
-      onSaved(await api.saveDestination(currentConfig(), credentials(), formRules));
+      const config = currentConfig();
+      if (deleteOldThumbnails === undefined && existing) {
+        const old = await api.thumbnailCleanupPrefix(config).catch(() => null);
+        if (old) {
+          setOldThumbnailPrefix(old);
+          return;
+        }
+      }
+      onSaved(await api.saveDestination(config, credentials(), formRules, deleteOldThumbnails ?? false));
     } catch (error) {
       setSaveError(errorMessage(error));
     } finally {
@@ -284,7 +318,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (canSave) save();
+            if (canSave) void save();
           }}
         >
           <DialogBody>
@@ -599,6 +633,41 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 </Text>
               </div>
 
+              <Text weight="semibold" className="form-heading">
+                {t("Thumbnails")}
+              </Text>
+              <div className="form-group">
+                <Field label={t("Thumbnails")}>
+                  <Select value={thumbnailMode} onChange={(_, data) => setThumbnailMode(data.value as ThumbnailMode)}>
+                    {thumbnailModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {thumbnailModeLabel(mode, t)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {thumbnailMode === "bucket" && (
+                  <Field label={t("Folder")} validationMessage={prefixProblem ?? undefined}>
+                    <Input
+                      value={thumbnailPrefix}
+                      placeholder={defaultThumbnailPrefix}
+                      onChange={(_, data) => setThumbnailPrefix(data.value)}
+                    />
+                  </Field>
+                )}
+                <Text size={200} className="secondary">
+                  {thumbnailMode === "off"
+                    ? t("No thumbnails are made or downloaded for this destination. History and the bucket view show file icons.")
+                    : thumbnailMode === "local"
+                      ? t(
+                          "Thumbnails of photos, videos, PDFs and documents are made on this PC and kept only here. Files already in the bucket get one when they’re shown, if they’re under 25 MB.",
+                        )
+                      : t(
+                          "Thumbnails are also saved in your bucket, in this folder, so your other devices can show them. Each one is deleted, moved or expires along with its file. Use a folder only for thumbnails: it’s hidden in the bucket view.",
+                        )}
+                </Text>
+              </div>
+
               <div ref={testOutcome}>
                 <ConnectionTestResult result={testResult} error={testError} />
               </div>
@@ -641,6 +710,19 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
           onCancel={() => setIsConfirmingTurnOff(false)}
         />
         <ConfirmDialog
+          open={oldThumbnailPrefix !== null}
+          title={t("Delete the thumbnails already in the bucket?")}
+          message={t(
+            "Thumbnails saved in {0} stay in the bucket unless you delete them. Your files aren’t affected.",
+            oldThumbnailPrefix ?? "",
+          )}
+          alternative={{ label: t("Keep Them"), onSelect: () => void save(false) }}
+          confirmLabel={t("Delete Thumbnails")}
+          destructive
+          onConfirm={() => void save(true)}
+          onCancel={() => setOldThumbnailPrefix(null)}
+        />
+        <ConfirmDialog
           open={prefixesInUse !== null}
           title={t("Files already in these folders will be deleted")}
           message={t(
@@ -655,6 +737,17 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       </DialogSurface>
     </Dialog>
   );
+}
+
+function thumbnailModeLabel(mode: ThumbnailMode, t: Translate) {
+  switch (mode) {
+    case "off":
+      return t("Off");
+    case "local":
+      return t("On This PC");
+    case "bucket":
+      return t("In the Bucket");
+  }
 }
 
 function compressionLabel(quality: number, t: Translate) {

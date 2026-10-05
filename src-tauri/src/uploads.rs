@@ -24,6 +24,7 @@ use crate::output::{self, ContentHashes};
 use crate::storage::{BucketObject, Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
 use crate::{image_metadata, image_processing};
 use crate::t;
+use crate::thumbnails::ThumbnailMode;
 use crate::windows::AppWindow;
 
 const MAX_CONCURRENT: usize = 3;
@@ -554,8 +555,8 @@ struct Outcome {
     original_hash: Option<String>,
     /// The earlier upload of the same file whose link was used instead.
     reused: Option<UploadRecord>,
-    /// The file that went up, for the thumbnail.
-    uploaded: PathBuf,
+    /// The thumbnail made from the file that went up, if any.
+    thumbnail: Option<Vec<u8>>,
     _scratch: Scratch,
 }
 
@@ -678,11 +679,18 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 content_hash,
                 original_hash,
                 reused: Some(record),
-                uploaded: path,
+                thumbnail: None,
                 _scratch: scratch,
             });
         }
     }
+
+    // The thumbnail is made while the file goes up, from exactly what's
+    // sent (converted, metadata removed), and waited for before the job
+    // finishes: a watched folder or the local API may move or delete the
+    // file as soon as it has, and the copies here go when the job ends.
+    let mut thumbnail = (destination.thumbnail_mode() != ThumbnailMode::Off && !zipped)
+        .then(|| tauri::async_runtime::spawn(crate::thumbnails::generate(path.clone())));
 
     // A big file continues an upload of it left unfinished, under its key.
     let source = (!zipped).then(|| SourceFile::of(&input.path)).flatten();
@@ -808,6 +816,10 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 let object_key: String = result?;
                 let public_url = output::resolve_public_url(&destination.public_base_url, &object_key);
                 let link = link_for(&provider, destination, &object_key, &public_url).await;
+                let thumbnail = match thumbnail.take() {
+                    Some(task) => task.await.ok().flatten(),
+                    None => None,
+                };
                 return Ok(Outcome {
                     result: UploadResult { object_key: object_key.clone(), public_url, byte_size: file_size as i64 },
                     link,
@@ -815,7 +827,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     content_hash,
                     original_hash,
                     reused: None,
-                    uploaded: path.clone(),
+                    thumbnail,
                     _scratch: scratch,
                 });
             }
@@ -993,7 +1005,7 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
 /// History keeps the public URL; `outcome.link` is what's copied. An
 /// earlier upload whose link is reused stays the one history entry.
 async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, outcome: Outcome) {
-    let Outcome { result, link, filename, content_hash, original_hash, reused, uploaded, _scratch } = outcome;
+    let Outcome { result, link, filename, content_hash, original_hash, reused, thumbnail, _scratch } = outcome;
     let was_reused = reused.is_some();
     let record = match reused {
         Some(record) => record,
@@ -1010,23 +1022,14 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
                 content_hash: content_hash.as_deref(),
                 watched_folder: input.watched.as_ref().map(|source| (source.folder_id.as_str(), source.folder_name.as_str())),
             });
-            // Before the job counts as finished: whoever started it (the
-            // local API) may delete the file as soon as it has. A photo
-            // Windows can't read (HEIC) gets its thumbnail from the copy
-            // that went up.
-            if mime_type.starts_with("image/") {
-                let target = core.history.thumbnail_path(&record.id);
-                let sources = [input.path.clone(), uploaded];
-                let _ = tauri::async_runtime::spawn_blocking(move || {
-                    for source in sources {
-                        crate::thumbnails::store(&source, &target);
-                        if target.exists() {
-                            break;
-                        }
-                    }
-                })
-                .await;
+            match &thumbnail {
+                Some(data) => core.history.thumbnails.store(&record.id, data),
+                // Nothing could be made from the file itself; downloading
+                // it again later wouldn't do better.
+                None if destination.thumbnail_mode() != ThumbnailMode::Off => core.history.thumbnails.mark_unavailable(&record.id),
+                None => {}
             }
+            tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
             record
         }
     };
@@ -1099,6 +1102,27 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         close_panel_if_wanted(core);
     }
     drain(core);
+}
+
+/// After an upload: its thumbnail goes to the bucket when the destination
+/// keeps them there. Any other thumbnail at that key (in another profile's
+/// folder on this bucket, or one that couldn't be replaced) belongs to a
+/// file that was there before, so it goes.
+async fn update_bucket_thumbnails(core: SharedCore, destination: DestinationConfig, object_key: String, thumbnail: Option<Vec<u8>>) {
+    let mut stale = crate::thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+    if stale.is_empty() {
+        return;
+    }
+    let Ok(credentials) = credentials::load(&destination.id) else { return };
+    let storage = S3Provider::new(destination.clone(), credentials);
+    if let (Some(prefix), Some(data)) = (destination.bucket_thumbnail_prefix(), thumbnail.filter(|data| crate::thumbnails::is_webp(data))) {
+        if crate::thumbnails::bucket::save(&storage, data, &object_key, &prefix).await.is_ok() {
+            stale.retain(|other| *other != prefix);
+        }
+    }
+    if let Err(error) = crate::thumbnails::bucket::delete(&storage, &object_key, &stale).await {
+        log::debug!("Could not delete old thumbnails of {object_key}: {error}");
+    }
 }
 
 /// What's copied for `link`: as the destination says, or Settings > Output.
@@ -1216,7 +1240,12 @@ pub async fn delete_upload(core: &SharedCore, record_id: &str) -> Result<(), Fai
         // Credential Manager that can't be read right now keeps the record,
         // so the delete can be tried again.
         match credentials::load(&destination.id) {
-            Ok(credentials) => S3Provider::new(destination, credentials).delete(&record.object_key).await?,
+            Ok(credentials) => {
+                let prefixes = crate::thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+                let id = destination.id.clone();
+                crate::bucket::delete_object(&S3Provider::new(destination, credentials), &record.object_key, &prefixes).await?;
+                crate::thumbnails::remote::forget(core, &id, &record.object_key);
+            }
             Err(credentials::CredentialError::NotFound) => {}
             Err(error) => return Err(error.to_string().into()),
         }
@@ -1263,6 +1292,7 @@ mod tests {
             source: None,
             source_name: None,
             has_thumbnail: false,
+            thumbnail_path: None,
         }
     }
 

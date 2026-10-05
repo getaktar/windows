@@ -38,7 +38,7 @@ import {
   type ContextMenuState,
   type MenuEntry,
 } from "../../components/Dialogs";
-import { FileIcon, ProviderIcon } from "../../components/FileVisuals";
+import { ObjectThumbnail, ProviderIcon, useObjectThumbnail } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
 import { api, temporaryLinkDurations, type BucketObject, type DestinationConfig } from "../../lib/api";
 import {
@@ -241,7 +241,7 @@ export function BucketView({
             }}
           >
             <span className="row-icon">
-              <FileIcon filename={object.key} size={22} />
+              <ObjectThumbnail destinationId={model.destination.id} object={object} size={28} />
             </span>
             <span className="row-text">
               <Text className="ellipsis">{nameOfKey(object.key)}</Text>
@@ -525,6 +525,8 @@ function BucketObjectDetail({
     };
   }, [object.key, model.previewURL]);
 
+  const thumbnail = useObjectThumbnail(model.destination.id, object);
+
   const copyURL = () => {
     api.copyText(url);
     flashCopied();
@@ -556,7 +558,7 @@ function BucketObjectDetail({
             {model.destination.bucket}/{parentOfKey(object.key)}
           </Text>
         </header>
-        <Preview url={previewURL} filename={name} browserURL={url} size={object.size} />
+        <Preview url={previewURL} filename={name} browserURL={url} placeholder={thumbnail} size={object.size} />
         <LinkSection url={url} copied={copied} onCopy={copyURL} />
         <section className="detail-section">
           <Text weight="semibold" className="secondary">

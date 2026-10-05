@@ -13,6 +13,7 @@ use crate::history::History;
 use crate::local_api::LocalApiService;
 use crate::multipart::SessionStore;
 use crate::settings::SettingsStore;
+use crate::thumbnails::LocalStore;
 use crate::updater::UpdateService;
 use crate::uploads::UploadManager;
 use crate::watched::WatchService;
@@ -33,6 +34,8 @@ pub mod events {
     pub const NAMES_CHANGED: &str = "names-changed";
     /// Watched folders, their status, or the pause changed.
     pub const WATCHED_CHANGED: &str = "watched-changed";
+    /// Settings > General > Clear removed the thumbnails on this PC.
+    pub const THUMBNAILS_CLEARED: &str = "thumbnails-cleared";
     /// Settings should switch tabs or add a watched folder (see
     /// `watched::take_request`).
     pub const SETTINGS_REQUEST: &str = "settings-request";
@@ -57,7 +60,9 @@ pub struct Core {
     pub local_api: LocalApiService,
     pub updater: UpdateService,
     pub watched: WatchService,
-    pub thumbnails_dir: PathBuf,
+    /// Thumbnails of files in buckets, made for the bucket view (see
+    /// `thumbnails::remote`). Those of uploads live with the history.
+    pub bucket_thumbnails: PathBuf,
     /// When the app started, to tell a deep link that launched Aktar from
     /// one sent to an already running copy.
     pub launched_at: std::time::Instant,
@@ -72,13 +77,17 @@ impl Core {
         let cache_dir = app.path().app_cache_dir()?;
         std::fs::create_dir_all(&data_dir)?;
         std::fs::create_dir_all(&local_data_dir)?;
-        let thumbnails_dir = cache_dir.join("thumbnails");
-        std::fs::create_dir_all(&thumbnails_dir)?;
         // Settings and destinations roam with the user; the history database
         // stays on this PC. SQLite locks and WAL files don't survive a
         // roaming or redirected (network) AppData, common in companies.
         let history_dir = move_history(&data_dir, &local_data_dir);
-        let history = History::open(&history_dir, thumbnails_dir.clone())?;
+        // Next to the history, which on Windows is the same folder as the
+        // cache, where versions before 0.6 put them; elsewhere they move.
+        let thumbnails = LocalStore::open(history_dir.join("thumbnails"), Some(&cache_dir.join("thumbnails")));
+        let history = History::open(&history_dir, thumbnails)?;
+        let bucket_thumbnails = cache_dir.join("bucket-thumbnails");
+        let pruned = bucket_thumbnails.clone();
+        std::thread::spawn(move || crate::thumbnails::remote::prune(&pruned));
         let watched = WatchService::new(app, &data_dir, history.ledger()?);
 
         Ok(Arc::new(Core {
@@ -91,7 +100,7 @@ impl Core {
             local_api: LocalApiService::default(),
             updater: UpdateService::default(),
             watched,
-            thumbnails_dir,
+            bucket_thumbnails,
             launched_at: std::time::Instant::now(),
         }))
     }

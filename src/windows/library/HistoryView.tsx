@@ -552,6 +552,7 @@ function UploadDetail(props: {
           mimeType={record.mimeType}
           browserURL={record.publicUrl}
           placeholder={thumbnail}
+          mediaURL={() => api.recordTemporaryLink(record.id, 3600).catch(() => record.publicUrl)}
           size={record.byteSize}
           onZoom={props.onZoom}
         />

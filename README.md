@@ -21,8 +21,10 @@ clipboard. This is the Windows version of [Aktar for Mac](https://github.com/get
 - Bring your own storage: Amazon S3, Cloudflare R2, Backblaze B2,
   DigitalOcean Spaces, MinIO, or any other S3-compatible endpoint
 - Multiple destinations, switchable per upload
-- Upload history with search, thumbnails, and previews (images, PDFs, text,
-  Markdown)
+- Upload history with search, thumbnails (photos, videos, PDFs, documents),
+  and previews (images, PDFs, text, Markdown, video and audio playback)
+- Thumbnails per destination: off, on this PC, or also in the bucket so
+  other devices can show them
 - Copy the link as a plain URL, Markdown, HTML, or a custom template
 - Delete the remote file straight from the history view
 - Browse each bucket folder by folder, including files uploaded elsewhere:

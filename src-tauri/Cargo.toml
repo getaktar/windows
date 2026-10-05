@@ -92,7 +92,7 @@ windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse",
 # WinRT, for the Microsoft Store (MSIX) build: its startup task, how it was
 # launched, and notifications under the package's own identity. The same
 # version Tauri already builds, so nothing extra is compiled.
-windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom", "Networking_Connectivity", "Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
+windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_Activation", "Foundation", "UI_Notifications", "Data_Xml_Dom", "Networking_Connectivity", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Imaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
 # For `#[implement]`: the Store package's File Explorer menu is a COM
 # server (see src/explorer_command.rs).
 windows-core = "0.61"

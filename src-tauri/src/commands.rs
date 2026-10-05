@@ -18,13 +18,14 @@ use crate::expiry::{self, FormRules, RulesCheck};
 use crate::history::UploadRecord;
 use crate::local_api::{self, LocalApiState};
 use crate::settings::{Settings, SettingsPatch};
-use crate::storage::{BucketListing, ConnectionResult, S3Provider};
+use crate::storage::{BucketListing, BucketObject, ConnectionResult, S3Provider};
 use crate::transfer::{self, TransferError};
 use crate::updater::{self, UpdateStatus};
 use crate::uploads::{self, JobSnapshot, NameRequest, UploadInput};
 use crate::watched::engine::Now;
 use crate::watched::model::{Hook, WatchedFolder};
 use crate::windows::AppWindow;
+use crate::thumbnails::{self, ThumbnailMode};
 use crate::{bucket, i18n, panel, t};
 
 type Core<'a> = State<'a, SharedCore>;
@@ -83,12 +84,35 @@ pub fn save_destination(
     mut config: DestinationConfig,
     credentials: Option<StorageCredentials>,
     rules: Option<FormRules>,
+    delete_old_thumbnails: Option<bool>,
 ) -> Result<DestinationConfig, String> {
     let is_new = config.id.is_empty();
     if is_new {
         config.id = crate::util::new_id();
     }
-    store_destination(&core, config, credentials, rules, is_new)
+    // Read before saving replaces them: the old folder may be in another
+    // bucket, with other keys.
+    let cleanup = delete_old_thumbnails
+        .unwrap_or(false)
+        .then(|| old_thumbnail_prefix(&core, &config))
+        .flatten()
+        .and_then(|(saved, prefix)| credentials::load(&saved.id).ok().map(|keys| (saved, prefix, keys)));
+    let saved = store_destination(&core, config, credentials, rules, is_new)?;
+    if let Some((old, prefix, keys)) = cleanup {
+        let core = core.inner().clone();
+        tauri::async_runtime::spawn(async move {
+            let name = old.name.clone();
+            match thumbnails::bucket::delete_all(&S3Provider::new(old, keys), &prefix).await {
+                Ok(()) => uploads::show_notification(&core, &t!("Deleted the thumbnails of {0} from the bucket", name), ""),
+                Err(error) => uploads::show_notification(
+                    &core,
+                    &t!("Couldn't delete the thumbnails of {0} from the bucket", name),
+                    &error.to_string(),
+                ),
+            }
+        });
+    }
+    Ok(saved)
 }
 
 /// Adds `config` under its own ID when `is_new`, or updates the one with
@@ -118,7 +142,11 @@ fn store_destination(
         if let Some(credentials) = credentials {
             credentials::save(&credentials, &config.id).map_err(|error| error.to_string())?;
         }
+        let old = core.destinations.find(Some(&config.id)).filter(|saved| saved.id == config.id);
         core.destinations.update(config.clone());
+        if let (Some(old), Some(new)) = (old, core.destinations.find(Some(&config.id))) {
+            destination_updated(core, &old, &new);
+        }
     }
     match rules {
         FormRules::Checked { check, .. } => expiry::record(core, &config.id, check),
@@ -128,6 +156,25 @@ fn store_destination(
     }
     core.notify(events::DESTINATIONS_CHANGED);
     Ok(config)
+}
+
+/// Thumbnails turned off: the ones made for this destination go, here and
+/// in the bucket view's cache. Pointed at another bucket: what was made
+/// from the old one's files no longer applies. (Thumbnails saved in the
+/// bucket are left there; the form asks about those.)
+fn destination_updated(core: &SharedCore, old: &DestinationConfig, new: &DestinationConfig) {
+    let off = new.thumbnail_mode() == ThumbnailMode::Off;
+    if off && old.thumbnail_mode() != ThumbnailMode::Off {
+        core.history.remove_thumbnails(&new.id);
+        core.notify(events::HISTORY_CHANGED);
+    }
+    if off
+        || !thumbnails::same_bucket(old, new)
+        || old.thumbnail_mode() != new.thumbnail_mode()
+        || old.bucket_thumbnail_prefix() != new.bucket_thumbnail_prefix()
+    {
+        thumbnails::remote::forget_destination(core, &new.id);
+    }
 }
 
 /// Whether `config` reaches the same bucket with the same keys as the
@@ -273,6 +320,7 @@ pub fn set_destination_link(core: Core, id: String, seconds: Option<u64>) {
 #[tauri::command]
 pub fn remove_destination(core: Core, id: String) {
     core.destinations.remove(&id);
+    thumbnails::remote::forget_destination(&core, &id);
     expiry::record(&core, &id, None);
     core.notify(events::DESTINATIONS_CHANGED);
 }
@@ -461,9 +509,71 @@ pub async fn record_temporary_link(core: Core<'_>, id: String, seconds: u64) -> 
     uploads::temporary_url(&core, &record, seconds.clamp(60, 604_800)).await
 }
 
+/// The thumbnail of a file in the bucket view, as a data URL, or none (a
+/// file icon). See `thumbnails::remote`.
 #[tauri::command]
-pub fn thumbnails_dir(core: Core) -> String {
-    core.thumbnails_dir.to_string_lossy().into_owned()
+pub async fn bucket_thumbnail(core: Core<'_>, destination_id: String, object: BucketObject) -> Result<Option<String>, ()> {
+    let Some(destination) = core.destinations.find(Some(&destination_id)) else { return Ok(None) };
+    let prefixes = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+    let data = thumbnails::remote::for_object(&core, &destination, &object, &prefixes).await;
+    Ok(data.map(|data| {
+        use base64::Engine as _;
+        let mime = if thumbnails::is_webp(&data) { "image/webp" } else { "image/png" };
+        format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(data))
+    }))
+}
+
+/// Makes or fetches the thumbnail of a history entry that has none; true
+/// when there's one now (History is told to refresh).
+#[tauri::command]
+pub async fn load_record_thumbnail(core: Core<'_>, id: String) -> Result<bool, ()> {
+    let made = thumbnails::remote::for_record(&core, &id).await;
+    if made {
+        core.notify(events::HISTORY_CHANGED);
+    }
+    Ok(made)
+}
+
+/// Settings > General: the space thumbnails take on this PC, in bytes.
+#[tauri::command]
+pub async fn thumbnail_usage(core: Core<'_>) -> Result<u64, ()> {
+    let folders = [core.history.thumbnails.directory().to_path_buf(), core.bucket_thumbnails.clone()];
+    Ok(tauri::async_runtime::spawn_blocking(move || folders.iter().map(|folder| thumbnails::disk_usage(folder)).sum())
+        .await
+        .unwrap_or_default())
+}
+
+/// Settings > General > Clear: every thumbnail on this PC. They're made
+/// again when shown; the ones in buckets stay.
+#[tauri::command]
+pub fn clear_thumbnails(core: Core) {
+    core.history.thumbnails.remove_all();
+    thumbnails::remote::forget_all(&core);
+    core.notify(events::THUMBNAILS_CLEARED);
+    core.notify(events::HISTORY_CHANGED);
+}
+
+/// The bucket folder a saved destination keeps thumbnails in, when saving
+/// `config` would stop using it (thumbnails off the bucket, in another
+/// folder, or in another bucket) and no other destination on that bucket
+/// still uses it: the destination form then asks whether to delete them.
+#[tauri::command]
+pub fn thumbnail_cleanup_prefix(core: Core, config: DestinationConfig) -> Option<String> {
+    old_thumbnail_prefix(&core, &config).map(|(_, prefix)| prefix)
+}
+
+fn old_thumbnail_prefix(core: &SharedCore, config: &DestinationConfig) -> Option<(DestinationConfig, String)> {
+    let mut config = config.clone();
+    config.sanitize();
+    let saved = core.destinations.find(Some(&config.id)).filter(|saved| saved.id == config.id)?;
+    let old = saved.bucket_thumbnail_prefix()?;
+    if config.bucket_thumbnail_prefix().as_ref() == Some(&old) && thumbnails::same_bucket(&saved, &config) {
+        return None;
+    }
+    let others_use_it = core.destinations.all().iter().any(|other| {
+        other.id != saved.id && thumbnails::same_bucket(other, &saved) && other.bucket_thumbnail_prefix().as_ref() == Some(&old)
+    });
+    (!others_use_it).then_some((saved, old))
 }
 
 /// Deletes each record's remote file, then its history entry. Returns the
@@ -506,19 +616,26 @@ pub async fn list_objects(
     continuation_token: Option<String>,
     recursive: bool,
 ) -> Result<BucketListing, String> {
-    let (_, storage) = storage_for(&core, &destination_id)?;
+    let (destination, storage) = storage_for(&core, &destination_id)?;
     let result = if recursive {
         storage.list_recursively(&prefix, continuation_token).await
     } else {
         storage.list(&prefix, continuation_token).await
     };
-    result.map_err(|error| error.to_string())
+    let mut listing = result.map_err(|error| error.to_string())?;
+    // Thumbnail folders are Aktar's own, hidden like in the Mac app.
+    let hidden = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+    listing.folders.retain(|folder| !thumbnails::is_hidden_folder(folder, &hidden));
+    listing.objects.retain(|object| !thumbnails::is_thumbnail(&object.key, &hidden));
+    Ok(listing)
 }
 
 #[tauri::command]
 pub async fn bucket_delete(core: Core<'_>, destination_id: String, key: String) -> Result<(), String> {
     let (destination, storage) = storage_for(&core, &destination_id)?;
-    storage.delete(&key).await.map_err(|error| error.to_string())?;
+    let prefixes = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+    bucket::delete_object(&storage, &key, &prefixes).await.map_err(|error| error.to_string())?;
+    thumbnails::remote::forget(&core, &destination.id, &key);
     core.history.object_deleted(&key, &destination.id);
     core.notify(events::HISTORY_CHANGED);
     Ok(())
@@ -534,8 +651,10 @@ pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, t
     }
     bucket::check_key(&new_key)?;
     let (destination, storage) = storage_for(&core, &destination_id)?;
-    match bucket::move_object(&storage, &from, &new_key).await {
+    let prefixes = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+    match bucket::move_object(&storage, &from, &new_key, &prefixes).await {
         Ok(()) => {
+            thumbnails::remote::forget(&core, &destination.id, &from);
             core.history.object_moved(&from, &new_key, &destination, expiry::is_active(&core, &destination.id));
             core.notify(events::HISTORY_CHANGED);
             Ok(new_key)

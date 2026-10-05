@@ -62,7 +62,7 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
     Ok(hex(&sha2::Digest::finalize(sha256)))
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 

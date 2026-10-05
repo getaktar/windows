@@ -245,10 +245,11 @@ async fn delete_upload_of(core: &SharedCore, folder_id: &str, destination_id: &s
         .find(Some(destination_id))
         .ok_or_else(|| (t!("This upload’s destination was removed."), false))?;
     let credentials = crate::credentials::load(&destination.id).map_err(|error| (error.to_string(), false))?;
-    crate::storage::S3Provider::new(destination.clone(), credentials)
-        .delete(object_key)
+    let prefixes = crate::thumbnails::bucket_prefixes(&destination, &core.destinations.all());
+    crate::bucket::delete_object(&crate::storage::S3Provider::new(destination.clone(), credentials), object_key, &prefixes)
         .await
         .map_err(|error| (error.to_string(), error.is_transient()))?;
+    crate::thumbnails::remote::forget(core, &destination.id, object_key);
     core.history.object_deleted(object_key, &destination.id);
     core.notify(events::HISTORY_CHANGED);
     Ok(())

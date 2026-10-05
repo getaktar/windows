@@ -16,6 +16,8 @@ export const events = {
   panelShown: "panel-shown",
   namesChanged: "names-changed",
   watchedChanged: "watched-changed",
+  /** Settings > General > Clear removed the thumbnails on this PC. */
+  thumbnailsCleared: "thumbnails-cleared",
   /** Settings should switch tabs or add a watched folder (`takeSettingsRequest`). */
   settingsRequest: "settings-request",
 } as const;
@@ -59,7 +61,16 @@ export interface DestinationConfig {
   /** Converting, recompressing and resizing photos before they're
    * uploaded; null leaves them as they are. */
   imageProcessing?: ImageProcessing | null;
+  /** Where thumbnails of uploads here are kept; null keeps them on this PC. */
+  thumbnails?: ThumbnailMode | null;
+  /** The bucket folder for "bucket" thumbnails; null is `.aktar/thumbnails/`. */
+  thumbnailPrefix?: string | null;
 }
+
+/** "off": nothing is made, downloaded or shown. "local": made on this PC,
+ * kept only here. "bucket": also saved to a folder in the bucket. */
+export type ThumbnailMode = "off" | "local" | "bucket";
+export const thumbnailModes: ThumbnailMode[] = ["off", "local", "bucket"];
 
 export type ImageFormat = "original" | "webp" | "avif";
 export const imageFormats: ImageFormat[] = ["original", "webp", "avif"];
@@ -144,6 +155,8 @@ export interface UploadRecord {
   /** The watched folder's name at the time. */
   sourceName?: string | null;
   hasThumbnail: boolean;
+  /** The thumbnail file on this PC. */
+  thumbnailPath?: string | null;
 }
 
 // MARK: - Watched folders (src-tauri/src/watched/model.rs)
@@ -426,8 +439,17 @@ export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
 
   listDestinations: () => invoke<DestinationConfig[]>("list_destinations"),
-  saveDestination: (config: DestinationConfig, credentials: StorageCredentials | null, rules: FormRules) =>
-    invoke<DestinationConfig>("save_destination", { config, credentials, rules }),
+  /** `deleteOldThumbnails` empties the bucket folder `thumbnailCleanupPrefix`
+   * names, in the background. */
+  saveDestination: (
+    config: DestinationConfig,
+    credentials: StorageCredentials | null,
+    rules: FormRules,
+    deleteOldThumbnails = false,
+  ) => invoke<DestinationConfig>("save_destination", { config, credentials, rules, deleteOldThumbnails }),
+  /** The bucket folder of thumbnails saving `config` would stop using, to
+   * ask whether they go. */
+  thumbnailCleanupPrefix: (config: DestinationConfig) => invoke<string | null>("thumbnail_cleanup_prefix", { config }),
   removeDestination: (id: string) => invoke<void>("remove_destination", { id }),
   setDefaultDestination: (id: string) => invoke<void>("set_default_destination", { id }),
   /** A copy with the same keys, as a starting point for another profile on
@@ -473,7 +495,13 @@ export const api = {
   dismissJob: (id: string) => invoke<void>("dismiss_job", { id }),
 
   listHistory: () => invoke<UploadRecord[]>("list_history"),
-  thumbnailsDir: () => invoke<string>("thumbnails_dir"),
+  /** Makes or fetches a history entry's missing thumbnail; true when it has one now. */
+  loadRecordThumbnail: (id: string) => invoke<boolean>("load_record_thumbnail", { id }),
+  /** A bucket file's thumbnail as a data URL, or null for its icon. */
+  bucketThumbnail: (destinationId: string, object: BucketObject) =>
+    invoke<string | null>("bucket_thumbnail", { destinationId, object }),
+  thumbnailUsage: () => invoke<number>("thumbnail_usage"),
+  clearThumbnails: () => invoke<void>("clear_thumbnails"),
   /** A fresh presigned link to an upload in history. */
   recordTemporaryLink: (id: string, seconds: number) => invoke<string>("record_temporary_link", { id, seconds }),
   deleteRemote: (ids: string[]) => invoke<Record<string, string>>("delete_remote", { ids }),

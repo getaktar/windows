@@ -24,7 +24,7 @@ use crate::storage::S3Provider;
 /// each one needs its own lifecycle rule.
 pub const DURATIONS: [u32; 4] = [1, 7, 14, 30];
 
-const PREFIX_ROOT: &str = "tmp/";
+pub const PREFIX_ROOT: &str = "tmp/";
 const RULE_ID_PREFIX: &str = "aktar-expire-";
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60 * 60);

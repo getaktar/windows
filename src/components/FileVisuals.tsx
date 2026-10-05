@@ -16,9 +16,10 @@ import {
   BoxRegular,
 } from "@fluentui/react-icons";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 
-import { api, type ProviderPreset, type UploadRecord } from "../lib/api";
+import { api, events, type BucketObject, type ProviderPreset, type UploadRecord } from "../lib/api";
 import { expiryLabel, fileKind, formatDateTime } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 
@@ -62,21 +63,22 @@ export function ProviderIcon({ preset, size = 20 }: { preset: ProviderPreset; si
   }
 }
 
-let thumbnailsDir: Promise<string> | null = null;
+/** History entries whose missing thumbnail was asked for in this session:
+ * once each, however often their rows show. */
+const requested = new Set<string>();
 
-function thumbnailURL(dir: string, id: string) {
-  const separator = dir.includes("\\") ? "\\" : "/";
-  return convertFileSrc(`${dir}${separator}${id}.png`);
-}
-
+/** The upload's thumbnail on this PC. One it doesn't have is asked for once
+ * the row shows (made from the file in the bucket, or fetched from the
+ * bucket's thumbnail folder); History refreshes when it arrives. */
 export function useThumbnailURL(record: UploadRecord | null) {
-  const [dir, setDir] = useState<string | null>(null);
+  const path = record?.thumbnailPath ?? null;
+  const id = record?.id;
   useEffect(() => {
-    thumbnailsDir ??= api.thumbnailsDir();
-    thumbnailsDir.then(setDir).catch(() => {});
-  }, []);
-  if (!record?.hasThumbnail || !dir) return null;
-  return thumbnailURL(dir, record.id);
+    if (!id || path || requested.has(id)) return;
+    requested.add(id);
+    api.loadRecordThumbnail(id).catch(() => {});
+  }, [id, path]);
+  return path ? convertFileSrc(path) : null;
 }
 
 /** Square, aspect-fit thumbnail on a faint checkerboard so transparent PNGs
@@ -84,6 +86,7 @@ export function useThumbnailURL(record: UploadRecord | null) {
 export function Thumbnail({ record, size }: { record: UploadRecord; size: number }) {
   const url = useThumbnailURL(record);
   const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
   const radius = Math.round(size * 0.18);
   if (url && !failed) {
     return (
@@ -116,4 +119,60 @@ export function ExpiryBadge({ expiresAt }: { expiresAt: number | null }) {
       {expiryLabel(expiresAt, Date.now(), t)}
     </Badge>
   );
+}
+
+/** A bucket file's thumbnail (see `api.bucketThumbnail`), or its file icon
+ * while there's none, and for good when the destination's thumbnails are
+ * off. */
+export function ObjectThumbnail({ destinationId, object, size }: { destinationId: string; object: BucketObject; size: number }) {
+  const url = useObjectThumbnail(destinationId, object);
+  const radius = Math.round(size * 0.18);
+  if (url) {
+    return (
+      <div className="thumb checkerboard" style={{ width: size, height: size, borderRadius: radius }}>
+        <img src={url} alt="" draggable={false} />
+      </div>
+    );
+  }
+  return <FileIcon filename={object.key} size={Math.round(size * 0.78)} />;
+}
+
+/** Thumbnails already loaded, by destination, key, size and date, so rows
+ * scrolled back into view don't ask again. */
+const objectThumbnails = new Map<string, string | null>();
+
+export function useObjectThumbnail(destinationId: string, object: BucketObject | null) {
+  const cacheKey = object ? [destinationId, object.key, object.size, object.lastModified ?? 0].join("\n") : "";
+  const [url, setUrl] = useState<string | null>(() => objectThumbnails.get(cacheKey) ?? null);
+  useEffect(() => {
+    if (!object) return;
+    if (objectThumbnails.has(cacheKey)) {
+      setUrl(objectThumbnails.get(cacheKey) ?? null);
+      return;
+    }
+    let cancelled = false;
+    setUrl(null);
+    api
+      .bucketThumbnail(destinationId, object)
+      .then((loaded) => {
+        // None may be offline for now: asked again when the row shows again.
+        if (loaded) objectThumbnails.set(cacheKey, loaded);
+        if (!cancelled) setUrl(loaded);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // The object is identified by `cacheKey`.
+  }, [cacheKey]);
+  return url;
+}
+
+// After Settings > General > Clear (in another window), or a change to a
+// destination's thumbnails, what's loaded here no longer applies.
+for (const event of [events.thumbnailsCleared, events.destinationsChanged]) {
+  listen(event, () => {
+    objectThumbnails.clear();
+    requested.clear();
+  }).catch(() => {});
 }

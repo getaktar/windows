@@ -49,7 +49,7 @@ import { Card, CardRow, SettingsPage, SettingsSection, ToggleRow } from "../comp
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
 import { ImportDestinationDialog, ShareDestinationDialog, type ShareRequest } from "../components/TransferDialogs";
 import { api, errorMessage, events, type DestinationConfig, type OutputMode } from "../lib/api";
-import { providerName } from "../lib/format";
+import { formatBytes, providerName } from "../lib/format";
 import { useDestinations, useFlag, useLocalApi, useSettings, useTauriEvent, useUpdateStatus } from "../lib/hooks";
 import { useI18n, websiteURL } from "../lib/i18n";
 import { links } from "../lib/links";
@@ -280,7 +280,47 @@ function GeneralSettings() {
           />
         </Card>
       </SettingsSection>
+      <ThumbnailsSection />
     </SettingsPage>
+  );
+}
+
+/** How much space thumbnails take on this PC, and Clear. */
+function ThumbnailsSection() {
+  const { t, locale } = useI18n();
+  const [usage, setUsage] = useState<number | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const measure = () => api.thumbnailUsage().then(setUsage).catch(() => {});
+  useEffect(() => {
+    measure();
+  }, []);
+  useTauriEvent(events.historyChanged, measure);
+
+  return (
+    <SettingsSection title={t("Thumbnails")}>
+      <Card>
+        <CardRow title={t("Thumbnails on this PC")} subtitle={usage === null ? "\u00a0" : formatBytes(usage, locale)}>
+          <Button disabled={usage === 0} onClick={() => setIsConfirming(true)}>
+            {t("Clear…")}
+          </Button>
+        </CardRow>
+      </Card>
+      <ConfirmDialog
+        open={isConfirming}
+        title={t("Clear thumbnails on this PC?")}
+        message={t(
+          "Thumbnails are made again when they’re shown, which can mean downloading files up to 25 MB. Thumbnails saved in buckets aren’t affected. To stop making them, turn Thumbnails off for a destination.",
+        )}
+        confirmLabel={t("Clear Thumbnails")}
+        destructive
+        onConfirm={async () => {
+          setIsConfirming(false);
+          await api.clearThumbnails().catch(() => {});
+          measure();
+        }}
+        onCancel={() => setIsConfirming(false)}
+      />
+    </SettingsSection>
   );
 }
 

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Thumbnails for videos, PDFs, RAW and HEIC photos, Office documents and
+  more, made by the same Windows thumbnailer Explorer uses, in History, the
+  tray panel and the bucket view. Files already in a bucket get one when
+  they're shown (up to 25 MB), and a file's details show its thumbnail when
+  there's no other preview
+- A Thumbnails setting for each destination: Off (nothing is made or
+  downloaded), On This PC (the default) or In the Bucket, which also saves
+  them to a folder of your choice in the bucket so your other devices can
+  show them. A thumbnail in the bucket is deleted, renamed, moved and
+  expires together with its file, and its folder is hidden in the bucket
+  view and the local API. Leaving that mode asks whether to delete the
+  thumbnails already there. Shared with Share to Another Device
+- Videos and audio files play right in a file's details in History and the
+  bucket view, streamed from the bucket (private buckets too) without
+  downloading them first. Nothing loads until you click Play
+- Settings > General shows how much space thumbnails take on this PC, with
+  Clear to remove them all (they're made again when shown)
+
+### Changed
+
+- Thumbnails are sharper (512 pixels instead of 320) yet take about a tenth
+  of the space, as WebP instead of PNG
+
 ## [0.5.1] - 2026-10-04
 
 ### Fixed

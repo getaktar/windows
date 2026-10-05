@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::output::OutputMode;
+use crate::thumbnails::ThumbnailMode;
 use crate::t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -99,6 +100,14 @@ pub struct DestinationConfig {
     /// uploaded here; none leaves them as they are.
     #[serde(default)]
     pub image_processing: Option<ImageProcessing>,
+    /// Where thumbnails of uploads here are kept; none is
+    /// `ThumbnailMode::default()` (on this PC). See `thumbnail_mode`.
+    #[serde(default, deserialize_with = "crate::thumbnails::lenient_mode")]
+    pub thumbnails: Option<ThumbnailMode>,
+    /// The bucket folder for `ThumbnailMode::Bucket`; none is
+    /// `thumbnails::DEFAULT_PREFIX`. See `bucket_thumbnail_prefix`.
+    #[serde(default)]
+    pub thumbnail_prefix: Option<String>,
 }
 
 /// How long a temporary (presigned) link can stay valid, in seconds: 5 and
@@ -206,6 +215,11 @@ impl DestinationConfig {
                 self.image_processing = None;
             }
         }
+        self.thumbnail_prefix = self
+            .thumbnail_prefix
+            .take()
+            .filter(|prefix| crate::thumbnails::problem_with_prefix(prefix).is_none())
+            .and_then(|prefix| crate::thumbnails::normalized_prefix(&prefix));
     }
 }
 

@@ -1,7 +1,7 @@
 //! Upload history in SQLite. History is metadata-first: the uploaded file
 //! itself is never kept, only a small thumbnail (see `thumbnails`).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::destinations::DestinationConfig;
 use crate::output::resolve_public_url;
+use crate::thumbnails::LocalStore;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +37,8 @@ pub struct UploadRecord {
     /// even after it's removed.
     pub source_name: Option<String>,
     pub has_thumbnail: bool,
+    /// The thumbnail file on this PC, for the windows to show.
+    pub thumbnail_path: Option<String>,
 }
 
 pub struct NewRecord<'a> {
@@ -56,7 +59,7 @@ pub struct History {
     /// Shared with the watched folders' ledger, which keeps its table in
     /// the same database.
     connection: Arc<Mutex<Connection>>,
-    thumbnails: PathBuf,
+    pub thumbnails: LocalStore,
 }
 
 const COLUMNS: &str = "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name";
@@ -67,7 +70,7 @@ pub fn watched_source(folder_id: &str) -> String {
 }
 
 impl History {
-    pub fn open(data_directory: &Path, thumbnails: PathBuf) -> rusqlite::Result<Self> {
+    pub fn open(data_directory: &Path, thumbnails: LocalStore) -> rusqlite::Result<Self> {
         let connection = Connection::open(data_directory.join("history.sqlite"))?;
         // NORMAL is the usual pairing with WAL: a crash of the app never
         // loses or damages anything; only a power cut can lose the last
@@ -84,13 +87,9 @@ impl History {
         crate::watched::ledger::Ledger::new(self.connection.clone())
     }
 
-    pub fn thumbnail_path(&self, id: &str) -> PathBuf {
-        self.thumbnails.join(format!("{id}.png"))
-    }
-
     fn record_from_row(&self, row: &Row) -> rusqlite::Result<UploadRecord> {
         let id: String = row.get(0)?;
-        let has_thumbnail = self.thumbnail_path(&id).exists();
+        let thumbnail_path = self.thumbnails.path(&id).map(|path| path.to_string_lossy().into_owned());
         Ok(UploadRecord {
             id,
             local_filename: row.get(1)?,
@@ -105,7 +104,8 @@ impl History {
             content_hash: row.get(10)?,
             source: row.get(11)?,
             source_name: row.get(12)?,
-            has_thumbnail,
+            has_thumbnail: thumbnail_path.is_some(),
+            thumbnail_path,
         })
     }
 
@@ -126,6 +126,7 @@ impl History {
             source: record.watched_folder.map(|(id, _)| watched_source(id)),
             source_name: record.watched_folder.map(|(_, name)| name.to_string()),
             has_thumbnail: false,
+            thumbnail_path: None,
         };
         let connection = self.connection.lock().unwrap();
         let result = connection.execute(
@@ -219,7 +220,22 @@ impl History {
         let connection = self.connection.lock().unwrap();
         let _ = connection.execute("DELETE FROM uploads WHERE id = ?1", [id]);
         drop(connection);
-        let _ = std::fs::remove_file(self.thumbnail_path(id));
+        self.thumbnails.remove(id);
+    }
+
+    /// Turning a destination's thumbnails off removes the ones made for it.
+    pub fn remove_thumbnails(&self, destination_id: &str) {
+        let ids: Vec<String> = {
+            let connection = self.connection.lock().unwrap();
+            let Ok(mut statement) = connection.prepare("SELECT id FROM uploads WHERE destination_id = ?1") else { return };
+            statement
+                .query_map([destination_id], |row| row.get(0))
+                .map(|rows| rows.filter_map(Result::ok).collect())
+                .unwrap_or_default()
+        };
+        for id in ids {
+            self.thumbnails.remove(&id);
+        }
     }
 
     /// Keeps history in step with the bucket browser: an object deleted
@@ -351,6 +367,8 @@ mod tests {
             image_metadata: None,
             folder_upload: None,
             image_processing: None,
+            thumbnails: None,
+            thumbnail_prefix: None,
         }
     }
 
@@ -375,7 +393,7 @@ mod tests {
         assert!(has_column(&connection, "uploads", "content_hash").unwrap());
         assert!(has_column(&connection, "uploads", "source").unwrap());
 
-        let thumbnails = std::env::temp_dir().join("aktar-history-test");
+        let thumbnails = LocalStore::open(std::env::temp_dir().join("aktar-history-test"), None);
         let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails };
         let old = history.get("A").unwrap();
         assert_eq!(old.local_filename, "a.png");
@@ -389,7 +407,7 @@ mod tests {
     fn tracks_expiring_uploads() {
         let connection = Connection::open_in_memory().unwrap();
         prepare(&connection).unwrap();
-        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: std::env::temp_dir().join("aktar-history-test") };
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: LocalStore::open(std::env::temp_dir().join("aktar-history-test"), None) };
         let destination = destination();
         let record = history.insert(NewRecord {
             local_filename: "a.png",
@@ -429,7 +447,7 @@ mod tests {
     fn clears_expiry_when_the_rules_go() {
         let connection = Connection::open_in_memory().unwrap();
         prepare(&connection).unwrap();
-        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: std::env::temp_dir().join("aktar-history-test") };
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: LocalStore::open(std::env::temp_dir().join("aktar-history-test"), None) };
         let destination = destination();
         let record = history.insert(NewRecord {
             local_filename: "a.png",

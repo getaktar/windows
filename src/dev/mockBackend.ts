@@ -339,8 +339,16 @@ export function installMockBackend(route: string) {
           return jobs;
         case "list_history":
           return history;
-        case "thumbnails_dir":
-          return "C:\\Users\\you\\AppData\\Local\\com.getaktar.windows\\thumbnails";
+        case "load_record_thumbnail":
+          return false;
+        case "bucket_thumbnail":
+          return null;
+        case "thumbnail_usage":
+          return 4_812_800;
+        case "clear_thumbnails":
+          return null;
+        case "thumbnail_cleanup_prefix":
+          return null;
         case "remove_from_history":
           history = history.filter((record) => !(args.ids as string[]).includes(record.id));
           return null;
