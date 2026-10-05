@@ -4,7 +4,7 @@
 //! or in parts) -> resolve the link -> store history -> format output ->
 //! copy to clipboard -> notify. Runs up to `MAX_CONCURRENT` jobs at once.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -16,9 +16,9 @@ use tokio::sync::watch;
 
 use crate::core::{events, SharedCore, UploadSucceeded};
 use crate::credentials;
-use crate::destinations::{DestinationConfig, FolderUploadMode};
+use crate::destinations::{DestinationConfig, FolderUploadMode, ImageFormat, ImageProcessing};
 use crate::folder_upload;
-use crate::history::{NewRecord, UploadRecord};
+use crate::history::{NewRecord, Replacement, UploadRecord};
 use crate::multipart::{self, Candidate, Session, SourceFile};
 use crate::output::{self, ContentHashes};
 use crate::storage::{BucketObject, Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
@@ -62,6 +62,19 @@ pub struct UploadInput {
     /// while nothing is there, and a name taken in the meantime makes way
     /// for the next free one.
     pub keep_existing: bool,
+    /// "Replace File": `object_key` is an existing file's, written over so
+    /// its link keeps working.
+    pub replacing: Option<Replacing>,
+}
+
+/// A file written over an existing upload or bucket object, keeping its key
+/// and link. It gets the destination's metadata removal and resize, but
+/// never a format change, since the key's extension stays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Replacing {
+    /// The history entry being replaced; none for a file in the bucket view,
+    /// whose newest entry at that key (if there is one) is updated.
+    pub record_id: Option<String>,
 }
 
 /// Where a watched folder's file came from, and how its key is made.
@@ -111,6 +124,7 @@ impl UploadInput {
             group: None,
             watched: None,
             keep_existing: false,
+            replacing: None,
         }
     }
 
@@ -169,16 +183,17 @@ pub struct JobSnapshot {
     pub source: Option<String>,
 }
 
-/// What a finished file from a folder left to copy: its link and name, by
-/// position in the folder.
-type GroupLinks = BTreeMap<usize, (String, String)>;
+/// What the finished files of a folder (or of a drop spread over several
+/// destinations) left to copy, formatted as their destinations copy them,
+/// by position.
+type GroupLinks = BTreeMap<usize, String>;
 
 #[derive(Default)]
 pub struct UploadManager {
     jobs: Mutex<Vec<Job>>,
-    /// Folders uploaded with their structure that still have files going,
-    /// with the destination whose copy format their links get.
-    open_groups: Mutex<HashMap<String, (DestinationConfig, GroupLinks)>>,
+    /// Folders uploaded with their structure, and drops spread over several
+    /// destinations, that still have files going.
+    open_groups: Mutex<HashMap<String, GroupLinks>>,
     /// The multipart upload (`multipart::Session` ID) each job is sending,
     /// or left unfinished, by job ID.
     job_sessions: Mutex<HashMap<String, String>>,
@@ -229,10 +244,82 @@ pub struct Queued {
     pub receiver: watch::Receiver<JobState>,
 }
 
-/// Queues `inputs` for `destination`, or the default destination. Each job
-/// keeps the destination it was started for, so a retry or a change of
-/// default later doesn't redirect it.
+/// Queues `inputs` for `destination`. Without one, each file goes where its
+/// kind or extension says ("Use for", see `routing`), else to the default
+/// destination. Each job keeps the destination it was started for, so a
+/// retry or a change of default later doesn't redirect it.
 pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>) -> Vec<Queued> {
+    if destination.is_some() || inputs.is_empty() {
+        return enqueue_to(core, inputs, destination);
+    }
+    let destinations = core.destinations.all();
+    let default = core.destinations.default_destination();
+    let Some(default) = default.filter(|_| crate::routing::is_active(&destinations)) else {
+        return enqueue_to(core, inputs, None);
+    };
+    let routed: Vec<(DestinationConfig, UploadInput)> = inputs
+        .into_iter()
+        .map(|input| {
+            let name = routing_name(&input, &default);
+            let target = crate::routing::route(&destinations, Some(&default.id), &name).unwrap_or(&default).clone();
+            (target, input)
+        })
+        .collect();
+    // Files of one drop that land in different destinations have their
+    // links copied together, in drop order, once the last is done.
+    let spread = routed.iter().map(|(target, _)| target.id.as_str()).collect::<HashSet<_>>().len() > 1;
+    let singles: Vec<usize> = (0..routed.len()).filter(|&index| !routed[index].1.path.is_dir() && routed[index].1.group.is_none()).collect();
+    let group = (spread && singles.len() > 1).then(|| {
+        let id = crate::util::new_id();
+        core.uploads.open_groups.lock().unwrap().insert(id.clone(), GroupLinks::new());
+        id
+    });
+    let mut batches: Vec<(DestinationConfig, Vec<UploadInput>)> = Vec::new();
+    for (index, (target, mut input)) in routed.into_iter().enumerate() {
+        if let (Some(id), Some(position)) = (&group, singles.iter().position(|&single| single == index)) {
+            input.group = Some(UploadGroup { id: id.clone(), name: String::new(), index: position, count: singles.len() });
+        }
+        match batches.iter_mut().find(|(destination, _)| destination.id == target.id) {
+            Some((_, batch)) => batch.push(input),
+            None => batches.push((target, vec![input])),
+        }
+    }
+    batches.into_iter().flat_map(|(destination, inputs)| enqueue_to(core, inputs, Some(destination))).collect()
+}
+
+/// Where `enqueue` would send `inputs` without a destination: the names of
+/// the destinations they route to, in order, or none without any.
+pub fn routed_destination_names(core: &SharedCore, inputs: &[UploadInput]) -> Vec<String> {
+    let Some(default) = core.destinations.default_destination() else { return Vec::new() };
+    let destinations = core.destinations.all();
+    if !crate::routing::is_active(&destinations) {
+        return vec![default.name];
+    }
+    let mut names: Vec<String> = Vec::new();
+    for input in inputs {
+        let name = crate::routing::route(&destinations, Some(&default.id), &routing_name(input, &default)).unwrap_or(&default).name.clone();
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
+/// The name a file routes by: its own; a folder going up as a ZIP routes as
+/// one, and a folder keeping its structure isn't split (no extension, so
+/// the default destination).
+fn routing_name(input: &UploadInput, default: &DestinationConfig) -> String {
+    if !input.path.is_dir() {
+        return input.original_filename.clone();
+    }
+    match default.folder_upload() {
+        FolderUploadMode::Zip => format!("{}.zip", folder_upload::name(&input.path)),
+        FolderUploadMode::KeepStructure => String::new(),
+    }
+}
+
+/// `enqueue` without routing: everything to `destination`, or the default.
+fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>) -> Vec<Queued> {
     if inputs.is_empty() {
         return Vec::new();
     }
@@ -286,7 +373,7 @@ fn expanding_folders(core: &SharedCore, inputs: Vec<UploadInput>, destination: &
                 Ok(entries) => {
                     let prefix = folder_upload::key_prefix(&destination.object_path_template, &name);
                     let id = crate::util::new_id();
-                    core.uploads.open_groups.lock().unwrap().insert(id.clone(), (destination.clone(), GroupLinks::new()));
+                    core.uploads.open_groups.lock().unwrap().insert(id.clone(), GroupLinks::new());
                     let count = entries.len();
                     expanded.extend(entries.into_iter().enumerate().map(|(index, entry)| UploadInput {
                         folder_key: Some(format!("{prefix}{}", entry.relative_path)),
@@ -338,6 +425,63 @@ pub async fn upload_clipboard(core: &SharedCore, rename: bool) -> bool {
         enqueue(core, inputs, None);
     }
     true
+}
+
+/// A destination's own shortcut: the clipboard goes to that destination,
+/// never rerouted by "Use for".
+pub fn upload_clipboard_to_in_background(core: &SharedCore, destination: DestinationConfig) {
+    let core = core.clone();
+    tauri::async_runtime::spawn(async move {
+        let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
+        if inputs.is_empty() {
+            show_notification(&core, "Aktar", &t!("The clipboard has no file or image to upload."));
+        } else {
+            enqueue(&core, inputs, Some(destination));
+        }
+    });
+}
+
+/// "Replace File" on a history entry: `path` goes up to its key, so its
+/// link keeps working. `filename` (the local API's) names the file when
+/// `path` is a staged copy; its extension sets the content type.
+pub fn replace_upload(core: &SharedCore, record_id: &str, path: PathBuf, filename: Option<String>) -> Result<Queued, String> {
+    let record = core.history.get(record_id).ok_or_else(|| t!("This upload is no longer in your history."))?;
+    let destination = core
+        .destinations
+        .all()
+        .into_iter()
+        .find(|destination| destination.id == record.destination_id)
+        .ok_or_else(|| t!("This upload’s destination was removed."))?;
+    replace(core, destination, record.object_key, Some(record.id), path, filename)
+}
+
+/// "Replace File" on a file in the bucket view.
+pub fn replace_object(
+    core: &SharedCore,
+    destination: DestinationConfig,
+    key: String,
+    path: PathBuf,
+    filename: Option<String>,
+) -> Result<Queued, String> {
+    replace(core, destination, key, None, path, filename)
+}
+
+fn replace(
+    core: &SharedCore,
+    destination: DestinationConfig,
+    key: String,
+    record_id: Option<String>,
+    path: PathBuf,
+    filename: Option<String>,
+) -> Result<Queued, String> {
+    if !path.is_file() {
+        return Err(t!("Choose a file to replace it with."));
+    }
+    let mut input = UploadInput { object_key: Some(key), replacing: Some(Replacing { record_id }), ..UploadInput::from_path(path) };
+    if let Some(filename) = filename {
+        input.original_filename = filename;
+    }
+    enqueue_to(core, vec![input], Some(destination)).into_iter().next().ok_or_else(|| t!("The upload could not be queued."))
 }
 
 /// For the shortcuts, the tray menu, and aktar:// links, whose handlers run
@@ -603,7 +747,15 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         path = zipped;
     } else {
         let mut processed = None;
-        if let Some(settings) = destination.image_processing() {
+        // A replacement keeps its key's extension, so its format stays too.
+        let processing = match &input.replacing {
+            Some(_) => destination
+                .image_processing()
+                .map(|settings| ImageProcessing { format: ImageFormat::Original, ..settings })
+                .filter(ImageProcessing::is_active),
+            None => destination.image_processing(),
+        };
+        if let Some(settings) = processing {
             let original = path.clone();
             match tauri::async_runtime::spawn_blocking(move || image_processing::process(&original, settings, policy))
                 .await
@@ -946,7 +1098,7 @@ async fn earlier_upload(
 fn overwritten_later(record: &UploadRecord, at_key: &[UploadRecord]) -> bool {
     at_key.iter().any(|other| {
         other.id != record.id
-            && other.created_at > record.created_at
+            && other.last_write() > record.last_write()
             && (other.content_hash.is_none() || other.content_hash != record.content_hash)
     })
 }
@@ -955,8 +1107,9 @@ fn overwritten_later(record: &UploadRecord, at_key: &[UploadRecord]) -> bool {
 /// the same size, and not written after it (anything written by other
 /// means since would be).
 fn object_is_the_upload(record: &UploadRecord, object: &BucketObject) -> bool {
-    object.size == record.byte_size
-        && object.last_modified.is_some_and(|modified| modified <= record.created_at + REUSE_DATE_LEEWAY_MILLIS)
+    // A file replaced in place was written again then.
+    let written = record.last_write();
+    object.size == record.byte_size && object.last_modified.is_some_and(|modified| modified <= written + REUSE_DATE_LEEWAY_MILLIS)
 }
 
 fn expires_alike(record: &UploadRecord, days: Option<u32>, now: i64) -> bool {
@@ -1007,8 +1160,25 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
 async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, outcome: Outcome) {
     let Outcome { result, link, filename, content_hash, original_hash, reused, thumbnail, _scratch } = outcome;
     let was_reused = reused.is_some();
+    let replaced = input.replacing.is_some();
     let record = match reused {
-        Some(record) => record,
+        Some(record) => Some(record),
+        None if replaced => {
+            let record = replaced_record(core, input, destination, &result, &filename, content_hash.as_deref());
+            if let Some(record) = &record {
+                core.history.thumbnails.remove(&record.id);
+                match &thumbnail {
+                    Some(data) => core.history.thumbnails.store(&record.id, data),
+                    None if destination.thumbnail_mode() != ThumbnailMode::Off => core.history.thumbnails.mark_unavailable(&record.id),
+                    None => {}
+                }
+            }
+            // The bucket view's thumbnail of the old file, and the bucket's.
+            crate::thumbnails::remote::forget(core, &destination.id, &result.object_key);
+            tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
+            crate::cloudflare::purge_in_background(core, destination, &result.public_url);
+            record
+        }
         None => {
             let mime_type = output::content_type(&filename);
             let record = core.history.insert(NewRecord {
@@ -1030,16 +1200,28 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
                 None => {}
             }
             tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
-            record
+            Some(record)
         }
     };
+    // A watched folder's own hooks run for its files; a reused link isn't
+    // an upload at all.
+    if input.watched.is_none() && !was_reused {
+        let event = if replaced { crate::destination_hooks::Event::Replaced } else { crate::destination_hooks::Event::Uploaded };
+        let payload =
+            crate::destination_hooks::payload(event, destination, &input.path, &filename, result.byte_size, &result.object_key, &result.public_url);
+        crate::destination_hooks::run(core, destination, payload);
+    }
     drop(_scratch);
     input.remove_if_temporary();
 
     set_state(
         core,
         job_id,
-        JobState::Succeeded { public_url: result.public_url.clone(), record_id: record.id.clone(), reused: was_reused },
+        JobState::Succeeded {
+            public_url: result.public_url.clone(),
+            record_id: record.map(|record| record.id).unwrap_or_default(),
+            reused: was_reused,
+        },
     );
     core.notify(events::HISTORY_CHANGED);
 
@@ -1055,8 +1237,12 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
     }
 
     // A watched folder copies and notifies as it's set to, once the
-    // original is taken care of, and never closes the panel.
+    // original is taken care of, and never closes the panel. One that
+    // replaced its upload so the link stays clears the link from the cache.
     if let Some(source) = &input.watched {
+        if input.object_key.is_some() && !was_reused {
+            crate::cloudflare::purge_in_background(core, destination, &result.public_url);
+        }
         let uploaded = crate::watched::engine::Uploaded {
             object_key: result.object_key.clone(),
             url: result.public_url.clone(),
@@ -1078,8 +1264,8 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         let mut groups = core.uploads.open_groups.lock().unwrap();
         let links = groups.get_mut(&group.id);
         let open = links.is_some();
-        if let Some((_, links)) = links {
-            links.insert(group.index, (link.clone(), filename.clone()));
+        if let Some(links) = links {
+            links.insert(group.index, format_link(core, destination, &link, &filename));
         }
         open
     });
@@ -1089,7 +1275,9 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         let settings = core.settings.get();
         crate::clipboard::copy(&format_link(core, destination, &link, &filename));
         if settings.show_notification {
-            if was_reused {
+            if replaced {
+                show_notification(core, &t!("Replaced"), &t!("{0} keeps its link.", filename));
+            } else if was_reused {
                 show_notification(core, &filename, &t!("Already uploaded - copied the existing link"));
             } else {
                 let body = match input.expire_after_days() {
@@ -1102,6 +1290,44 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         close_panel_if_wanted(core);
     }
     drain(core);
+}
+
+/// The history entry a replaced file updates: the one it was started from,
+/// or (from the bucket view) the newest upload to that key. A file never
+/// uploaded with Aktar gets a new entry, marked as replaced.
+fn replaced_record(
+    core: &SharedCore,
+    input: &UploadInput,
+    destination: &DestinationConfig,
+    result: &UploadResult,
+    filename: &str,
+    content_hash: Option<&str>,
+) -> Option<UploadRecord> {
+    let target = input
+        .replacing
+        .as_ref()
+        .and_then(|replacing| replacing.record_id.as_deref())
+        .and_then(|id| core.history.get(id))
+        .or_else(|| core.history.with_object(&destination.id, &result.object_key).into_iter().next());
+    let mime_type = output::content_type(filename);
+    let target = match target {
+        Some(target) => target,
+        None => core.history.insert(NewRecord {
+            local_filename: filename,
+            object_key: &result.object_key,
+            public_url: &result.public_url,
+            destination,
+            mime_type: &mime_type,
+            byte_size: result.byte_size,
+            expire_after_days: input.expire_after_days(),
+            content_hash,
+            watched_folder: None,
+        }),
+    };
+    core.history.replaced(
+        &target.id,
+        Replacement { byte_size: result.byte_size, content_hash, mime_type: &mime_type, expire_after_days: input.expire_after_days() },
+    )
 }
 
 /// After an upload: its thumbnail goes to the bucket when the destination
@@ -1150,17 +1376,20 @@ fn finish_group_if_done(core: &SharedCore, group: &UploadGroup) {
     if still_going {
         return;
     }
-    let Some((destination, links)) = core.uploads.open_groups.lock().unwrap().remove(&group.id) else { return };
+    let Some(links) = core.uploads.open_groups.lock().unwrap().remove(&group.id) else { return };
     if links.is_empty() {
         return;
     }
-    let copied: Vec<String> = links.values().map(|(link, filename)| format_link(core, &destination, link, filename)).collect();
+    let copied: Vec<String> = links.into_values().collect();
     crate::clipboard::copy(&copied.join("\n"));
     if core.settings.get().show_notification {
-        let summary = if links.len() == group.count {
+        // A drop spread over several destinations has no folder name.
+        let summary = if group.name.is_empty() {
+            t!("{0} files", copied.len())
+        } else if copied.len() == group.count {
             t!("{0} ({1} files)", group.name, group.count)
         } else {
-            t!("{0} ({1} of {2} files)", group.name, links.len(), group.count)
+            t!("{0} ({1} of {2} files)", group.name, copied.len(), group.count)
         };
         show_notification(core, &t!("Uploaded"), &summary);
     }
@@ -1291,6 +1520,7 @@ mod tests {
             content_hash: Some("h".into()),
             source: None,
             source_name: None,
+            replaced_at: None,
             has_thumbnail: false,
             thumbnail_path: None,
         }
@@ -1332,6 +1562,12 @@ mod tests {
         assert!(!object_is_the_upload(&a, &object(1, Some(1_001 + REUSE_DATE_LEEWAY_MILLIS))));
         assert!(!object_is_the_upload(&a, &object(2, Some(1_000))));
         assert!(!object_is_the_upload(&a, &object(1, None)));
+
+        // A file replaced in place was written again then, and counts as
+        // later than an upload made between.
+        let replaced = UploadRecord { replaced_at: Some(9_000), ..a.clone() };
+        assert!(object_is_the_upload(&replaced, &object(1, Some(9_000))));
+        assert!(!overwritten_later(&replaced, &[later("B", 2_000, Some("x")), replaced.clone()]));
     }
 
     #[test]

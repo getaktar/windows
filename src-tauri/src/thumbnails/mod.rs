@@ -179,6 +179,10 @@ mod tests {
             image_processing: None,
             thumbnails: None,
             thumbnail_prefix: None,
+            use_for: None,
+            short_cache: None,
+            cloudflare_zone_id: None,
+            hooks: None,
         }
     }
 

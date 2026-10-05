@@ -65,6 +65,25 @@ export interface DestinationConfig {
   thumbnails?: ThumbnailMode | null;
   /** The bucket folder for "bucket" thumbnails; null is `.aktar/thumbnails/`. */
   thumbnailPrefix?: string | null;
+  /** The kinds of files and extensions that come here when an upload
+   * names no destination; null when it claims none. */
+  useFor?: FileRouting | null;
+  /** Uploads here are sent with a one-minute cache time. */
+  shortCache?: boolean | null;
+  /** The Cloudflare zone cleared for a replaced file (32 hex digits); the
+   * token is kept with the keys. */
+  cloudflareZoneId?: string | null;
+  /** "After Upload": run after each upload and replace here. */
+  hooks?: WatchHook[] | null;
+}
+
+export type FileKind = "image" | "video" | "audio" | "document" | "archive";
+export const fileKinds: FileKind[] = ["image", "video", "audio", "document", "archive"];
+
+export interface FileRouting {
+  kinds?: FileKind[];
+  /** Lowercase, without the dot. */
+  extensions?: string[];
 }
 
 /** "off": nothing is made, downloaded or shown. "local": made on this PC,
@@ -154,6 +173,8 @@ export interface UploadRecord {
   source?: string | null;
   /** The watched folder's name at the time. */
   sourceName?: string | null;
+  /** When the file was last replaced in place (Unix milliseconds), or null. */
+  replacedAt?: number | null;
   hasThumbnail: boolean;
   /** The thumbnail file on this PC. */
   thumbnailPath?: string | null;
@@ -283,6 +304,9 @@ export interface Settings {
   shortcut: string | null;
   /** "Rename and upload clipboard"; null when it isn't set. */
   renameShortcut: string | null;
+  /** Each destination's own "Upload clipboard to this destination"
+   * shortcut, by destination ID; left out when there are none. */
+  destinationShortcuts?: Record<string, string>;
   /** Copy the link of an earlier upload of the same file to the same
    * destination instead of uploading it again. */
   reuseDuplicateLinks: boolean;
@@ -441,12 +465,28 @@ export const api = {
   listDestinations: () => invoke<DestinationConfig[]>("list_destinations"),
   /** `deleteOldThumbnails` empties the bucket folder `thumbnailCleanupPrefix`
    * names, in the background. */
+  /** `cloudflareToken`: null keeps the saved one, "" removes it. */
   saveDestination: (
     config: DestinationConfig,
     credentials: StorageCredentials | null,
     rules: FormRules,
     deleteOldThumbnails = false,
-  ) => invoke<DestinationConfig>("save_destination", { config, credentials, rules, deleteOldThumbnails }),
+    cloudflareToken: string | null = null,
+  ) => invoke<DestinationConfig>("save_destination", { config, credentials, rules, deleteOldThumbnails, cloudflareToken }),
+  hasCloudflareToken: (id: string) => invoke<boolean>("has_cloudflare_token", { id }),
+  /** Checks the token typed, or the destination's saved one. */
+  checkCloudflareToken: (destinationId: string | null, token: string | null) =>
+    invoke<void>("check_cloudflare_token", { destinationId, token }),
+  testDestinationHook: (destination: DestinationConfig, hook: WatchHook) =>
+    invoke<void>("test_destination_hook", { destination, hook }),
+  setDestinationShortcut: (id: string, accelerator: string | null) =>
+    invoke<void>("set_destination_shortcut", { id, accelerator }),
+  /** "Images and videos go to Screenshots", under the panel's destination picker. */
+  routingHints: () => invoke<string[]>("routing_hints"),
+  /** Writes `path` over an upload, keeping its key and link. */
+  replaceUpload: (id: string, path: string) => invoke<void>("replace_upload", { id, path }),
+  replaceObject: (destinationId: string, key: string, path: string) =>
+    invoke<void>("replace_object", { destinationId, key, path }),
   /** The bucket folder of thumbnails saving `config` would stop using, to
    * ask whether they go. */
   thumbnailCleanupPrefix: (config: DestinationConfig) => invoke<string | null>("thumbnail_cleanup_prefix", { config }),

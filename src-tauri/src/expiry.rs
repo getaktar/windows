@@ -439,11 +439,11 @@ async fn sweep_one(core: &SharedCore, record: &crate::history::UploadRecord) -> 
     }
 }
 
-/// Whether the object's last write is newer than this upload: S3 keeps
-/// whole seconds, so anything more than a minute after the record was
-/// created is a later upload to the same key.
+/// Whether the object's last write is newer than this upload (or its last
+/// replace): S3 keeps whole seconds, so anything more than a minute later
+/// is a later upload to the same key.
 fn uploaded_again(record: &crate::history::UploadRecord, written_at: i64) -> bool {
-    written_at > record.created_at + 60_000
+    written_at > record.last_write() + 60_000
 }
 
 fn drop_entry(core: &SharedCore, record: &crate::history::UploadRecord) -> Result<(), String> {

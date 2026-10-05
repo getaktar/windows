@@ -10,9 +10,11 @@
 //! POST   /v1/uploads?filename=&destinationId=&prefix=&expires=     (raw file bytes)
 //! POST   /v1/uploads/clipboard?destinationId=&expires=
 //! DELETE /v1/uploads/{id}
+//! POST   /v1/uploads/{id}/replace?filename=                    (raw file bytes; same key and link)
 //! GET    /v1/uploads/{id}/thumbnail?px=&generate=             (PNG; 204 when there's none)
 //! GET    /v1/destinations/{id}/objects?prefix=&continuationToken=
 //! DELETE /v1/destinations/{id}/objects?key=
+//! PUT    /v1/destinations/{id}/objects?key=&filename=          (raw file bytes; replaces the file at key)
 //! POST   /v1/destinations/{id}/objects/move                {"from", "to"}
 //! POST   /v1/destinations/{id}/folders                     {"prefix", "name"}
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
@@ -28,11 +30,18 @@
 //! link was used instead (Settings > General > Reuse links for duplicate
 //! files). Uploads with `prefix` are never reused.
 //!
+//! Without `destinationId`, an upload goes where the file's kind or
+//! extension says ("Use for" in a destination's settings), else to the
+//! default destination. Replacing a file writes it to the same key, so its
+//! link keeps working; the reply is the upload, with `replacedAt`.
+//!
 //! `expires` is a number of days (1, 7, 14, or 30) after which the upload is
 //! deleted. Left out or 0, it's kept: the app's "Delete after" setting never
 //! applies here, so a script is never surprised by a file disappearing. It's
 //! refused (409) for a destination whose bucket doesn't have Aktar's
 //! lifecycle rules yet, since nothing would delete the file.
+
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +74,7 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
         ("POST", ["uploads"]) => upload_body(core, &request).await,
         ("POST", ["uploads", "clipboard"]) => upload_clipboard(core, &request).await,
         ("DELETE", ["uploads", id]) => delete_upload(core, id).await,
+        ("POST", ["uploads", id, "replace"]) => replace_upload(core, &request, id).await,
         ("GET", ["uploads", id, "thumbnail"]) => upload_thumbnail(core, &request, id).await,
         ("GET", ["watched-folders"]) => Response::json(200, watched_dto(core)),
         ("POST", ["watched-folders", "pause"]) => {
@@ -236,7 +246,14 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
         Some(Ok(prefix)) => Some(prefix),
         None => None,
     };
-    let Some(destination) = core.destinations.find(request.query.get("destinationId").map(String::as_str)) else {
+    // A prefix names a folder of the destination (the default one without
+    // destinationId), so only a plain upload is routed by "Use for".
+    let named = request.query.get("destinationId").map(String::as_str).filter(|id| !id.trim().is_empty());
+    let destination = match (named, request.query.contains_key("prefix")) {
+        (None, false) => routed(core, &filename),
+        _ => core.destinations.find(named),
+    };
+    let Some(destination) = destination else {
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
     };
     let expiry = match expiry_from(request, crate::expiry::is_active(core, &destination.id)) {
@@ -304,16 +321,30 @@ fn staged_name(filename: &str) -> String {
 }
 
 async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
-    let Some(destination) = core.destinations.find(request.query.get("destinationId").map(String::as_str)) else {
+    let named = request.query.get("destinationId").map(String::as_str).filter(|id| !id.trim().is_empty());
+    if core.destinations.find(named).is_none() {
+        return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
+    }
+    let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
+    let Some(mut input) = inputs.into_iter().next() else {
+        return Response::error(422, "The clipboard has no file or image to upload.");
+    };
+    // Without destinationId, where the file's kind says (a folder as a ZIP).
+    let destination = match named {
+        Some(_) => core.destinations.find(named),
+        None if input.path.is_dir() => routed(core, &format!("{}.zip", crate::folder_upload::name(&input.path))),
+        None => routed(core, &input.original_filename),
+    };
+    let Some(destination) = destination else {
+        input.remove_if_temporary();
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
     };
     let expiry = match expiry_from(request, crate::expiry::is_active(core, &destination.id)) {
         Ok(expiry) => expiry,
-        Err(response) => return response,
-    };
-    let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
-    let Some(mut input) = inputs.into_iter().next() else {
-        return Response::error(422, "The clipboard has no file or image to upload.");
+        Err(response) => {
+            input.remove_if_temporary();
+            return response;
+        }
     };
     input.expiry = expiry;
     // One request, one upload: a folder always goes up as a ZIP here,
@@ -323,6 +354,89 @@ async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
         destination.folder_upload = Some(crate::destinations::FolderUploadMode::Zip);
     }
     run(core, input, destination).await
+}
+
+/// Where a file called `filename` goes when the request names no
+/// destination: as "Use for" says, else the default destination.
+fn routed(core: &SharedCore, filename: &str) -> Option<DestinationConfig> {
+    let default = core.destinations.default_destination()?;
+    let destinations = core.destinations.all();
+    Some(crate::routing::route(&destinations, Some(&default.id), filename).cloned().unwrap_or(default))
+}
+
+// MARK: - Replacing
+
+/// The request body, staged under a fixed name like an upload's: the
+/// caller's name only becomes the content type.
+async fn staged_body(request: &Request) -> Result<(PathBuf, PathBuf), Response> {
+    let directory = std::env::temp_dir().join("AktarLocalAPI").join(format!("upload-{}", crate::util::new_id()));
+    let path = directory.join("upload");
+    let staged = async {
+        tokio::fs::create_dir_all(&directory).await?;
+        match &request.body_file {
+            Some(body_file) => tokio::fs::rename(body_file, &path).await,
+            None => tokio::fs::write(&path, &request.body).await,
+        }
+    }
+    .await;
+    if staged.is_err() {
+        let _ = tokio::fs::remove_dir_all(&directory).await;
+        return Err(Response::error(500, "Could not stage the file for upload."));
+    }
+    Ok((directory, path))
+}
+
+/// The `filename` query parameter, as one segment of a key.
+fn filename_from(request: &Request) -> Option<String> {
+    let name = crate::util::last_component(request.query.get("filename").map(String::as_str).unwrap_or_default());
+    (!name.is_empty() && name != "." && name != "..").then(|| output::key_segment(name))
+}
+
+async fn replace_upload(core: &SharedCore, request: &Request, id: &str) -> Response {
+    let Some(record) = core.history.get(id) else {
+        return Response::error(404, "No upload with that ID.");
+    };
+    let (directory, path) = match staged_body(request).await {
+        Ok(staged) => staged,
+        Err(response) => return response,
+    };
+    let filename = filename_from(request).unwrap_or_else(|| record.local_filename.clone());
+    let response = match uploads::replace_upload(core, &record.id, path, Some(filename)) {
+        Ok(queued) => wait_for_replace(core, queued).await,
+        Err(message) => Response::error(404, message),
+    };
+    let _ = tokio::fs::remove_dir_all(&directory).await;
+    response
+}
+
+/// Waits for a replace to settle and answers like an upload. A replaced
+/// file always has a history entry (one is made for a file never uploaded
+/// with Aktar); should it be gone already, the reply has just the link.
+async fn wait_for_replace(core: &SharedCore, mut queued: uploads::Queued) -> Response {
+    loop {
+        let state = queued.receiver.borrow_and_update().clone();
+        match state {
+            JobState::Succeeded { record_id, public_url, .. } => {
+                return match core.history.get(&record_id) {
+                    Some(record) => Response::json(200, serde_json::json!({ "upload": upload_dto(core, &record), "reused": false })),
+                    None => Response::json(200, serde_json::json!({ "upload": { "url": public_url, "replacedAt": iso8601(crate::util::now_millis()) }, "reused": false })),
+                };
+            }
+            JobState::Failed { message } => {
+                uploads::dismiss(core, &queued.job_id);
+                return Response::error(502, message);
+            }
+            JobState::Cancelled => {
+                uploads::dismiss(core, &queued.job_id);
+                return Response::error(409, "The upload was cancelled in Aktar.");
+            }
+            JobState::Waiting | JobState::Uploading { .. } => {
+                if queued.receiver.changed().await.is_err() {
+                    return Response::error(409, "The upload was cancelled in Aktar.");
+                }
+            }
+        }
+    }
 }
 
 const EXPIRY_NOT_SET_UP: &str =
@@ -452,6 +566,28 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             };
             let data = crate::thumbnails::remote::for_object(core, &destination, &object, &thumbnail_prefixes, generates(request)).await;
             thumbnail_response(data, request)
+        }
+        ("PUT", ["objects"]) => {
+            let Some(key) = request.query.get("key").filter(|key| !key.is_empty()).cloned() else {
+                return Response::error(400, "The key query parameter is required.");
+            };
+            if let Err(message) = bucket::check_key(&key) {
+                return Response::error(400, message);
+            }
+            if crate::thumbnails::is_thumbnail(&key, &thumbnail_prefixes) {
+                return Response::error(400, "That key is in this bucket's thumbnail folder.");
+            }
+            let (directory, path) = match staged_body(request).await {
+                Ok(staged) => staged,
+                Err(response) => return response,
+            };
+            let filename = filename_from(request).unwrap_or_else(|| crate::bucket::split_key(&key).1.to_string());
+            let response = match uploads::replace_object(core, destination.clone(), key, path, Some(filename)) {
+                Ok(queued) => wait_for_replace(core, queued).await,
+                Err(message) => Response::error(400, message),
+            };
+            let _ = tokio::fs::remove_dir_all(&directory).await;
+            response
         }
         ("DELETE", ["objects"]) => {
             let Some(key) = request.query.get("key").filter(|key| !key.is_empty()) else {
@@ -656,6 +792,13 @@ struct DestinationDto {
     #[serde(rename = "publicBaseURL")]
     public_base_url: String,
     is_default: bool,
+    /// What comes here when an upload names no destination.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    use_for: Option<crate::routing::FileRouting>,
+    short_cache: bool,
+    has_cloudflare_purge: bool,
+    /// How many "After Upload" hooks are on.
+    hooks: usize,
 }
 
 fn destination_dto(core: &SharedCore, destination: &DestinationConfig) -> DestinationDto {
@@ -667,6 +810,11 @@ fn destination_dto(core: &SharedCore, destination: &DestinationConfig) -> Destin
         bucket: destination.bucket.clone(),
         public_base_url: destination.public_base_url.clone(),
         is_default: core.destinations.default_destination().map(|d| d.id) == Some(destination.id.clone()),
+        use_for: destination.use_for.clone(),
+        short_cache: destination.short_cache(),
+        has_cloudflare_purge: destination.cloudflare_zone_id.is_some()
+            && credentials::load(&destination.id).is_ok_and(|keys| keys.cloudflare_token.is_some_and(|token| !token.is_empty())),
+        hooks: destination.enabled_hooks().len(),
     }
 }
 
@@ -693,6 +841,9 @@ struct UploadDto {
     /// When an expiring upload gets deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     expires_at: Option<String>,
+    /// When the file was last replaced in place.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replaced_at: Option<String>,
     formats: Formats,
 }
 
@@ -710,6 +861,7 @@ fn upload_dto(core: &SharedCore, record: &UploadRecord) -> UploadDto {
         size: record.byte_size,
         created_at: iso8601(record.created_at),
         expires_at: record.expires_at.map(iso8601),
+        replaced_at: record.replaced_at.map(iso8601),
         formats: Formats {
             url: formatted(OutputMode::Url),
             markdown: formatted(OutputMode::Markdown),

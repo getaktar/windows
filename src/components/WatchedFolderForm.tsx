@@ -12,7 +12,6 @@ import {
   Switch,
   Text,
 } from "@fluentui/react-components";
-import { CodeRegular, DeleteRegular, GlobeRegular } from "@fluentui/react-icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 
@@ -36,7 +35,7 @@ import {
 import { durationLabel, temporaryLinkLabel } from "../lib/format";
 import { useSettings } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
-import { PromptDialog } from "./Dialogs";
+import { HookEditor } from "./HookEditor";
 
 const MB = 1024 * 1024;
 
@@ -90,23 +89,16 @@ export function WatchedFolderForm({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [addingWebhook, setAddingWebhook] = useState(false);
-  const [testResults, setTestResults] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setDraft(folder ? draftOf(folder) : null);
     setError(null);
-    setTestResults({});
   }, [folder]);
 
   if (!draft) return null;
   const current = draft.folder;
   const update = (change: Partial<WatchedFolder>) => setDraft({ ...draft, folder: { ...current, ...change } });
   const updateFilter = (change: Partial<WatchedFolder["filter"]>) => update({ filter: { ...current.filter, ...change } });
-  const updateHook = (id: string, change: Partial<WatchHook> | null) =>
-    update({
-      hooks: change === null ? current.hooks.filter((hook) => hook.id !== id) : current.hooks.map((hook) => (hook.id === id ? { ...hook, ...change } : hook)),
-    });
 
   const defaultDestination = destinations.find((destination) => destination.isDefault) ?? destinations[0];
   const destination = current.destinationID ? destinations.find((candidate) => candidate.id === current.destinationID) : defaultDestination;
@@ -138,27 +130,6 @@ export function WatchedFolderForm({
   const changeFolder = async () => {
     const selection = await open({ directory: true, multiple: false, defaultPath: current.path });
     if (typeof selection === "string") update({ path: selection });
-  };
-
-  // Aktar opens the file dialog itself and makes the hook: a window can't
-  // name a program to run.
-  const addScript = async () => {
-    try {
-      const hook = await api.pickWatchScript();
-      if (hook) update({ hooks: [...current.hooks, hook] });
-    } catch (failure) {
-      setError(errorMessage(failure));
-    }
-  };
-
-  const test = async (hook: WatchHook) => {
-    setTestResults({ ...testResults, [hook.id]: t("Sending…") });
-    try {
-      await api.testWatchHook(finished(), hook);
-      setTestResults((results) => ({ ...results, [hook.id]: t("It worked.") }));
-    } catch (failure) {
-      setTestResults((results) => ({ ...results, [hook.id]: errorMessage(failure) }));
-    }
   };
 
   return (
@@ -417,48 +388,13 @@ export function WatchedFolderForm({
                   {t("Automation")}
                 </Text>
                 <div className="form-group">
-                  <Text size={200} className="secondary">
-                    {t("After each upload from this folder, webhooks get its details as JSON, and scripts get them on standard input.")}
-                  </Text>
-                  {current.hooks.map((hook) => (
-                    <div key={hook.id} className="watch-hook">
-                      {hook.kind === "webhook" ? <GlobeRegular /> : <CodeRegular />}
-                      <div className="watch-hook-text">
-                        <Text className="ellipsis" title={hook.target}>
-                          {hook.target}
-                        </Text>
-                        {testResults[hook.id] && (
-                          <Text size={200} className="secondary ellipsis" title={testResults[hook.id]}>
-                            {testResults[hook.id]}
-                          </Text>
-                        )}
-                      </div>
-                      <Switch
-                        checked={hook.enabled}
-                        aria-label={hook.target}
-                        onChange={(_, data) => updateHook(hook.id, { enabled: data.checked })}
-                      />
-                      <Button size="small" onClick={() => test(hook)}>
-                        {t("Test")}
-                      </Button>
-                      <Button
-                        size="small"
-                        appearance="subtle"
-                        icon={<DeleteRegular />}
-                        aria-label={t("Remove")}
-                        title={t("Remove")}
-                        onClick={() => updateHook(hook.id, null)}
-                      />
-                    </div>
-                  ))}
-                  <div className="inline-row">
-                    <Button size="small" onClick={() => setAddingWebhook(true)}>
-                      {t("Add Webhook…")}
-                    </Button>
-                    <Button size="small" onClick={addScript}>
-                      {t("Add Script…")}
-                    </Button>
-                  </div>
+                  <HookEditor
+                    hooks={current.hooks}
+                    description={t("After each upload from this folder, webhooks get its details as JSON, and scripts get them on standard input.")}
+                    onChange={(hooks) => update({ hooks })}
+                    test={(hook: WatchHook) => api.testWatchHook(finished(), hook)}
+                    onError={setError}
+                  />
                 </div>
                 {error && (
                   <Text size={200} className="text-error">
@@ -478,20 +414,6 @@ export function WatchedFolderForm({
           </form>
         </DialogSurface>
       </Dialog>
-      <PromptDialog
-        open={addingWebhook}
-        title={t("Add Webhook")}
-        message={t("Aktar sends a POST request with the upload’s details as JSON after each upload.")}
-        label="URL"
-        initialValue="https://"
-        confirmLabel={t("Add")}
-        validate={(url) => api.checkWebhookUrl(url.trim()).then(() => null, errorMessage)}
-        onCancel={() => setAddingWebhook(false)}
-        onConfirm={(url) => {
-          setAddingWebhook(false);
-          update({ hooks: [...current.hooks, { id: crypto.randomUUID().toUpperCase(), kind: "webhook", target: url.trim(), enabled: true }] });
-        }}
-      />
     </>
   );
 }

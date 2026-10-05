@@ -103,7 +103,7 @@ pub async fn for_object(core: &SharedCore, destination: &DestinationConfig, obje
 /// is still that upload (not replaced since).
 fn uploaded_thumbnail(core: &SharedCore, destination_id: &str, object: &BucketObject) -> Option<Vec<u8>> {
     let newest = core.history.with_object(destination_id, &object.key).into_iter().next()?;
-    if object.last_modified.is_some_and(|written| written > newest.created_at + 60_000) {
+    if object.last_modified.is_some_and(|written| written > newest.last_write() + 60_000) {
         return None;
     }
     std::fs::read(core.history.thumbnails.path(&newest.id)?).ok()
@@ -134,14 +134,14 @@ pub async fn for_record(core: &SharedCore, record_id: &str) -> bool {
         .history
         .with_object(&destination.id, &record.object_key)
         .iter()
-        .any(|other| other.id != record.id && other.created_at > record.created_at);
+        .any(|other| other.id != record.id && other.last_write() > record.last_write());
     let outcome = if newer {
         Outcome::Unavailable
     } else if let Some(storage) = provider(&destination) {
         let _permit = limit().acquire().await;
         // The bucket's own thumbnail is written just after the file.
-        let written_after = record.created_at - 120_000;
-        make(&storage, &destination, &record.object_key, record.byte_size.max(0) as u64, Some(written_after), Some(record.created_at), true).await
+        let written_after = record.last_write() - 120_000;
+        make(&storage, &destination, &record.object_key, record.byte_size.max(0) as u64, Some(written_after), Some(record.last_write()), true).await
     } else {
         Outcome::Failed
     };

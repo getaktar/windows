@@ -2,7 +2,7 @@
 //! goes here: storage credentials and the local API token live in Windows
 //! Credential Manager (see `credentials`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -29,6 +29,11 @@ pub struct Settings {
     /// Global "rename and upload clipboard" shortcut, which asks for the
     /// upload's name first. None (the default) when it isn't set.
     pub rename_shortcut: Option<String>,
+    /// Each destination's own "Upload clipboard to this destination"
+    /// shortcut, by destination ID. Kept here rather than with the
+    /// destination, so it never goes along to another device.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub destination_shortcuts: BTreeMap<String, String>,
     /// Copies the link of an earlier upload of the same bytes to the same
     /// destination instead of uploading them again.
     pub reuse_duplicate_links: bool,
@@ -61,6 +66,7 @@ impl Default for Settings {
             language: None,
             shortcut: Some(DEFAULT_SHORTCUT.into()),
             rename_shortcut: None,
+            destination_shortcuts: BTreeMap::new(),
             reuse_duplicate_links: true,
             local_api_enabled: false,
             local_api_port: DEFAULT_LOCAL_API_PORT,

@@ -56,6 +56,8 @@ const destinations: DestinationConfig[] = [
     forcePathStyle: false,
     isDefault: false,
     imageProcessing: { format: "webp", quality: 80, maxLongEdge: 2560 },
+    useFor: { kinds: ["archive"], extensions: ["dmg"] },
+    hooks: [{ id: "H1", kind: "webhook", target: "https://hooks.example.com/aktar", enabled: true }],
   },
 ];
 
@@ -349,6 +351,33 @@ export function installMockBackend(route: string) {
           return null;
         case "thumbnail_cleanup_prefix":
           return null;
+        case "has_cloudflare_token":
+          return false;
+        case "check_cloudflare_token":
+          return (args.token as string | null) ? null : Promise.reject("Invalid API Token");
+        case "test_destination_hook":
+        case "replace_upload":
+        case "replace_object":
+          return null;
+        case "set_destination_shortcut": {
+          const shortcuts = { ...(settings.destinationShortcuts ?? {}) };
+          if (args.accelerator) shortcuts[args.id as string] = args.accelerator as string;
+          else delete shortcuts[args.id as string];
+          settings = { ...settings, destinationShortcuts: shortcuts };
+          return null;
+        }
+        // Like Rust's routing::hints: what other destinations claim.
+        case "routing_hints":
+          return destinations
+            .filter((destination) => !destination.isDefault && destination.useFor)
+            .map((destination) => {
+              const labels: Record<string, string> = { image: "Images", video: "Videos", audio: "Audio", document: "Documents", archive: "Archives" };
+              const parts = [
+                ...(destination.useFor?.kinds ?? []).map((kind) => labels[kind]),
+                ...(destination.useFor?.extensions ?? []).map((extension) => `.${extension}`),
+              ];
+              return `${parts.join(", ")} go to ${destination.name}.`;
+            });
         case "remove_from_history":
           history = history.filter((record) => !(args.ids as string[]).includes(record.id));
           return null;

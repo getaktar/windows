@@ -7,7 +7,9 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::output::OutputMode;
+use crate::routing::FileRouting;
 use crate::thumbnails::ThumbnailMode;
+use crate::watched::model::Hook;
 use crate::t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -108,6 +110,22 @@ pub struct DestinationConfig {
     /// `thumbnails::DEFAULT_PREFIX`. See `bucket_thumbnail_prefix`.
     #[serde(default)]
     pub thumbnail_prefix: Option<String>,
+    /// The kinds of files and extensions that come here when an upload
+    /// doesn't name a destination; see `routing`.
+    #[serde(default, deserialize_with = "crate::routing::lenient")]
+    pub use_for: Option<FileRouting>,
+    /// Uploads here are sent with a one-minute cache time, so a replaced
+    /// file shows up everywhere within about a minute.
+    #[serde(default)]
+    pub short_cache: Option<bool>,
+    /// The Cloudflare zone whose cache is cleared for a replaced file; the
+    /// token is in Credential Manager with the keys (`StorageCredentials`).
+    #[serde(default)]
+    pub cloudflare_zone_id: Option<String>,
+    /// Run after each upload and replace here (not for a watched folder's
+    /// files, which run their folder's own).
+    #[serde(default)]
+    pub hooks: Option<Vec<Hook>>,
 }
 
 /// How long a temporary (presigned) link can stay valid, in seconds: 5 and
@@ -190,6 +208,15 @@ impl DestinationConfig {
         self.folder_upload.unwrap_or_default()
     }
 
+    pub fn short_cache(&self) -> bool {
+        self.short_cache.unwrap_or(false)
+    }
+
+    /// The hooks that run after an upload or replace here.
+    pub fn enabled_hooks(&self) -> Vec<Hook> {
+        self.hooks.iter().flatten().filter(|hook| hook.enabled).cloned().collect()
+    }
+
     /// The image processing to apply, or none when it's all off.
     pub fn image_processing(&self) -> Option<ImageProcessing> {
         self.image_processing.filter(ImageProcessing::is_active)
@@ -220,7 +247,22 @@ impl DestinationConfig {
             .take()
             .filter(|prefix| crate::thumbnails::problem_with_prefix(prefix).is_none())
             .and_then(|prefix| crate::thumbnails::normalized_prefix(&prefix));
+        self.use_for = self.use_for.take().and_then(FileRouting::sanitized);
+        self.cloudflare_zone_id = self.cloudflare_zone_id.take().and_then(|zone| normalized_zone_id(&zone));
+        if self.short_cache == Some(false) {
+            self.short_cache = None;
+        }
+        if self.hooks.as_ref().is_some_and(Vec::is_empty) {
+            self.hooks = None;
+        }
     }
+}
+
+/// A Cloudflare zone ID: 32 hex digits, as the dashboard shows it. None
+/// when it can't be one.
+pub fn normalized_zone_id(raw: &str) -> Option<String> {
+    let zone = raw.trim().to_ascii_lowercase();
+    (zone.len() == 32 && zone.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(zone)
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

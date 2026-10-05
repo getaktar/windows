@@ -129,6 +129,8 @@ impl StorageError {
 }
 
 const MIB: u64 = 1024 * 1024;
+/// What "Short cache" sends with every upload.
+pub const SHORT_CACHE_CONTROL: &str = "public, max-age=60";
 /// Files up to this size go up in one request; bigger ones in parts.
 pub const SINGLE_UPLOAD_LIMIT: u64 = 64 * MIB;
 /// How long to wait before each new try of a part that failed on the way.
@@ -292,6 +294,7 @@ impl S3Provider {
             .key(object_key)
             .content_type(content_type)
             .set_content_disposition(content_disposition(object_key, content_type).map(str::to_string))
+            .set_cache_control(self.cache_control())
             .set_if_none_match(only_if_new.then(|| "*".to_string()))
             .body(ByteStream::new(body))
             // Uploads can take as long as they need; the upload's own stall
@@ -308,6 +311,13 @@ impl S3Provider {
         })
     }
 
+    /// A one-minute cache time for a destination set to "Short cache", so a
+    /// replaced file shows up everywhere within about a minute; otherwise
+    /// whatever the bucket or CDN does.
+    fn cache_control(&self) -> Option<String> {
+        self.config.short_cache().then(|| SHORT_CACHE_CONTROL.to_string())
+    }
+
     /// Starts a multipart upload and returns its ID.
     pub async fn create_multipart(&self, object_key: &str, content_type: &str) -> Result<String, StorageError> {
         let output = self
@@ -317,6 +327,7 @@ impl S3Provider {
             .key(object_key)
             .content_type(content_type)
             .set_content_disposition(content_disposition(object_key, content_type).map(str::to_string))
+            .set_cache_control(self.cache_control())
             .send()
             .await
             .map_err(|error| upload_error(error, self.bucket()))?;
@@ -1185,6 +1196,10 @@ mod tests {
             image_processing: None,
             thumbnails: None,
             thumbnail_prefix: None,
+            use_for: None,
+            short_cache: None,
+            cloudflare_zone_id: None,
+            hooks: None,
         }
     }
 
@@ -1258,12 +1273,17 @@ mod live_tests {
             image_processing: None,
             thumbnails: None,
             thumbnail_prefix: None,
+            use_for: None,
+            short_cache: None,
+            cloudflare_zone_id: None,
+            hooks: None,
         };
         // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
             access_key_id: std::env::var("AKTAR_TEST_S3_ACCESS_KEY").unwrap_or_else(|_| "AKIATEST".into()),
             secret_access_key: std::env::var("AKTAR_TEST_S3_SECRET").unwrap_or_else(|_| secret.into()),
             session_token: None,
+            cloudflare_token: None,
         };
         Some(S3Provider::new(config, credentials))
     }
@@ -1402,6 +1422,37 @@ mod live_tests {
         storage.delete_many(&["previews/notes.txt".to_string(), thumbnail.clone(), "tmp/7d/thumbs/b.png".to_string()]).await.unwrap();
         assert!(!storage.object_exists(&thumbnail).await.unwrap());
         assert!(!storage.object_exists("previews/notes.txt").await.unwrap());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn replaces_in_place_with_a_short_cache() {
+        let Some(mut storage) = provider("aktar-test", "secret") else { return };
+        let head = |storage: &S3Provider, key: &'static str| {
+            let request = storage.client.head_object().bucket(storage.bucket()).key(key);
+            async move { request.send().await.unwrap() }
+        };
+        let file = std::env::temp_dir().join("aktar-replace-a.txt");
+        std::fs::write(&file, b"first").unwrap();
+        storage.upload(&file, "replace/a.txt", "text/plain", Arc::new(Progress::default()), false).await.unwrap();
+        // Without "Short cache", whatever the bucket does.
+        assert_eq!(head(&storage, "replace/a.txt").await.cache_control(), None);
+
+        storage.config.short_cache = Some(true);
+        // Replaced in place: the same key, the new bytes and type, a one-minute cache.
+        let replacement = std::env::temp_dir().join("aktar-replace-b.md");
+        std::fs::write(&replacement, b"the second version").unwrap();
+        let replaced = storage.upload(&replacement, "replace/a.txt", "text/markdown", Arc::new(Progress::default()), false).await.unwrap();
+        assert_eq!(replaced.byte_size, 18);
+        let after = head(&storage, "replace/a.txt").await;
+        assert_eq!(after.cache_control(), Some(SHORT_CACHE_CONTROL));
+        assert_eq!(after.content_length(), Some(18));
+        assert_eq!(after.content_type(), Some("text/markdown"));
+        // Parts of a big file are sent with it too.
+        let upload_id = storage.create_multipart("replace/big.bin", "application/octet-stream").await.unwrap();
+        let uploads = storage.client.list_multipart_uploads().bucket(storage.bucket()).prefix("replace/big.bin").send().await.unwrap();
+        assert!(uploads.uploads().iter().any(|upload| upload.upload_id() == Some(upload_id.as_str())));
+        storage.abort_multipart("replace/big.bin", &upload_id).await.unwrap();
     }
 
     #[tokio::test]

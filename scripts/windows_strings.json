@@ -2377,5 +2377,303 @@
     "pt-BR": "“{0}” não pode ser usado como nome no bucket. Tire a “/” do início, “.” e “..” como nomes de pasta, nomes de pasta vazios (“//”) e caracteres de controle.",
     "ja": "「{0}」はバケット内の名前として使えません。先頭の「/」、フォルダ名としての「.」と「..」、空のフォルダ名（「//」）、制御文字を含めないでください。",
     "zh-Hans": "“{0}”不能用作存储桶中的名称。请去掉开头的“/”、作为文件夹名的“.”和“..”、空文件夹名（“//”）以及控制字符。"
+  },
+  "// Destination automation": "Use For routing, a destination's own shortcut, Replace File, the cache settings for replaced files and After Upload hooks (the Mac repo's docs/destination-automation.md). English keys match the Mac app where it has the same text, so the catalog's translations can replace these once it has them.",
+  "A link asked Aktar to upload {0} from the clipboard, split by Use For between {1}.": {
+    "tr": "Bir bağlantı, Aktar'dan panodaki {0} öğesini “Şunlar İçin Kullan” ayarına göre şu hedeflere bölerek yüklemesini istedi: {1}.",
+    "de": "Ein Link möchte, dass Aktar {0} aus der Zwischenablage hochlädt, nach „Verwenden für“ aufgeteilt auf {1}.",
+    "fr": "Un lien demande à Aktar d’envoyer {0} depuis le presse-papiers, réparti selon « Utiliser pour » entre {1}.",
+    "es": "Un enlace ha pedido a Aktar que suba {0} del portapapeles, repartido según «Usar para» entre {1}.",
+    "pt-BR": "Um link pediu ao Aktar para enviar {0} da área de transferência, dividido por “Usar para” entre {1}.",
+    "ja": "リンクがAktarに、クリップボードの{0}を「用途」に従って{1}に分けてアップロードするよう求めています。",
+    "zh-Hans": "有链接请求 Aktar 将剪贴板中的{0}按“用于”分别上传到{1}。"
+  },
+  "Use For": {
+    "tr": "Şunlar İçin Kullan",
+    "de": "Verwenden für",
+    "fr": "Utiliser pour",
+    "es": "Usar para",
+    "pt-BR": "Usar para",
+    "ja": "用途",
+    "zh-Hans": "用于"
+  },
+  "Audio": {
+    "tr": "Ses",
+    "de": "Audio",
+    "fr": "Audio",
+    "es": "Audio",
+    "pt-BR": "Áudio",
+    "ja": "オーディオ",
+    "zh-Hans": "音频"
+  },
+  "Documents": {
+    "tr": "Belgeler",
+    "de": "Dokumente",
+    "fr": "Documents",
+    "es": "Documentos",
+    "pt-BR": "Documentos",
+    "ja": "書類",
+    "zh-Hans": "文稿"
+  },
+  "Archives": {
+    "tr": "Arşivler",
+    "de": "Archive",
+    "fr": "Archives",
+    "es": "Archivos comprimidos",
+    "pt-BR": "Arquivos compactados",
+    "ja": "アーカイブ",
+    "zh-Hans": "归档文件"
+  },
+  "Extensions": {
+    "tr": "Uzantılar",
+    "de": "Dateiendungen",
+    "fr": "Extensions",
+    "es": "Extensiones",
+    "pt-BR": "Extensões",
+    "ja": "拡張子",
+    "zh-Hans": "扩展名"
+  },
+  "Not an extension: {0}. Use letters and digits only, such as dmg or mp4.": {
+    "tr": "Uzantı değil: {0}. Yalnızca harf ve rakam kullan, örneğin dmg ya da mp4.",
+    "de": "Keine Dateiendung: {0}. Verwende nur Buchstaben und Ziffern, etwa dmg oder mp4.",
+    "fr": "Pas une extension : {0}. Utilisez uniquement des lettres et des chiffres, comme dmg ou mp4.",
+    "es": "No es una extensión: {0}. Usa solo letras y números, como dmg o mp4.",
+    "pt-BR": "Não é uma extensão: {0}. Use só letras e números, como dmg ou mp4.",
+    "ja": "拡張子ではありません：{0}。dmg や mp4 のように英数字だけを使ってください。",
+    "zh-Hans": "不是扩展名：{0}。请只使用字母和数字，例如 dmg 或 mp4。"
+  },
+  "When an upload doesn’t name a destination (the clipboard shortcut, the panel, File Explorer, the local API), files of these types come here instead of the default destination. An extension listed here wins over a type.": {
+    "tr": "Bir yükleme hedef belirtmediğinde (pano kısayolu, panel, Dosya Gezgini, yerel API), bu türdeki dosyalar varsayılan hedef yerine buraya gelir. Burada yazan bir uzantı, türden önce gelir.",
+    "de": "Wenn ein Upload kein Ziel nennt (das Zwischenablage-Tastenkürzel, das Panel, der Datei-Explorer, die lokale API), landen Dateien dieser Arten hier statt im Standardziel. Eine hier eingetragene Dateiendung hat Vorrang vor einer Art.",
+    "fr": "Quand un envoi ne précise pas de destination (le raccourci du presse-papiers, le panneau, l’Explorateur de fichiers, l’API locale), les fichiers de ces types arrivent ici plutôt que dans la destination par défaut. Une extension indiquée ici l’emporte sur un type.",
+    "es": "Cuando una subida no indica destino (el atajo del portapapeles, el panel, el Explorador de archivos, la API local), los archivos de estos tipos vienen aquí en lugar de al destino predeterminado. Una extensión indicada aquí tiene prioridad sobre un tipo.",
+    "pt-BR": "Quando um envio não indica destino (o atalho da área de transferência, o painel, o Explorador de Arquivos, a API local), os arquivos desses tipos vêm para cá em vez do destino padrão. Uma extensão indicada aqui vale mais que um tipo.",
+    "ja": "アップロード先が指定されていないアップロード（クリップボードのショートカット、パネル、エクスプローラー、ローカルAPI）では、これらの種類のファイルがデフォルトのアップロード先の代わりにここへ送られます。ここに書いた拡張子は種類より優先されます。",
+    "zh-Hans": "当上传未指定目标时（剪贴板快捷键、面板、文件资源管理器、本地 API），这些类型的文件会上传到这里，而不是默认目标。此处列出的扩展名优先于类型。"
+  },
+  "{0} go to {1}.": {
+    "tr": "{0}: {1} hedefine gider.",
+    "de": "{0} landen in {1}.",
+    "fr": "{0} vont dans {1}.",
+    "es": "{0} van a {1}.",
+    "pt-BR": "{0} vão para {1}.",
+    "ja": "{0}は{1}へ。",
+    "zh-Hans": "{0}上传到 {1}。"
+  },
+  "Keyboard Shortcut": {
+    "tr": "Klavye Kısayolu",
+    "de": "Tastenkürzel",
+    "fr": "Raccourci clavier",
+    "es": "Atajo de teclado",
+    "pt-BR": "Atalho de teclado",
+    "ja": "キーボードショートカット",
+    "zh-Hans": "键盘快捷键"
+  },
+  "Upload clipboard here": {
+    "tr": "Panoyu buraya yükle",
+    "de": "Zwischenablage hierhin hochladen",
+    "fr": "Envoyer le presse-papiers ici",
+    "es": "Subir el portapapeles aquí",
+    "pt-BR": "Enviar a área de transferência para cá",
+    "ja": "クリップボードをここにアップロード",
+    "zh-Hans": "将剪贴板上传到这里"
+  },
+  "Uploads what’s on the clipboard to this destination, whatever “Use for” says. Kept on this PC only.": {
+    "tr": "Panodakini, “Şunlar İçin Kullan” ne derse desin bu hedefe yükler. Yalnızca bu PC'de tutulur.",
+    "de": "Lädt den Inhalt der Zwischenablage in dieses Ziel hoch, egal was „Verwenden für“ sagt. Nur auf diesem PC gespeichert.",
+    "fr": "Envoie le contenu du presse-papiers vers cette destination, quoi qu’indique « Utiliser pour ». Conservé uniquement sur ce PC.",
+    "es": "Sube lo que haya en el portapapeles a este destino, diga lo que diga “Usar para”. Solo se guarda en este PC.",
+    "pt-BR": "Envia o que estiver na área de transferência para este destino, independentemente de “Usar para”. Fica só neste PC.",
+    "ja": "「用途」の設定にかかわらず、クリップボードの内容をこのアップロード先にアップロードします。このPCにのみ保存されます。",
+    "zh-Hans": "将剪贴板中的内容上传到此目标，不受“用于”设置影响。仅保存在这台电脑上。"
+  },
+  "Replacing Files": {
+    "tr": "Dosya Değiştirme",
+    "de": "Dateien ersetzen",
+    "fr": "Remplacement de fichiers",
+    "es": "Reemplazar archivos",
+    "pt-BR": "Substituição de arquivos",
+    "ja": "ファイルの置き換え",
+    "zh-Hans": "替换文件"
+  },
+  "Short cache time": {
+    "tr": "Kısa önbellek süresi",
+    "de": "Kurze Cache-Dauer",
+    "fr": "Durée de cache courte",
+    "es": "Tiempo de caché corto",
+    "pt-BR": "Tempo de cache curto",
+    "ja": "短いキャッシュ時間",
+    "zh-Hans": "短缓存时间"
+  },
+  "Cloudflare Zone ID": {
+    "tr": "Cloudflare Zone ID",
+    "de": "Cloudflare-Zonen-ID",
+    "fr": "ID de zone Cloudflare",
+    "es": "ID de zona de Cloudflare",
+    "pt-BR": "ID da zona do Cloudflare",
+    "ja": "CloudflareゾーンID",
+    "zh-Hans": "Cloudflare 区域 ID"
+  },
+  "Cloudflare API Token": {
+    "tr": "Cloudflare API Token",
+    "de": "Cloudflare-API-Token",
+    "fr": "Jeton d’API Cloudflare",
+    "es": "Token de API de Cloudflare",
+    "pt-BR": "Token de API do Cloudflare",
+    "ja": "Cloudflare APIトークン",
+    "zh-Hans": "Cloudflare API 令牌"
+  },
+  "Optional": {
+    "tr": "İsteğe bağlı",
+    "de": "Optional",
+    "fr": "Facultatif",
+    "es": "Opcional",
+    "pt-BR": "Opcional",
+    "ja": "任意",
+    "zh-Hans": "可选"
+  },
+  "Check": {
+    "tr": "Kontrol Et",
+    "de": "Prüfen",
+    "fr": "Vérifier",
+    "es": "Comprobar",
+    "pt-BR": "Verificar",
+    "ja": "確認",
+    "zh-Hans": "检查"
+  },
+  "Cloudflare accepts this token": {
+    "tr": "Cloudflare bu token'ı kabul ediyor",
+    "de": "Cloudflare akzeptiert dieses Token",
+    "fr": "Cloudflare accepte ce jeton",
+    "es": "Cloudflare acepta este token",
+    "pt-BR": "O Cloudflare aceita este token",
+    "ja": "Cloudflareはこのトークンを受け付けました",
+    "zh-Hans": "Cloudflare 接受此令牌"
+  },
+  "The Cloudflare zone ID isn’t valid.": {
+    "tr": "Cloudflare zone ID geçerli değil.",
+    "de": "Die Cloudflare-Zonen-ID ist ungültig.",
+    "fr": "L’ID de zone Cloudflare n’est pas valide.",
+    "es": "El ID de zona de Cloudflare no es válido.",
+    "pt-BR": "O ID da zona do Cloudflare não é válido.",
+    "ja": "CloudflareゾーンIDが正しくありません。",
+    "zh-Hans": "Cloudflare 区域 ID 无效。"
+  },
+  "Enter a Cloudflare API token.": {
+    "tr": "Bir Cloudflare API token'ı gir.",
+    "de": "Gib ein Cloudflare-API-Token ein.",
+    "fr": "Saisissez un jeton d’API Cloudflare.",
+    "es": "Introduce un token de API de Cloudflare.",
+    "pt-BR": "Digite um token de API do Cloudflare.",
+    "ja": "Cloudflare APIトークンを入力してください。",
+    "zh-Hans": "请输入 Cloudflare API 令牌。"
+  },
+  "Replace File writes a new file at the same key, so its link keeps working. Short cache time sends every upload here with a one-minute cache time, so a replaced file shows up everywhere within about a minute. With a Cloudflare zone ID and an API token that can purge its cache (Zone > Cache Purge), Aktar clears the old version from Cloudflare right away.": {
+    "tr": "Dosyayı Değiştir, aynı anahtara yeni bir dosya yazar, böylece linki çalışmaya devam eder. Kısa önbellek süresi, buraya yapılan her yüklemeyi bir dakikalık önbellek süresiyle gönderir; değiştirilen dosya yaklaşık bir dakika içinde her yerde görünür. Bir Cloudflare zone ID'si ve önbelleğini temizleyebilen bir API token'ıyla (Zone > Cache Purge) Aktar eski sürümü Cloudflare'den hemen siler.",
+    "de": "„Datei ersetzen“ schreibt eine neue Datei unter denselben Schlüssel, damit ihr Link weiter funktioniert. Kurze Cache-Dauer sendet jeden Upload hierher mit einer Cache-Dauer von einer Minute, sodass eine ersetzte Datei innerhalb etwa einer Minute überall erscheint. Mit einer Cloudflare-Zonen-ID und einem API-Token, das deren Cache leeren darf (Zone > Cache Purge), entfernt Aktar die alte Version sofort aus Cloudflare.",
+    "fr": "« Remplacer le fichier » écrit un nouveau fichier à la même clé, pour que son lien continue de fonctionner. Une durée de cache courte envoie chaque fichier ici avec un cache d’une minute, si bien qu’un fichier remplacé apparaît partout en une minute environ. Avec un ID de zone Cloudflare et un jeton d’API qui peut vider son cache (Zone > Cache Purge), Aktar retire tout de suite l’ancienne version de Cloudflare.",
+    "es": "Reemplazar archivo escribe un archivo nuevo en la misma clave, así que su enlace sigue funcionando. Tiempo de caché corto envía cada subida aquí con un minuto de caché, de modo que un archivo reemplazado aparece en todas partes en un minuto aproximadamente. Con un ID de zona de Cloudflare y un token de API que pueda purgar su caché (Zone > Cache Purge), Aktar borra al momento la versión antigua de Cloudflare.",
+    "pt-BR": "Substituir arquivo grava um novo arquivo na mesma chave, para que o link continue funcionando. Tempo de cache curto envia cada arquivo para cá com um minuto de cache, então um arquivo substituído aparece em todos os lugares em cerca de um minuto. Com um ID de zona do Cloudflare e um token de API que possa limpar o cache dela (Zone > Cache Purge), o Aktar apaga a versão antiga do Cloudflare na hora.",
+    "ja": "「ファイルを置き換え」は同じキーに新しいファイルを書き込むので、リンクはそのまま使えます。短いキャッシュ時間をオンにすると、ここへのアップロードはキャッシュ時間1分で送られ、置き換えたファイルは約1分でどこでも新しくなります。CloudflareゾーンIDとキャッシュを削除できるAPIトークン（Zone > Cache Purge）があれば、Aktarが古いバージョンをCloudflareからすぐに消去します。",
+    "zh-Hans": "“替换文件”会在同一个键上写入新文件，因此链接仍然有效。短缓存时间会让上传到这里的每个文件只缓存一分钟，替换后的文件大约一分钟内就会在各处更新。如果有 Cloudflare 区域 ID 和能清除其缓存的 API 令牌（Zone > Cache Purge），Aktar 会立即从 Cloudflare 清除旧版本。"
+  },
+  "After Upload": {
+    "tr": "Yüklemeden Sonra",
+    "de": "Nach dem Upload",
+    "fr": "Après l’envoi",
+    "es": "Después de subir",
+    "pt-BR": "Depois do envio",
+    "ja": "アップロード後",
+    "zh-Hans": "上传后"
+  },
+  "After Upload: {0}": {
+    "tr": "Yüklemeden Sonra: {0}",
+    "de": "Nach dem Upload: {0}",
+    "fr": "Après l’envoi : {0}",
+    "es": "Después de subir: {0}",
+    "pt-BR": "Depois do envio: {0}",
+    "ja": "アップロード後：{0}",
+    "zh-Hans": "上传后：{0}"
+  },
+  "Runs after each upload to this destination and each replace, except a watched folder’s files, which run their folder’s own Automation. A webhook gets the upload as JSON. A script gets the same JSON on standard input, with the link, the key, the file and the destination as its arguments.": {
+    "tr": "Bu hedefe yapılan her yüklemeden ve her değiştirmeden sonra çalışır; izlenen klasörlerin dosyaları hariç, onlar kendi klasörlerinin Otomasyonunu çalıştırır. Webhook, yüklemeyi JSON olarak alır. Betik aynı JSON'u standart girdiden alır; argümanları link, anahtar, dosya ve hedeftir.",
+    "de": "Läuft nach jedem Upload in dieses Ziel und nach jedem Ersetzen, außer bei Dateien aus überwachten Ordnern, die die Automatisierung ihres Ordners ausführen. Ein Webhook erhält den Upload als JSON. Ein Skript erhält dasselbe JSON über die Standardeingabe, mit Link, Schlüssel, Datei und Ziel als Argumenten.",
+    "fr": "S’exécute après chaque envoi vers cette destination et chaque remplacement, sauf pour les fichiers d’un dossier surveillé, qui lancent l’automatisation de leur dossier. Un webhook reçoit l’envoi en JSON. Un script reçoit le même JSON sur l’entrée standard, avec le lien, la clé, le fichier et la destination comme arguments.",
+    "es": "Se ejecuta tras cada subida a este destino y cada reemplazo, salvo los archivos de una carpeta vigilada, que ejecutan la automatización de su carpeta. Un webhook recibe la subida como JSON. Un script recibe el mismo JSON por la entrada estándar, con el enlace, la clave, el archivo y el destino como argumentos.",
+    "pt-BR": "É executado depois de cada envio para este destino e de cada substituição, exceto arquivos de uma pasta monitorada, que executam a automação da pasta. Um webhook recebe o envio como JSON. Um script recebe o mesmo JSON pela entrada padrão, com o link, a chave, o arquivo e o destino como argumentos.",
+    "ja": "このアップロード先へのアップロードと置き換えのたびに実行されます（監視フォルダのファイルは、そのフォルダの自動化が実行されます）。WebhookはアップロードをJSONで受け取ります。スクリプトは同じJSONを標準入力で受け取り、リンク、キー、ファイル、アップロード先を引数として受け取ります。",
+    "zh-Hans": "每次上传到此目标和每次替换后运行；监视文件夹的文件除外，它们运行所在文件夹的自动化。Webhook 以 JSON 接收上传信息。脚本通过标准输入接收同样的 JSON，并以链接、键、文件和目标作为参数。"
+  },
+  "Replace File…": {
+    "tr": "Dosyayı Değiştir…",
+    "de": "Datei ersetzen …",
+    "fr": "Remplacer le fichier…",
+    "es": "Reemplazar archivo…",
+    "pt-BR": "Substituir arquivo…",
+    "ja": "ファイルを置き換え…",
+    "zh-Hans": "替换文件…"
+  },
+  "Replaced": {
+    "tr": "Değiştirildi",
+    "de": "Ersetzt",
+    "fr": "Remplacé",
+    "es": "Reemplazado",
+    "pt-BR": "Substituído",
+    "ja": "置き換え済み",
+    "zh-Hans": "已替换"
+  },
+  "{0} keeps its link.": {
+    "tr": "{0} aynı linkle kalıyor.",
+    "de": "{0} behält seinen Link.",
+    "fr": "{0} garde son lien.",
+    "es": "{0} conserva su enlace.",
+    "pt-BR": "{0} mantém o link.",
+    "ja": "{0}のリンクはそのままです。",
+    "zh-Hans": "{0} 的链接保持不变。"
+  },
+  "Choose a file to replace it with.": {
+    "tr": "Yerine koymak için bir dosya seç.",
+    "de": "Wähle eine Datei, durch die sie ersetzt wird.",
+    "fr": "Choisissez un fichier pour le remplacer.",
+    "es": "Elige un archivo para reemplazarlo.",
+    "pt-BR": "Escolha um arquivo para substituí-lo.",
+    "ja": "置き換えるファイルを選んでください。",
+    "zh-Hans": "请选择用来替换的文件。"
+  },
+  "This upload is no longer in your history.": {
+    "tr": "Bu yükleme artık geçmişinde değil.",
+    "de": "Dieser Upload ist nicht mehr in deinem Verlauf.",
+    "fr": "Cet envoi ne figure plus dans votre historique.",
+    "es": "Esta subida ya no está en tu historial.",
+    "pt-BR": "Este envio não está mais no seu histórico.",
+    "ja": "このアップロードは履歴にありません。",
+    "zh-Hans": "此上传已不在你的历史记录中。"
+  },
+  "The upload could not be queued.": {
+    "tr": "Yükleme sıraya alınamadı.",
+    "de": "Der Upload konnte nicht eingereiht werden.",
+    "fr": "L’envoi n’a pas pu être mis en file d’attente.",
+    "es": "No se pudo poner la subida en cola.",
+    "pt-BR": "Não foi possível colocar o envio na fila.",
+    "ja": "アップロードをキューに追加できませんでした。",
+    "zh-Hans": "无法将上传加入队列。"
+  },
+  "Cloudflare's cache couldn't be cleared": {
+    "tr": "Cloudflare önbelleği temizlenemedi",
+    "de": "Der Cloudflare-Cache konnte nicht geleert werden",
+    "fr": "Le cache de Cloudflare n’a pas pu être vidé",
+    "es": "No se pudo vaciar la caché de Cloudflare",
+    "pt-BR": "Não foi possível limpar o cache do Cloudflare",
+    "ja": "Cloudflareのキャッシュを消去できませんでした",
+    "zh-Hans": "无法清除 Cloudflare 缓存"
+  },
+  "The file was replaced, but Cloudflare's cache couldn't be cleared: {0}": {
+    "tr": "Dosya değiştirildi ama Cloudflare önbelleği temizlenemedi: {0}",
+    "de": "Die Datei wurde ersetzt, aber der Cloudflare-Cache konnte nicht geleert werden: {0}",
+    "fr": "Le fichier a été remplacé, mais le cache de Cloudflare n’a pas pu être vidé : {0}",
+    "es": "El archivo se reemplazó, pero no se pudo vaciar la caché de Cloudflare: {0}",
+    "pt-BR": "O arquivo foi substituído, mas não foi possível limpar o cache do Cloudflare: {0}",
+    "ja": "ファイルは置き換えましたが、Cloudflareのキャッシュを消去できませんでした：{0}",
+    "zh-Hans": "文件已替换，但无法清除 Cloudflare 缓存：{0}"
   }
 }

@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogBody,
@@ -19,6 +20,7 @@ import {
   api,
   errorMessage,
   expiryDurations,
+  fileKinds,
   folderUploadModes,
   imageFormats,
   imageMetadataPolicies,
@@ -29,6 +31,8 @@ import {
   type ConnectionResult,
   type DestinationConfig,
   type ExpiryRulesCheck,
+  type FileKind,
+  type FileRouting,
   type FolderUploadMode,
   type FormRules,
   type ImageFormat,
@@ -37,6 +41,7 @@ import {
   type OutputMode,
   type ProviderPreset,
   type ThumbnailMode,
+  type WatchHook,
 } from "../lib/api";
 import {
   durationLabel,
@@ -51,6 +56,8 @@ import { useI18n, type Translate } from "../lib/i18n";
 import { defaultThumbnailPrefix, normalizedThumbnailPrefix, thumbnailPrefixProblem } from "../lib/thumbnails";
 import { ConnectionTestResult } from "./ConnectionTestResult";
 import { ConfirmDialog } from "./Dialogs";
+import { HookEditor } from "./HookEditor";
+import { ShortcutRecorder } from "./ShortcutRecorder";
 
 const presets: ProviderPreset[] = ["cloudflareR2", "amazonS3", "minIO", "backblazeB2", "digitalOceanSpaces", "customS3"];
 
@@ -60,6 +67,28 @@ const defaultRegion = (preset: ProviderPreset) => (preset === "amazonS3" ? "us-e
 const defaultForcePathStyle = (preset: ProviderPreset) => preset === "minIO";
 
 const r2Endpoint = (accountID: string) => `https://${accountID}.r2.cloudflarestorage.com`;
+
+/** An extension as "Use for" keeps it: without leading dots, lowercase,
+ * 1 to 16 letters and digits. Null when it can't be one. */
+function normalizedExtension(raw: string): string | null {
+  const extension = raw.trim().replace(/^\.+/, "").toLowerCase();
+  return /^[a-z0-9]{1,16}$/.test(extension) ? extension : null;
+}
+
+/** "dmg, .zip  tar": the extensions typed, and the ones that can't be one. */
+function parseExtensions(text: string): { extensions: string[]; invalid: string[] } {
+  const extensions: string[] = [];
+  const invalid: string[] = [];
+  for (const part of text.split(/[\s,]+/).filter(Boolean)) {
+    const extension = normalizedExtension(part);
+    if (extension === null) invalid.push(part);
+    else if (!extensions.includes(extension)) extensions.push(extension);
+  }
+  return { extensions, invalid };
+}
+
+/** A Cloudflare zone ID: 32 hex digits, as the dashboard shows it. */
+const isZoneId = (zone: string) => /^[0-9a-f]{32}$/i.test(zone.trim());
 
 interface Props {
   open: boolean;
@@ -94,6 +123,20 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [imageMaxLongEdge, setImageMaxLongEdge] = useState<number | null>(null);
   const [thumbnailMode, setThumbnailMode] = useState<ThumbnailMode>("local");
   const [thumbnailPrefix, setThumbnailPrefix] = useState(defaultThumbnailPrefix);
+  const [useForKinds, setUseForKinds] = useState<FileKind[]>([]);
+  const [useForExtensions, setUseForExtensions] = useState("");
+  /** This destination's own shortcut; for a new one, set once it's saved. */
+  const [shortcut, setShortcut] = useState<string | null>(null);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
+  const [shortCache, setShortCache] = useState(false);
+  const [cloudflareZoneId, setCloudflareZoneId] = useState("");
+  /** Typed here; empty keeps the saved one. */
+  const [cloudflareToken, setCloudflareToken] = useState("");
+  const [hasSavedToken, setHasSavedToken] = useState(false);
+  const [removeToken, setRemoveToken] = useState(false);
+  const [tokenCheck, setTokenCheck] = useState<{ kind: "checking" } | { kind: "passed" } | { kind: "failed"; message: string } | null>(null);
+  const [hooks, setHooks] = useState<WatchHook[]>([]);
+  const [hookError, setHookError] = useState<string | null>(null);
   /** Saving stopped to ask what happens to the thumbnails already in this
    * bucket folder, which the destination would stop using. */
   const [oldThumbnailPrefix, setOldThumbnailPrefix] = useState<string | null>(null);
@@ -150,6 +193,19 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setThumbnailMode(existing?.thumbnails ?? "local");
     setThumbnailPrefix(normalizedThumbnailPrefix(existing?.thumbnailPrefix ?? "") ?? defaultThumbnailPrefix);
     setOldThumbnailPrefix(null);
+    setUseForKinds(existing?.useFor?.kinds ?? []);
+    setUseForExtensions((existing?.useFor?.extensions ?? []).join(", "));
+    setShortcut(existing ? (settings?.destinationShortcuts?.[existing.id] ?? null) : null);
+    setShortcutError(null);
+    setShortCache(existing?.shortCache ?? false);
+    setCloudflareZoneId(existing?.cloudflareZoneId ?? "");
+    setCloudflareToken("");
+    setRemoveToken(false);
+    setTokenCheck(null);
+    setHasSavedToken(false);
+    if (existing) api.hasCloudflareToken(existing.id).then(setHasSavedToken).catch(() => {});
+    setHooks(existing?.hooks ?? []);
+    setHookError(null);
     setTestResult(null);
     setTestError(null);
     setSaveError(null);
@@ -159,8 +215,16 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const hasNewCredentials = accessKeyId.trim() !== "" && secretAccessKey !== "";
   const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || existing !== null);
   const prefixProblem = thumbnailMode === "bucket" ? thumbnailPrefixProblem(thumbnailPrefix, t) : null;
+  const invalidExtensions = parseExtensions(useForExtensions).invalid;
+  const extensionsProblem =
+    invalidExtensions.length > 0
+      ? t("Not an extension: {0}. Use letters and digits only, such as dmg or mp4.", invalidExtensions.map((part) => `“${part}”`).join(", "))
+      : null;
+  const zoneProblem = cloudflareZoneId.trim() !== "" && !isZoneId(cloudflareZoneId) ? t("The Cloudflare zone ID isn’t valid.") : null;
   const canSave =
     name.trim() !== "" &&
+    extensionsProblem === null &&
+    zoneProblem === null &&
     bucket.trim() !== "" &&
     endpoint.trim() !== "" &&
     publicBaseURL.trim() !== "" &&
@@ -187,7 +251,51 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     imageProcessing: imageProcessingConfig(),
     thumbnails: thumbnailMode,
     thumbnailPrefix: thumbnailPrefixConfig(),
+    useFor: useForConfig(),
+    shortCache: shortCache || null,
+    cloudflareZoneId: isZoneId(cloudflareZoneId) ? cloudflareZoneId.trim().toLowerCase() : null,
+    hooks: hooks.length > 0 ? hooks : null,
   });
+
+  /** Null when it claims nothing, so uploads only come here when picked. */
+  const useForConfig = (): FileRouting | null => {
+    const extensions = parseExtensions(useForExtensions).extensions;
+    const kinds = fileKinds.filter((kind) => useForKinds.includes(kind));
+    return kinds.length === 0 && extensions.length === 0 ? null : { kinds, extensions };
+  };
+
+  /** Sets the destination's shortcut right away; a failure says why and
+   * keeps the old one. */
+  const changeShortcut = async (accelerator: string | null) => {
+    if (!existing) {
+      // Set once the destination is saved and has its ID.
+      setShortcut(accelerator);
+      setShortcutError(null);
+      api.setShortcutPaused(false).catch(() => {});
+      return;
+    }
+    try {
+      await api.setDestinationShortcut(existing.id, accelerator);
+      setShortcut(accelerator);
+      setShortcutError(null);
+    } catch (error) {
+      setShortcutError(errorMessage(error));
+      api.setShortcutPaused(false).catch(() => {});
+    }
+  };
+
+  const checkToken = async () => {
+    setTokenCheck({ kind: "checking" });
+    try {
+      await api.checkCloudflareToken(existing?.id ?? null, cloudflareToken.trim() || null);
+      setTokenCheck({ kind: "passed" });
+    } catch (error) {
+      setTokenCheck({ kind: "failed", message: errorMessage(error) });
+    }
+  };
+
+  /** What saving does with the Cloudflare token: null keeps it. */
+  const tokenChange = (): string | null => (cloudflareToken.trim() ? cloudflareToken.trim() : removeToken ? "" : null);
 
   /** Kept while thumbnails aren't in the bucket, so switching back finds
    * the same folder; null for the default one. */
@@ -304,7 +412,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
           return;
         }
       }
-      onSaved(await api.saveDestination(config, credentials(), formRules, deleteOldThumbnails ?? false));
+      const saved = await api.saveDestination(config, credentials(), formRules, deleteOldThumbnails ?? false, tokenChange());
+      if (!existing && shortcut) await api.setDestinationShortcut(saved.id, shortcut).catch(() => {});
+      onSaved(saved);
     } catch (error) {
       setSaveError(errorMessage(error));
     } finally {
@@ -588,6 +698,45 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
               </div>
 
               <Text weight="semibold" className="form-heading">
+                {t("Use For")}
+              </Text>
+              <div className="form-group">
+                <div className="inline-row wrap">
+                  {fileKinds.map((kind) => (
+                    <Checkbox
+                      key={kind}
+                      label={fileKindLabel(kind, t)}
+                      checked={useForKinds.includes(kind)}
+                      onChange={(_, data) =>
+                        setUseForKinds((kinds) => (data.checked ? [...kinds, kind] : kinds.filter((other) => other !== kind)))
+                      }
+                    />
+                  ))}
+                </div>
+                <Field label={t("Extensions")} validationMessage={extensionsProblem ?? undefined}>
+                  <Input value={useForExtensions} placeholder="dmg, zip" spellCheck={false} onChange={(_, data) => setUseForExtensions(data.value)} />
+                </Field>
+                <Text size={200} className="secondary">
+                  {t(
+                    "When an upload doesn’t name a destination (the clipboard shortcut, the panel, File Explorer, the local API), files of these types come here instead of the default destination. An extension listed here wins over a type.",
+                  )}
+                </Text>
+              </div>
+
+              <Text weight="semibold" className="form-heading">
+                {t("Keyboard Shortcut")}
+              </Text>
+              <div className="form-group">
+                <div className="inline-row">
+                  <Text className="grow">{t("Upload clipboard here")}</Text>
+                  <ShortcutRecorder value={shortcut} error={shortcutError} onChange={changeShortcut} />
+                </div>
+                <Text size={200} className="secondary">
+                  {t("Uploads what’s on the clipboard to this destination, whatever “Use for” says. Kept on this PC only.")}
+                </Text>
+              </div>
+
+              <Text weight="semibold" className="form-heading">
                 {t("Image Processing")}
               </Text>
               <div className="form-group">
@@ -668,6 +817,88 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                 </Text>
               </div>
 
+              <Text weight="semibold" className="form-heading">
+                {t("Replacing Files")}
+              </Text>
+              <div className="form-group">
+                <Switch label={t("Short cache time")} checked={shortCache} onChange={(_, data) => setShortCache(data.checked)} />
+                <Field label={t("Cloudflare Zone ID")} validationMessage={zoneProblem ?? undefined}>
+                  <Input
+                    value={cloudflareZoneId}
+                    placeholder={t("Optional")}
+                    spellCheck={false}
+                    onChange={(_, data) => setCloudflareZoneId(data.value)}
+                  />
+                </Field>
+                <Field label={t("Cloudflare API Token")}>
+                  <div className="inline-row">
+                    <Input
+                      className="grow"
+                      type="password"
+                      value={cloudflareToken}
+                      placeholder={hasSavedToken && !removeToken ? t("Unchanged") : t("Optional")}
+                      autoComplete="off"
+                      onChange={(_, data) => {
+                        setCloudflareToken(data.value);
+                        setTokenCheck(null);
+                      }}
+                    />
+                    <Button
+                      size="small"
+                      disabled={tokenCheck?.kind === "checking" || (cloudflareToken.trim() === "" && (!hasSavedToken || removeToken))}
+                      onClick={checkToken}
+                    >
+                      {t("Check")}
+                    </Button>
+                    {hasSavedToken && !removeToken && cloudflareToken === "" && (
+                      <Button size="small" appearance="subtle" onClick={() => setRemoveToken(true)}>
+                        {t("Remove")}
+                      </Button>
+                    )}
+                  </div>
+                </Field>
+                {tokenCheck?.kind === "checking" && (
+                  <Text size={200} className="secondary">
+                    {t("Checking…")}
+                  </Text>
+                )}
+                {tokenCheck?.kind === "passed" && (
+                  <Text size={200} className="text-success">
+                    {t("Cloudflare accepts this token")}
+                  </Text>
+                )}
+                {tokenCheck?.kind === "failed" && (
+                  <Text size={200} className="text-error">
+                    {tokenCheck.message}
+                  </Text>
+                )}
+                <Text size={200} className="secondary">
+                  {t(
+                    "Replace File writes a new file at the same key, so its link keeps working. Short cache time sends every upload here with a one-minute cache time, so a replaced file shows up everywhere within about a minute. With a Cloudflare zone ID and an API token that can purge its cache (Zone > Cache Purge), Aktar clears the old version from Cloudflare right away.",
+                  )}
+                </Text>
+              </div>
+
+              <Text weight="semibold" className="form-heading">
+                {t("After Upload")}
+              </Text>
+              <div className="form-group">
+                <HookEditor
+                  hooks={hooks}
+                  description={t(
+                    "Runs after each upload to this destination and each replace, except a watched folder’s files, which run their folder’s own Automation. A webhook gets the upload as JSON. A script gets the same JSON on standard input, with the link, the key, the file and the destination as its arguments.",
+                  )}
+                  onChange={setHooks}
+                  test={(hook) => api.testDestinationHook(currentConfig(), hook)}
+                  onError={setHookError}
+                />
+                {hookError && (
+                  <Text size={200} className="text-error">
+                    {hookError}
+                  </Text>
+                )}
+              </div>
+
               <div ref={testOutcome}>
                 <ConnectionTestResult result={testResult} error={testError} />
               </div>
@@ -737,6 +968,21 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       </DialogSurface>
     </Dialog>
   );
+}
+
+export function fileKindLabel(kind: FileKind, t: Translate) {
+  switch (kind) {
+    case "image":
+      return t("Images");
+    case "video":
+      return t("Videos");
+    case "audio":
+      return t("Audio");
+    case "document":
+      return t("Documents");
+    case "archive":
+      return t("Archives");
+  }
 }
 
 function thumbnailModeLabel(mode: ThumbnailMode, t: Translate) {

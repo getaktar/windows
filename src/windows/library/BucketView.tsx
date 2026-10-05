@@ -40,7 +40,7 @@ import {
 } from "../../components/Dialogs";
 import { ObjectThumbnail, ProviderIcon, useObjectThumbnail } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
-import { api, temporaryLinkDurations, type BucketObject, type DestinationConfig } from "../../lib/api";
+import { api, errorMessage, temporaryLinkDurations, type BucketObject, type DestinationConfig } from "../../lib/api";
 import {
   folderDisplayName,
   formatBytes,
@@ -88,8 +88,17 @@ function objectMenu(
     { label: t("Open in Browser"), onClick: () => api.openUrl(url) },
     "divider",
     { label: t("Rename or Move…"), onClick: requestMove },
+    { label: t("Replace File…"), onClick: () => replaceObject(model, object) },
     { label: t("Delete Remote File…"), destructive: true, onClick: requestDelete },
   ];
+}
+
+/** "Replace File…": a new file at the object's key, so its link keeps
+ * working. It goes up like any upload; the list refreshes when it's done. */
+async function replaceObject(model: BucketBrowser, object: BucketObject) {
+  const path = await openDialog({ multiple: false, directory: false });
+  if (typeof path !== "string") return;
+  api.replaceObject(model.destination.id, object.key, path).catch((error) => model.setActionError(errorMessage(error)));
 }
 
 export function BucketView({

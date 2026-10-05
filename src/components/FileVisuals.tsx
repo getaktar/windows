@@ -78,7 +78,9 @@ export function useThumbnailURL(record: UploadRecord | null) {
     requested.add(id);
     api.loadRecordThumbnail(id).catch(() => {});
   }, [id, path]);
-  return path ? convertFileSrc(path) : null;
+  // The same file is written again when the upload is replaced; the
+  // version makes the web view load it again.
+  return path ? `${convertFileSrc(path)}${record?.replacedAt ? `?v=${record.replacedAt}` : ""}` : null;
 }
 
 /** Square, aspect-fit thumbnail on a faint checkerboard so transparent PNGs

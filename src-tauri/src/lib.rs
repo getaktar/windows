@@ -3,10 +3,12 @@
 
 mod bucket;
 mod clipboard;
+mod cloudflare;
 mod commands;
 mod core;
 mod credentials;
 mod deeplink;
+mod destination_hooks;
 mod destinations;
 mod expiry;
 #[cfg(windows)]
@@ -23,6 +25,7 @@ mod output;
 mod package;
 mod panel;
 mod qr;
+mod routing;
 mod settings;
 mod shell;
 mod storage;
@@ -105,6 +108,13 @@ pub fn run() {
             commands::app_info,
             commands::list_destinations,
             commands::save_destination,
+            commands::has_cloudflare_token,
+            commands::check_cloudflare_token,
+            commands::test_destination_hook,
+            commands::set_destination_shortcut,
+            commands::routing_hints,
+            commands::replace_upload,
+            commands::replace_object,
             commands::remove_destination,
             commands::set_default_destination,
             commands::test_connection,

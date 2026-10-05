@@ -67,6 +67,7 @@ fn filled(credentials: Option<StorageCredentials>) -> Option<StorageCredentials>
             access_key_id: c.access_key_id.trim().to_string(),
             secret_access_key: c.secret_access_key.trim().to_string(),
             session_token: c.session_token.filter(|token| !token.trim().is_empty()),
+            cloudflare_token: None,
         }
     })
 }
@@ -78,6 +79,9 @@ fn filled(credentials: Option<StorageCredentials>) -> Option<StorageCredentials>
 /// was open, recorded under the destination's ID. When nothing was checked
 /// there, a status that was true of another bucket or key no longer
 /// applies, so it's reset to not active.
+///
+/// `cloudflare_token`: none keeps the stored one, an empty one removes it.
+/// A destination saved without a Cloudflare zone ID loses its token.
 #[tauri::command]
 pub fn save_destination(
     core: Core,
@@ -85,11 +89,13 @@ pub fn save_destination(
     credentials: Option<StorageCredentials>,
     rules: Option<FormRules>,
     delete_old_thumbnails: Option<bool>,
+    cloudflare_token: Option<String>,
 ) -> Result<DestinationConfig, String> {
     let is_new = config.id.is_empty();
     if is_new {
         config.id = crate::util::new_id();
     }
+    check_destination_hooks(&core, &config)?;
     // Read before saving replaces them: the old folder may be in another
     // bucket, with other keys.
     let cleanup = delete_old_thumbnails
@@ -98,6 +104,16 @@ pub fn save_destination(
         .flatten()
         .and_then(|(saved, prefix)| credentials::load(&saved.id).ok().map(|keys| (saved, prefix, keys)));
     let saved = store_destination(&core, config, credentials, rules, is_new)?;
+    // Without a zone ID the token has nothing to purge, so it goes too.
+    let token = if saved.cloudflare_zone_id.is_none() { Some(String::new()) } else { cloudflare_token };
+    if let Some(token) = token {
+        let mut keys = credentials::load(&saved.id).map_err(|error| error.to_string())?;
+        let token = Some(token.trim().to_string()).filter(|token| !token.is_empty());
+        if keys.cloudflare_token != token {
+            keys.cloudflare_token = token;
+            credentials::save(&keys, &saved.id).map_err(|error| error.to_string())?;
+        }
+    }
     if let Some((old, prefix, keys)) = cleanup {
         let core = core.inner().clone();
         tauri::async_runtime::spawn(async move {
@@ -139,7 +155,9 @@ fn store_destination(
         credentials::save(&credentials, &config.id).map_err(|error| error.to_string())?;
         core.destinations.add(config.clone());
     } else {
-        if let Some(credentials) = credentials {
+        if let Some(mut credentials) = credentials {
+            // New keys keep the Cloudflare token saved with the old ones.
+            credentials.cloudflare_token = credentials::load(&config.id).ok().and_then(|keys| keys.cloudflare_token);
             credentials::save(&credentials, &config.id).map_err(|error| error.to_string())?;
         }
         let old = core.destinations.find(Some(&config.id)).filter(|saved| saved.id == config.id);
@@ -156,6 +174,67 @@ fn store_destination(
     }
     core.notify(events::DESTINATIONS_CHANGED);
     Ok(config)
+}
+
+/// Refuses "After Upload" hooks the windows made up: a script that wasn't
+/// picked in Aktar's own dialog (or saved with this destination before,
+/// exactly as it is), and a webhook that would send the upload's details
+/// over plain http:// across the internet.
+fn check_destination_hooks(core: &SharedCore, config: &DestinationConfig) -> Result<(), String> {
+    let saved = core.destinations.find(Some(&config.id)).filter(|saved| saved.id == config.id).and_then(|saved| saved.hooks).unwrap_or_default();
+    for hook in config.hooks.iter().flatten() {
+        match hook.kind {
+            crate::watched::model::HookKind::Webhook => crate::watched::check_webhook_url(&hook.target)?,
+            crate::watched::model::HookKind::Script => {
+                let known = saved.iter().any(|saved| saved.id == hook.id && saved.kind == hook.kind && saved.target == hook.target);
+                if !known && !crate::watched::is_picked_script(core, hook) {
+                    return Err(t!("Pick the script with “Add Script…”."));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether the destination has a Cloudflare token saved with its keys, for
+/// the form (which never sees the token itself).
+#[tauri::command]
+pub fn has_cloudflare_token(id: String) -> bool {
+    credentials::load(&id).is_ok_and(|keys| keys.cloudflare_token.is_some_and(|token| !token.is_empty()))
+}
+
+/// "Check" next to the Cloudflare token: the one typed, or the saved one.
+#[tauri::command]
+pub async fn check_cloudflare_token(destination_id: Option<String>, token: Option<String>) -> Result<(), String> {
+    let token = token
+        .filter(|token| !token.trim().is_empty())
+        .or_else(|| destination_id.and_then(|id| credentials::load(&id).ok()).and_then(|keys| keys.cloudflare_token))
+        .unwrap_or_default();
+    crate::cloudflare::verify(&token).await
+}
+
+/// "Test" on a destination's hook: a made-up upload.
+#[tauri::command]
+pub async fn test_destination_hook(core: Core<'_>, destination: DestinationConfig, hook: Hook) -> Result<(), String> {
+    let config = DestinationConfig { hooks: Some(vec![hook.clone()]), ..destination };
+    check_destination_hooks(&core, &config)?;
+    crate::destination_hooks::test(&core, &config, &hook).await
+}
+
+/// A destination's own "Upload clipboard to this destination" shortcut.
+#[tauri::command]
+pub fn set_destination_shortcut(app: AppHandle, core: Core, id: String, accelerator: Option<String>) -> Result<(), String> {
+    crate::hotkey::set_destination(&app, &id, accelerator.as_deref())?;
+    core.notify(events::SETTINGS_CHANGED);
+    Ok(())
+}
+
+/// Under the panel's destination picker: where files go when a destination
+/// other than the default claims them ("Images go to Screenshots").
+#[tauri::command]
+pub fn routing_hints(core: Core) -> Vec<String> {
+    let default = core.destinations.default_destination().map(|destination| destination.id);
+    crate::routing::hints(&core.destinations.all(), default.as_deref())
 }
 
 /// Thumbnails turned off: the ones made for this destination go, here and
@@ -319,6 +398,7 @@ pub fn set_destination_link(core: Core, id: String, seconds: Option<u64>) {
 
 #[tauri::command]
 pub fn remove_destination(core: Core, id: String) {
+    let _ = crate::hotkey::set_destination(&core.app, &id, None);
     core.destinations.remove(&id);
     thumbnails::remote::forget_destination(&core, &id);
     expiry::record(&core, &id, None);
@@ -426,6 +506,37 @@ fn inputs_from(core: &SharedCore, paths: Vec<String>) -> Vec<UploadInput> {
         })
         .map(UploadInput::from_path)
         .collect()
+}
+
+/// "Replace File…" on a history entry: `path` goes up to its key, so its
+/// link keeps working.
+#[tauri::command]
+pub fn replace_upload(core: Core, id: String, path: String) -> Result<(), String> {
+    let path = replacement(&core, path)?;
+    uploads::replace_upload(&core, &id, path, None).map(|_| ())
+}
+
+/// "Replace File…" on a file in the bucket view.
+#[tauri::command]
+pub fn replace_object(core: Core, destination_id: String, key: String, path: String) -> Result<(), String> {
+    let destination = core
+        .destinations
+        .find(Some(&destination_id))
+        .filter(|destination| destination.id.eq_ignore_ascii_case(&destination_id))
+        .ok_or_else(|| t!("This upload’s destination was removed."))?;
+    bucket::check_key(&key)?;
+    let path = replacement(&core, path)?;
+    uploads::replace_object(&core, destination, key, path, None).map(|_| ())
+}
+
+/// The file a window picked to replace another with, unless it's a folder
+/// or inside Aktar's own folders.
+fn replacement(core: &SharedCore, path: String) -> Result<PathBuf, String> {
+    inputs_from(core, vec![path])
+        .into_iter()
+        .map(|input| input.path)
+        .find(|path| path.is_file())
+        .ok_or_else(|| t!("Choose a file to replace it with."))
 }
 
 /// The path with every link resolved, or None when it doesn't exist.
@@ -826,6 +937,10 @@ pub fn set_shortcut_paused(app: AppHandle, paused: bool) {
 #[tauri::command]
 pub fn set_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
     let previous = core.settings.get();
+    if let Err(message) = refuse_destination_shortcut(&previous, accelerator.as_deref()) {
+        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
+        return Err(message);
+    }
     if let Err(message) = crate::hotkey::register(&app, accelerator.as_deref(), previous.rename_shortcut.as_deref()) {
         // Put the old ones back so a failed change doesn't leave none.
         let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
@@ -840,12 +955,27 @@ pub fn set_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> 
 #[tauri::command]
 pub fn set_rename_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
     let previous = core.settings.get();
+    if let Err(message) = refuse_destination_shortcut(&previous, accelerator.as_deref()) {
+        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
+        return Err(message);
+    }
     if let Err(message) = crate::hotkey::register(&app, previous.shortcut.as_deref(), accelerator.as_deref()) {
         let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
         return Err(message);
     }
     core.settings.update(|settings| settings.rename_shortcut = accelerator);
     core.notify(events::SETTINGS_CHANGED);
+    Ok(())
+}
+
+/// An app shortcut can't be one a destination already has: pressing it
+/// would upload to that destination instead.
+fn refuse_destination_shortcut(settings: &Settings, accelerator: Option<&str>) -> Result<(), String> {
+    let Some(shortcut) = accelerator.and_then(|accelerator| crate::hotkey::parse(accelerator).ok()) else { return Ok(()) };
+    let taken = settings.destination_shortcuts.values().any(|other| crate::hotkey::parse(other).ok() == Some(shortcut));
+    if taken {
+        return Err(t!("This shortcut is already in use. Try a different one."));
+    }
     Ok(())
 }
 

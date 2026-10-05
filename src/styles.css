@@ -125,6 +125,23 @@ body {
   min-width: 0;
 }
 
+.inline-row.wrap {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.inline-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* "Images go to Screenshots" under the panel's destination picker. */
+.routing-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;

@@ -41,14 +41,14 @@ pub async fn test(core: &SharedCore, folder: &WatchedFolder, hook: &Hook) -> Res
     send(core, hook, &payload).await.map_err(|message| failure(hook, &message))
 }
 
-fn failure(hook: &Hook, message: &str) -> String {
+pub(crate) fn failure(hook: &Hook, message: &str) -> String {
     match hook.kind {
         HookKind::Webhook => t!("Webhook {0} failed: {1}", hook.target, message),
         HookKind::Script => t!("Script {0} failed: {1}", crate::util::last_component(&hook.target), message),
     }
 }
 
-async fn send(core: &SharedCore, hook: &Hook, payload: &serde_json::Value) -> Result<(), String> {
+pub(crate) async fn send(core: &SharedCore, hook: &Hook, payload: &serde_json::Value) -> Result<(), String> {
     match tokio::time::timeout(TIMEOUT, async {
         match hook.kind {
             HookKind::Webhook => webhook(core, &hook.target, payload).await,
@@ -130,7 +130,8 @@ async fn webhook(core: &SharedCore, url: &str, payload: &serde_json::Value) -> R
 ///
 /// The arguments are url, key, file and folder, as the Mac app passes them
 /// (its sandboxed scripts can't get environment variables), so one script
-/// works on both.
+/// works on both. A destination's hooks (manual uploads, which have no
+/// folder) get the destination's name as the fourth.
 async fn script(path: &str, payload: &serde_json::Value) -> Result<(), String> {
     let extension = crate::util::split_extension(crate::util::last_component(path)).1.to_ascii_lowercase();
     let mut command = match extension.as_str() {
@@ -145,13 +146,15 @@ async fn script(path: &str, payload: &serde_json::Value) -> Result<(), String> {
     let url = upload["url"].as_str().unwrap_or_default();
     let key = upload["key"].as_str().unwrap_or_default();
     let file = payload["file"]["path"].as_str().unwrap_or_default();
-    let folder = payload["folder"]["path"].as_str().unwrap_or_default();
+    let folder = payload["folder"]["path"].as_str();
+    let destination = payload["destination"]["name"].as_str().unwrap_or_default();
     command
-        .args([url, key, file, folder])
+        .args([url, key, file, folder.unwrap_or(destination)])
         .env("AKTAR_URL", url)
         .env("AKTAR_KEY", key)
         .env("AKTAR_FILE", file)
-        .env("AKTAR_FOLDER", folder)
+        .env("AKTAR_FOLDER", folder.unwrap_or_default())
+        .env("AKTAR_DESTINATION", destination)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

@@ -17,6 +17,10 @@ pub struct StorageCredentials {
     pub secret_access_key: String,
     #[serde(default)]
     pub session_token: Option<String>,
+    /// A Cloudflare API token that can purge the destination's zone cache,
+    /// for replaced files; see `cloudflare`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloudflare_token: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]

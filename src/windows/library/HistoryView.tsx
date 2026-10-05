@@ -171,9 +171,18 @@ export function HistoryView({ active }: { active: boolean }) {
       { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
       { label: t("Reveal Details"), onClick: () => selection.set([record.id]) },
       "divider",
+      { label: t("Replace File…"), onClick: () => replace(record) },
       { label: t("Delete Remote File…"), destructive: true, onClick: () => setPendingDeletion([record]) },
       { label: t("Remove from History"), destructive: true, onClick: () => removeFromHistory([record]) },
     ];
+  };
+
+  /** "Replace File…": a new file at the upload's key, so its link keeps
+   * working. Progress shows in the panel like any upload. */
+  const replace = async (record: UploadRecord) => {
+    const path = await openDialog({ multiple: false, directory: false });
+    if (typeof path !== "string") return;
+    api.replaceUpload(record.id, path).catch((error) => showLinkError(errorMessage(error)));
   };
 
   const chooseAndUpload = async () => {
@@ -343,6 +352,7 @@ export function HistoryView({ active }: { active: boolean }) {
             onDelete={() => setPendingDeletion([selectedRecords[0]])}
             onRetryDeletion={() => deleteRemote([selectedRecords[0]])}
             onRemove={() => removeFromHistory([selectedRecords[0]])}
+            onReplace={() => replace(selectedRecords[0])}
           />
         ) : isEmpty ? (
           <EmptyLibrary onUpload={chooseAndUpload} />
@@ -485,6 +495,7 @@ function UploadDetail(props: {
   onDelete: () => void;
   onRetryDeletion: () => void;
   onRemove: () => void;
+  onReplace: () => void;
 }) {
   const { t, locale } = useI18n();
   const { record } = props;
@@ -512,6 +523,7 @@ function UploadDetail(props: {
     "divider",
     { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
     "divider",
+    { label: t("Replace File…"), onClick: props.onReplace },
     props.deleting
       ? { label: t("Deleting…"), disabled: true, onClick: () => {} }
       : { label: t("Delete Remote File…"), destructive: true, onClick: props.onDelete },
@@ -547,7 +559,9 @@ function UploadDetail(props: {
           <ExpiryBadge expiresAt={record.expiresAt} />
         </header>
         <Preview
-          url={record.publicUrl}
+          // A replaced file is fetched again rather than shown from the
+          // web view's cache, which would still have the old one.
+          url={record.replacedAt ? `${record.publicUrl}${record.publicUrl.includes("?") ? "&" : "?"}v=${record.replacedAt}` : record.publicUrl}
           filename={record.localFilename}
           mimeType={record.mimeType}
           browserURL={record.publicUrl}
@@ -579,6 +593,13 @@ function UploadDetail(props: {
             value={formatDateTime(record.createdAt, locale)}
             tooltip={formatDateTime(record.createdAt, locale, "full")}
           />
+          {record.replacedAt && (
+            <DetailRow
+              label={t("Replaced")}
+              value={formatDateTime(record.replacedAt, locale)}
+              tooltip={formatDateTime(record.replacedAt, locale, "full")}
+            />
+          )}
         </section>
       </div>
     </div>

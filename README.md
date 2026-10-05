@@ -20,7 +20,13 @@ clipboard. This is the Windows version of [Aktar for Mac](https://github.com/get
 - Global "paste & upload" shortcut (default `Ctrl+Shift+Alt+U`), customizable
 - Bring your own storage: Amazon S3, Cloudflare R2, Backblaze B2,
   DigitalOcean Spaces, MinIO, or any other S3-compatible endpoint
-- Multiple destinations, switchable per upload
+- Multiple destinations, switchable per upload; each can claim kinds of
+  files and extensions ("Use for"), so screenshots, builds and documents
+  go to their own destination on their own, and can have its own shortcut
+- Replace a file in place from History or the bucket view: same key, same
+  link, with an optional one-minute cache time and Cloudflare cache purge
+  so the new version shows up right away
+- Webhooks and scripts after each upload to a destination ("After Upload")
 - Upload history with search, thumbnails (photos, videos, PDFs, documents),
   and previews (images, PDFs, text, Markdown, video and audio playback)
 - Thumbnails per destination: off, on this PC, or also in the bucket so
@@ -49,14 +55,56 @@ only other request it makes is the update check, which downloads
 `latest.json` from this repository's latest GitHub release and sends no
 information about you or your PC; you can turn it off in Settings. Every
 update is verified against a public key built into the app before it's
-installed. A watched folder's webhooks only send upload details to the URLs
-you add to it.
+installed. A watched folder's or destination's webhooks only send upload details to
+the URLs you add to it, and the optional Cloudflare token (Zone > Cache
+Purge only) is kept in Credential Manager with the destination's keys and
+only sent to Cloudflare's API to clear a replaced file's link.
 
 If you turn on Settings > Integrations > Allow local connections (off by
 default, and what the Raycast extension uses), Aktar also listens on
 `127.0.0.1` for requests carrying a random token that is kept in Credential
 Manager. It never accepts connections from other machines or from web pages.
 See [SECURITY.md](SECURITY.md) for the disclosure policy.
+
+## Automation
+
+The command line and the local API are Aktar's automation surface on
+Windows. Turn on Settings > Integrations > Allow local connections, copy the
+token, and install the CLI (`npm install -g @getaktar/cli`, then
+`aktar login`), or call the API on `http://127.0.0.1:47913/v1/` with
+`Authorization: Bearer <token>`:
+
+| Request | What it does |
+|---|---|
+| `POST /v1/uploads?filename=` | Uploads the request body. Without `destinationId`, it goes where the file's kind or extension says ("Use for"), else to the default destination |
+| `POST /v1/uploads/clipboard` | Uploads the clipboard, routed the same way |
+| `POST /v1/uploads/{id}/replace?filename=` | Replaces an upload's file in place; the link stays |
+| `PUT /v1/destinations/{id}/objects?key=&filename=` | Replaces the file at a key in the bucket |
+| `GET /v1/uploads`, `GET /v1/destinations` | History and destinations (with `useFor`, `shortCache`, `hasCloudflarePurge`, `hooks`) |
+
+Every upload reply has the links in all copy formats (`formats.url`,
+`formats.markdown`...).
+
+**Power Automate Desktop**: add a *Run PowerShell script* action, for
+example to upload every PDF in a folder and collect the links:
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\Documents\Invoices\*.pdf" | ForEach-Object {
+  aktar upload $_.FullName --json | ConvertFrom-Json | Select-Object -ExpandProperty url
+}
+```
+
+**Task Scheduler**: a task that runs `powershell.exe` with
+`-NoProfile -Command "aktar upload C:\Reports\daily.csv"` uploads the day's
+report on a schedule; replacing it in place keeps one link that always shows
+the latest version:
+
+```powershell
+$token = "<token from Settings > Integrations>"
+$headers = @{ Authorization = "Bearer $token" }
+Invoke-RestMethod -Method Put -Headers $headers -InFile C:\Reports\daily.csv `
+  -Uri "http://127.0.0.1:47913/v1/destinations/<destination ID>/objects?key=reports/daily.csv"
+```
 
 ## Requirements
 

@@ -36,9 +36,20 @@ pub struct UploadRecord {
     /// The watched folder's name at the time, for "Watched: Screenshots"
     /// even after it's removed.
     pub source_name: Option<String>,
+    /// Unix milliseconds when the file was last replaced in place (same
+    /// key and link), or none.
+    pub replaced_at: Option<i64>,
     pub has_thumbnail: bool,
     /// The thumbnail file on this PC, for the windows to show.
     pub thumbnail_path: Option<String>,
+}
+
+impl UploadRecord {
+    /// Unix milliseconds of the last write to its key: the replace, or the
+    /// upload. What a bucket object's date is compared with.
+    pub fn last_write(&self) -> i64 {
+        self.replaced_at.unwrap_or(self.created_at)
+    }
 }
 
 pub struct NewRecord<'a> {
@@ -55,6 +66,15 @@ pub struct NewRecord<'a> {
     pub watched_folder: Option<(&'a str, &'a str)>,
 }
 
+/// What a replaced file changes in its history entry.
+pub struct Replacement<'a> {
+    pub byte_size: i64,
+    pub content_hash: Option<&'a str>,
+    pub mime_type: &'a str,
+    /// Days until it's deleted, for a file under `tmp/{N}d/`.
+    pub expire_after_days: Option<u32>,
+}
+
 pub struct History {
     /// Shared with the watched folders' ledger, which keeps its table in
     /// the same database.
@@ -62,7 +82,7 @@ pub struct History {
     pub thumbnails: LocalStore,
 }
 
-const COLUMNS: &str = "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name";
+const COLUMNS: &str = "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name, replaced_at";
 
 /// The `source` of a watched folder's uploads.
 pub fn watched_source(folder_id: &str) -> String {
@@ -104,6 +124,7 @@ impl History {
             content_hash: row.get(10)?,
             source: row.get(11)?,
             source_name: row.get(12)?,
+            replaced_at: row.get(13)?,
             has_thumbnail: thumbnail_path.is_some(),
             thumbnail_path,
         })
@@ -125,12 +146,13 @@ impl History {
             content_hash: record.content_hash.map(str::to_string),
             source: record.watched_folder.map(|(id, _)| watched_source(id)),
             source_name: record.watched_folder.map(|(_, name)| name.to_string()),
+            replaced_at: None,
             has_thumbnail: false,
             thumbnail_path: None,
         };
         let connection = self.connection.lock().unwrap();
         let result = connection.execute(
-            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"),
+            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
             params![
                 stored.id,
                 stored.local_filename,
@@ -144,7 +166,8 @@ impl History {
                 stored.expires_at,
                 stored.content_hash,
                 stored.source,
-                stored.source_name
+                stored.source_name,
+                stored.replaced_at
             ],
         );
         if let Err(error) = result {
@@ -214,6 +237,25 @@ impl History {
             .optional()
             .ok()
             .flatten()
+    }
+
+    /// A file replaced in place: the entry keeps its ID, key, link, name and
+    /// upload date, and gets the new file's size, hash and content type,
+    /// a new expiry when it's under `tmp/{N}d/` (counted from now), and
+    /// `replaced_at`.
+    pub fn replaced(&self, id: &str, replacement: Replacement) -> Option<UploadRecord> {
+        let now = crate::util::now_millis();
+        let expires_at = replacement.expire_after_days.map(|days| crate::expiry::expires_at(now, days));
+        {
+            let connection = self.connection.lock().unwrap();
+            if let Err(error) = connection.execute(
+                "UPDATE uploads SET byte_size = ?2, content_hash = ?3, mime_type = ?4, expires_at = ?5, replaced_at = ?6 WHERE id = ?1",
+                params![id, replacement.byte_size, replacement.content_hash, replacement.mime_type, expires_at, now],
+            ) {
+                log::error!("Could not update upload history: {error}");
+            }
+        }
+        self.get(id)
     }
 
     pub fn delete(&self, id: &str) {
@@ -329,6 +371,9 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     if !has_column(connection, "uploads", "source")? {
         connection.execute_batch("ALTER TABLE uploads ADD COLUMN source TEXT; ALTER TABLE uploads ADD COLUMN source_name TEXT;")?;
     }
+    if !has_column(connection, "uploads", "replaced_at")? {
+        connection.execute_batch("ALTER TABLE uploads ADD COLUMN replaced_at INTEGER;")?;
+    }
     Ok(())
 }
 
@@ -369,6 +414,10 @@ mod tests {
             image_processing: None,
             thumbnails: None,
             thumbnail_prefix: None,
+            use_for: None,
+            short_cache: None,
+            cloudflare_zone_id: None,
+            hooks: None,
         }
     }
 
@@ -401,6 +450,43 @@ mod tests {
         assert_eq!(old.content_hash, None);
         assert_eq!(old.source, None);
         assert!(history.expired(i64::MAX).is_empty());
+    }
+
+    #[test]
+    fn replaces_in_place() {
+        let connection = Connection::open_in_memory().unwrap();
+        prepare(&connection).unwrap();
+        assert!(has_column(&connection, "uploads", "replaced_at").unwrap());
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: LocalStore::open(std::env::temp_dir().join("aktar-history-test"), None) };
+        let destination = destination();
+        let record = history.insert(NewRecord {
+            local_filename: "a.png",
+            object_key: "tmp/7d/a.png",
+            public_url: "https://img.example.com/tmp/7d/a.png",
+            destination: &destination,
+            mime_type: "image/png",
+            byte_size: 5,
+            expire_after_days: Some(7),
+            content_hash: Some("old"),
+            watched_folder: None,
+        });
+        assert_eq!(record.replaced_at, None);
+        let replaced = history
+            .replaced(&record.id, Replacement { byte_size: 9, content_hash: Some("new"), mime_type: "image/jpeg", expire_after_days: Some(7) })
+            .unwrap();
+        // Same entry, key, link, name and upload date; the new file's facts.
+        assert_eq!(replaced.id, record.id);
+        assert_eq!(replaced.object_key, record.object_key);
+        assert_eq!(replaced.public_url, record.public_url);
+        assert_eq!(replaced.local_filename, "a.png");
+        assert_eq!(replaced.created_at, record.created_at);
+        assert_eq!((replaced.byte_size, replaced.content_hash.as_deref(), replaced.mime_type.as_str()), (9, Some("new"), "image/jpeg"));
+        let replaced_at = replaced.replaced_at.unwrap();
+        assert!(replaced_at >= record.created_at);
+        // Its 7 days start again.
+        assert_eq!(replaced.expires_at, Some(replaced_at + 7 * 86_400_000));
+        assert_eq!(history.with_content(&destination.id, "new").len(), 1);
+        assert!(history.with_content(&destination.id, "old").is_empty());
     }
 
     #[test]

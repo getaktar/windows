@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- "Use for" in a destination's settings: pick the kinds of files (images,
+  videos, audio, documents, archives) and extensions that go there. An
+  upload that doesn't name a destination (the clipboard shortcut, the
+  panel, File Explorer, Send to, the local API) goes to the destination
+  that claims the file's extension, else its kind, else the default one.
+  Files of one drop that land in different destinations have their links
+  copied together, and the panel says where files go under the destination
+  picker
+- A keyboard shortcut for each destination that uploads the clipboard
+  straight there
+- Replace File in History and the bucket view: a new file goes to the same
+  key, so its link keeps working. The history entry keeps its date and gets
+  the new file's size and thumbnail, with "Replaced" and when. A file under
+  a "Delete after" folder starts its days again
+- Short cache time for a destination: every upload there is sent with a
+  one-minute cache time, so a replaced file shows up everywhere within about
+  a minute. And an optional Cloudflare zone ID and API token (Zone > Cache
+  Purge) that clear a replaced file from Cloudflare's cache right away, also
+  for a watched folder that replaces its upload to keep the link
+- After Upload in a destination's settings: webhooks and scripts that run
+  after each upload there and each replace, like a watched folder's
+  Automation
+- Local API: uploads without `destinationId` follow "Use for";
+  `POST /v1/uploads/{id}/replace` and `PUT /v1/destinations/{id}/objects`
+  replace a file in place; destinations list `useFor`, `shortCache`,
+  `hasCloudflarePurge` and `hooks`. The README shows automation with the
+  CLI, Power Automate Desktop and Task Scheduler
+- Share to Another Device carries "Use for", the cache settings, the
+  Cloudflare token and the webhooks (scripts stay on the PC they were
+  picked on; shortcuts aren't shared)
+
 ### Fixed
 
 - Files uploaded through the local API, from the Raycast extension or the

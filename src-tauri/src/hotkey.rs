@@ -1,9 +1,11 @@
 //! The user-customizable, system-wide shortcuts: one pastes and uploads the
-//! clipboard without opening the panel, the other (unset by default) asks
-//! for the upload's name first. Registered with RegisterHotKey (via the
-//! global-shortcut plugin), which needs no special permission and only
+//! clipboard without opening the panel, another (unset by default) asks
+//! for the upload's name first, and each destination can have its own that
+//! uploads the clipboard straight there. Registered with RegisterHotKey (via
+//! the global-shortcut plugin), which needs no special permission and only
 //! fires on a real key press.
 
+use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use tauri::AppHandle;
@@ -16,7 +18,18 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .with_handler(|app, shortcut, event| {
             if event.state() == ShortcutState::Pressed {
                 let core = crate::core::core(app);
-                let rename = core.settings.get().rename_shortcut.and_then(|accelerator| parse(&accelerator).ok());
+                let settings = core.settings.get();
+                // A destination's own shortcut uploads there, never rerouted.
+                let destination = settings
+                    .destination_shortcuts
+                    .iter()
+                    .find(|(_, accelerator)| parse(accelerator).ok().as_ref() == Some(shortcut))
+                    .and_then(|(id, _)| core.destinations.find(Some(id)).filter(|destination| destination.id == *id));
+                if let Some(destination) = destination {
+                    crate::uploads::upload_clipboard_to_in_background(&core, destination);
+                    return;
+                }
+                let rename = settings.rename_shortcut.and_then(|accelerator| parse(&accelerator).ok());
                 // Reading and encoding a large screenshot takes a while; this
                 // handler runs on the UI thread.
                 crate::uploads::upload_clipboard_in_background(&core, rename.as_ref() == Some(shortcut));
@@ -25,10 +38,70 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
-/// Replaces the registered shortcuts: "paste & upload" and "rename and
-/// upload". `None` leaves that one unset. When one can't be registered, the
-/// other still is, and the error is returned.
+/// Replaces the registered shortcuts: "paste & upload", "rename and
+/// upload", and the destinations' own (saved in Settings). `None` leaves
+/// that one unset. When one can't be registered, the others still are, and
+/// the error is returned.
 pub fn register(app: &AppHandle, upload: Option<&str>, rename: Option<&str>) -> Result<(), String> {
+    let destinations = crate::core::core(app).settings.get().destination_shortcuts;
+    let result = register_app_shortcuts(app, upload, rename);
+    register_destination_shortcuts(app, &destinations, &[upload, rename]);
+    result
+}
+
+/// The destinations' own shortcuts, on top of the app's. One that's the
+/// same as another, or taken by another app, is skipped (the form checked
+/// it when it was set).
+fn register_destination_shortcuts(app: &AppHandle, destinations: &BTreeMap<String, String>, app_shortcuts: &[Option<&str>]) {
+    let taken: Vec<Shortcut> = app_shortcuts.iter().flatten().filter_map(|accelerator| parse(accelerator).ok()).collect();
+    let mut registered: Vec<Shortcut> = Vec::new();
+    for accelerator in destinations.values() {
+        let Ok(shortcut) = parse(accelerator) else { continue };
+        if taken.contains(&shortcut) || registered.contains(&shortcut) {
+            continue;
+        }
+        if app.global_shortcut().register(shortcut).is_ok() {
+            registered.push(shortcut);
+        }
+    }
+}
+
+/// Sets (or with `None` clears) a destination's own shortcut, refusing one
+/// that's already the app's or another destination's, or that another app
+/// has taken.
+pub fn set_destination(app: &AppHandle, destination_id: &str, accelerator: Option<&str>) -> Result<(), String> {
+    let core = crate::core::core(app);
+    let settings = core.settings.get();
+    if let Some(accelerator) = accelerator {
+        let shortcut = parse(accelerator)?;
+        let in_use = [settings.shortcut.as_deref(), settings.rename_shortcut.as_deref()]
+            .into_iter()
+            .flatten()
+            .chain(settings.destination_shortcuts.iter().filter(|(id, _)| id.as_str() != destination_id).map(|(_, accelerator)| accelerator.as_str()))
+            .any(|other| parse(other).ok() == Some(shortcut));
+        if in_use {
+            return Err(t!("This shortcut is already in use. Try a different one."));
+        }
+    }
+    let mut destinations = settings.destination_shortcuts.clone();
+    match accelerator {
+        Some(accelerator) => destinations.insert(destination_id.to_string(), accelerator.to_string()),
+        None => destinations.remove(destination_id),
+    };
+    let _ = register_app_shortcuts(app, settings.shortcut.as_deref(), settings.rename_shortcut.as_deref());
+    if let Some(shortcut) = accelerator.and_then(|accelerator| parse(accelerator).ok()) {
+        if app.global_shortcut().register(shortcut).is_err() {
+            register_destination_shortcuts(app, &settings.destination_shortcuts, &[settings.shortcut.as_deref(), settings.rename_shortcut.as_deref()]);
+            return Err(t!("This shortcut is already used by another app. Try a different one."));
+        }
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+    register_destination_shortcuts(app, &destinations, &[settings.shortcut.as_deref(), settings.rename_shortcut.as_deref()]);
+    core.settings.update(|settings| settings.destination_shortcuts = destinations);
+    Ok(())
+}
+
+fn register_app_shortcuts(app: &AppHandle, upload: Option<&str>, rename: Option<&str>) -> Result<(), String> {
     let shortcuts = app.global_shortcut();
     let _ = shortcuts.unregister_all();
     let taken = || t!("This shortcut is already used by another app. Try a different one.");

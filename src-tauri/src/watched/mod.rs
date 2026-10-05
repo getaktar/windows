@@ -4,7 +4,7 @@
 //! file system watchers, notifications, the clipboard, and the windows.
 
 pub mod engine;
-mod hooks;
+pub(crate) mod hooks;
 pub use hooks::check_webhook_url;
 pub mod ledger;
 pub mod model;
@@ -585,6 +585,12 @@ fn check_hook(core: &SharedCore, hook: &Hook) -> Result<(), String> {
             }
         }
     }
+}
+
+/// Whether `hook` is a script picked in Aktar's own dialog in this run,
+/// exactly as it was picked.
+pub(crate) fn is_picked_script(core: &SharedCore, hook: &Hook) -> bool {
+    core.watched.picked_scripts.lock().unwrap().get(&hook.id) == Some(&hook.target)
 }
 
 /// "Watch with Aktar" in File Explorer: Settings opens on Watched Folders

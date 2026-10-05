@@ -112,12 +112,18 @@ async fn upload_clipboard(core: &SharedCore) {
         [input] => format!("“{}”", input.original_filename),
         _ => t!("{0} files", inputs.len()),
     };
-    let message = match core.destinations.default_destination() {
-        Some(destination) => t!("A link asked Aktar to upload {0} from the clipboard to “{1}”.", what, destination.name),
+    // Named as "Use for" routes it, not just the default destination.
+    let names = crate::uploads::routed_destination_names(core, &inputs);
+    if names.is_empty() {
         // Nowhere to upload to: `enqueue` says so and opens Welcome.
-        None => {
-            crate::uploads::enqueue(core, inputs, None);
-            return;
+        crate::uploads::enqueue(core, inputs, None);
+        return;
+    }
+    let message = match names.as_slice() {
+        [name] => t!("A link asked Aktar to upload {0} from the clipboard to “{1}”.", what, name),
+        _ => {
+            let destinations = names.iter().map(|name| format!("“{name}”")).collect::<Vec<_>>().join(", ");
+            t!("A link asked Aktar to upload {0} from the clipboard, split by Use For between {1}.", what, destinations)
         }
     };
     if ask(&core.app, t!("Upload the Clipboard?"), message, t!("Upload")).await {

@@ -449,36 +449,52 @@ function defaultDestination(destinations: DestinationConfig[]): DestinationConfi
 }
 
 function DestinationPicker({ destinations }: { destinations: DestinationConfig[] }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const current = defaultDestination(destinations);
+  // Where files go when another destination claims them ("Use for").
+  const [hints, setHints] = useState<string[]>([]);
+  useEffect(() => {
+    api.routingHints().then(setHints).catch(() => setHints([]));
+  }, [destinations, language]);
   return (
-    <div className="destination-picker">
-      <Text size={200} className="secondary">
-        {t("Destination")}
-      </Text>
-      <Menu
-        checkedValues={{ destination: current ? [current.id] : [] }}
-        onCheckedValueChange={(_, data) => {
-          const id = data.checkedItems[0];
-          if (id) api.setDefaultDestination(id);
-        }}
-      >
-        <MenuTrigger disableButtonEnhancement>
-          <Button className="destination-button" icon={<ChevronDownRegular />} iconPosition="after">
-            <span className="ellipsis">{current ? destinationLabel(current, t) : t("No destination")}</span>
-          </Button>
-        </MenuTrigger>
-        <MenuPopover>
-          <MenuList>
-            {destinations.map((destination) => (
-              <MenuItemRadio key={destination.id} name="destination" value={destination.id}>
-                {destinationLabel(destination, t)}
-              </MenuItemRadio>
-            ))}
-          </MenuList>
-        </MenuPopover>
-      </Menu>
-    </div>
+    <>
+      <div className="destination-picker">
+        <Text size={200} className="secondary">
+          {t("Destination")}
+        </Text>
+        <Menu
+          checkedValues={{ destination: current ? [current.id] : [] }}
+          onCheckedValueChange={(_, data) => {
+            const id = data.checkedItems[0];
+            if (id) api.setDefaultDestination(id);
+          }}
+        >
+          <MenuTrigger disableButtonEnhancement>
+            <Button className="destination-button" icon={<ChevronDownRegular />} iconPosition="after">
+              <span className="ellipsis">{current ? destinationLabel(current, t) : t("No destination")}</span>
+            </Button>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              {destinations.map((destination) => (
+                <MenuItemRadio key={destination.id} name="destination" value={destination.id}>
+                  {destinationLabel(destination, t)}
+                </MenuItemRadio>
+              ))}
+            </MenuList>
+          </MenuPopover>
+        </Menu>
+      </div>
+      {hints.length > 0 && (
+        <div className="routing-hints">
+          {hints.map((hint) => (
+            <Text key={hint} size={200} className="secondary">
+              {hint}
+            </Text>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

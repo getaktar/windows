@@ -29,6 +29,7 @@ use serde_json::{json, Map, Value};
 use crate::credentials::StorageCredentials;
 use crate::destinations::{DestinationConfig, ImageProcessing, ProviderPreset};
 use crate::output::OutputMode;
+use crate::watched::model::{Hook, HookKind};
 
 pub const LINK_PREFIX: &str = "aktar://import#";
 const FORMAT_VERSION: u8 = 1;
@@ -202,6 +203,9 @@ fn encode_payload(payload: &TransferPayload, now: i64) -> Vec<u8> {
     if let Some(token) = payload.credentials.session_token.as_deref().filter(|token| !token.is_empty()) {
         credentials["sessionToken"] = token.into();
     }
+    if let Some(token) = payload.credentials.cloudflare_token.as_deref().filter(|token| !token.is_empty()) {
+        credentials["cloudflareToken"] = token.into();
+    }
     let mut root = json!({
         "v": FORMAT_VERSION,
         "destination": destination,
@@ -267,6 +271,11 @@ fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferErro
         thumbnails: known(object.get("thumbnails")),
         // Normalized, and dropped when it can't be a folder, by `sanitize`.
         thumbnail_prefix: string(object.get("thumbnailPrefix")),
+        use_for: object.get("useFor").and_then(crate::routing::FileRouting::from_value),
+        short_cache: object.get("shortCache").and_then(Value::as_bool),
+        // Dropped by `sanitize` when it isn't a zone ID.
+        cloudflare_zone_id: trimmed(object.get("cloudflareZoneId")),
+        hooks: hooks(object.get("hooks")),
     };
     // Values this app doesn't offer (a "Delete after" or link duration)
     // are dropped, the same as in destinations.json.
@@ -276,8 +285,32 @@ fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferErro
         access_key_id: required(keys, "accessKeyId")?,
         secret_access_key: required(keys, "secretAccessKey")?,
         session_token: string(keys.get("sessionToken")),
+        cloudflare_token: trimmed(keys.get("cloudflareToken")),
     };
     Ok(TransferPayload { destination, credentials, custom_template: string(root.get("customTemplate")) })
+}
+
+/// A destination's "After Upload" hooks: its webhooks. Scripts stay behind:
+/// a program to run is only ever one picked on this PC (the Mac's are names
+/// in its own scripts folder anyway), never one a link names. Anything
+/// unreadable is left out.
+fn hooks(value: Option<&Value>) -> Option<Vec<Hook>> {
+    let hooks: Vec<Hook> = value?
+        .as_array()?
+        .iter()
+        .filter_map(|hook| {
+            let kind: HookKind = known(hook.get("kind"))?;
+            let target = trimmed(hook.get("target"))?;
+            let usable = kind == HookKind::Webhook && crate::watched::check_webhook_url(&target).is_ok();
+            usable.then(|| Hook {
+                id: crate::util::new_id(),
+                kind,
+                target,
+                enabled: hook.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+            })
+        })
+        .collect();
+    (!hooks.is_empty()).then_some(hooks)
 }
 
 /// The region a provider's form starts with, as in the Mac app.
@@ -450,7 +483,12 @@ mod tests {
         destination.object_path_template = " {uuid}.{ext} ".into();
         let payload = TransferPayload {
             destination,
-            credentials: StorageCredentials { access_key_id: " AKID ".into(), secret_access_key: "secret ".into(), session_token: None },
+            credentials: StorageCredentials {
+                access_key_id: " AKID ".into(),
+                secret_access_key: "secret ".into(),
+                session_token: None,
+                cloudflare_token: None,
+            },
             custom_template: None,
         };
         let opened = open(&seal(&payload, CODE).unwrap(), CODE).unwrap();
@@ -490,6 +528,53 @@ mod tests {
     }
 
     #[test]
+    fn reads_automation_settings_leniently() {
+        let decoded = |destination: Value| {
+            let mut object = json!({
+                "id": "0F0E8A57-4D8C-4C61-9B26-7C3F7E0E9A11", "name": "A", "preset": "customS3",
+                "endpoint": "https://s3.example.com", "bucket": "b", "publicBaseURL": "https://files.example.com",
+            });
+            object.as_object_mut().unwrap().extend(destination.as_object().unwrap().clone());
+            let data = serde_json::to_vec(&json!({
+                "v": 1,
+                "destination": object,
+                "credentials": { "accessKeyId": "id", "secretAccessKey": "secret", "cloudflareToken": " t " },
+            }))
+            .unwrap();
+            decode_payload(&data, 0).unwrap()
+        };
+        let payload = decoded(json!({
+            "useFor": { "kinds": ["video", "hologram"], "extensions": ["DMG", "no.pe"] },
+            "shortCache": true,
+            "cloudflareZoneId": " 0123456789ABCDEF0123456789ABCDEF ",
+            "hooks": [
+                { "kind": "webhook", "target": "https://hooks.example.com/x" },
+                { "kind": "webhook", "target": "http://hooks.example.com/plain" },
+                { "kind": "script", "target": "notify.sh", "enabled": false },
+                { "kind": "script", "target": "C:\\Scripts\\notify.ps1", "enabled": false },
+                { "kind": "carrier-pigeon", "target": "x" },
+            ],
+        }));
+        let destination = payload.destination;
+        assert_eq!(
+            destination.use_for,
+            Some(crate::routing::FileRouting { kinds: vec![crate::routing::FileKind::Video], extensions: vec!["dmg".into()] })
+        );
+        assert_eq!(destination.short_cache, Some(true));
+        assert_eq!(destination.cloudflare_zone_id.as_deref(), Some("0123456789abcdef0123456789abcdef"));
+        // Webhooks that can be used come along; scripts never do.
+        let hooks = destination.hooks.unwrap();
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].target, "https://hooks.example.com/x");
+        assert!(hooks[0].enabled);
+        assert_eq!(payload.credentials.cloudflare_token.as_deref(), Some("t"));
+
+        // Wrong types and values leave each setting unset.
+        let destination = decoded(json!({ "useFor": "image", "shortCache": "yes", "cloudflareZoneId": "zone", "hooks": {} })).destination;
+        assert_eq!((destination.use_for, destination.short_cache, destination.cloudflare_zone_id, destination.hooks), (None, None, None, None));
+    }
+
+    #[test]
     fn round_trips() {
         let mut destination = open(FULL, CODE).unwrap().destination;
         destination.output_mode = Some(OutputMode::Custom);
@@ -497,12 +582,26 @@ mod tests {
         destination.image_processing = Some(ImageProcessing { format: ImageFormat::Avif, quality: None, max_long_edge: Some(1920) });
         destination.thumbnails = Some(crate::thumbnails::ThumbnailMode::Bucket);
         destination.thumbnail_prefix = Some("previews/".into());
+        destination.use_for = crate::routing::FileRouting {
+            kinds: vec![crate::routing::FileKind::Image],
+            extensions: vec!["dmg".into()],
+        }
+        .sanitized();
+        destination.short_cache = Some(true);
+        destination.cloudflare_zone_id = Some("0123456789abcdef0123456789abcdef".into());
+        destination.hooks = Some(vec![Hook {
+            id: "H1".into(),
+            kind: HookKind::Webhook,
+            target: "https://hooks.example.com/x".into(),
+            enabled: true,
+        }]);
         let payload = TransferPayload {
             destination: destination.clone(),
             credentials: StorageCredentials {
                 access_key_id: "AKID".into(),
                 secret_access_key: "secret".into(),
                 session_token: Some("token".into()),
+                cloudflare_token: Some("cf-token".into()),
             },
             custom_template: Some("<{url}>".into()),
         };
@@ -513,6 +612,11 @@ mod tests {
         assert!(json["destination"]["imageProcessing"].get("quality").is_none());
         assert_eq!(json["destination"]["thumbnails"], "bucket");
         assert_eq!(json["destination"]["thumbnailPrefix"], "previews/");
+        assert_eq!(json["destination"]["useFor"], json!({ "kinds": ["image"], "extensions": ["dmg"] }));
+        assert_eq!(json["destination"]["shortCache"], true);
+        assert_eq!(json["destination"]["cloudflareZoneId"], "0123456789abcdef0123456789abcdef");
+        assert_eq!(json["destination"]["hooks"][0]["kind"], "webhook");
+        assert_eq!(json["credentials"]["cloudflareToken"], "cf-token");
 
         let code = generate_code();
         let link = seal(&payload, &code).unwrap();
@@ -520,7 +624,14 @@ mod tests {
         // A fresh salt and nonce every time.
         assert_ne!(link, seal(&payload, &code).unwrap());
         let opened = open(&link, &display_code(&code).to_lowercase()).unwrap();
-        assert_eq!(opened.destination, DestinationConfig { is_default: false, ..destination });
+        // Hooks get IDs of their own on the receiving device.
+        let received_hooks = opened.destination.hooks.clone().unwrap();
+        assert_eq!((received_hooks[0].kind, received_hooks[0].target.as_str()), (HookKind::Webhook, "https://hooks.example.com/x"));
+        assert_eq!(
+            DestinationConfig { hooks: None, ..opened.destination },
+            DestinationConfig { is_default: false, hooks: None, ..destination }
+        );
+        assert_eq!(opened.credentials.cloudflare_token.as_deref(), Some("cf-token"));
         assert_eq!(opened.credentials.session_token.as_deref(), Some("token"));
         assert_eq!(opened.custom_template.as_deref(), Some("<{url}>"));
 
