@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Files uploaded through the local API, from the Raycast extension or the
+  CLI, now get thumbnails. Before, they were made without the file's
+  extension, so none could be made
+
 ## [0.6.0] - 2026-10-05
 
 ### Added

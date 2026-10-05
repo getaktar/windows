@@ -251,9 +251,10 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     // The file is staged under a fixed name: the caller's name only becomes
     // the object key and history entry. Joining it into a path would let
     // a name like "C:evil.dll" escape the staging folder, and names Windows
-    // can't store (CON, "a?b") would fail.
+    // can't store (CON, "a?b") would fail. Only its extension is kept, for
+    // what goes by it (thumbnails, image processing).
     let directory = std::env::temp_dir().join("AktarLocalAPI").join(format!("upload-{}", crate::util::new_id()));
-    let path = directory.join("upload");
+    let path = directory.join(staged_name(&filename));
     let staged = async {
         tokio::fs::create_dir_all(&directory).await?;
         match &request.body_file {
@@ -290,6 +291,16 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     let response = run(core, input, destination).await;
     let _ = tokio::fs::remove_dir_all(&directory).await;
     response
+}
+
+/// "upload", with the caller's extension when it's plain letters and digits.
+fn staged_name(filename: &str) -> String {
+    match crate::util::split_extension(filename).1 {
+        extension if !extension.is_empty() && extension.len() <= 16 && extension.chars().all(|c| c.is_ascii_alphanumeric()) => {
+            format!("upload.{extension}")
+        }
+        _ => "upload".to_string(),
+    }
 }
 
 async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
@@ -775,6 +786,15 @@ mod tests {
             query: expires.map(|value| HashMap::from([("expires".to_string(), value.to_string())])).unwrap_or_default(),
             body: Vec::new(),
             body_file: None,
+        }
+    }
+
+    #[test]
+    fn stages_bodies_under_a_fixed_name_with_their_extension() {
+        assert_eq!(staged_name("Ekran görüntüsü 2026-10-03 180756.png"), "upload.png");
+        assert_eq!(staged_name("clip.MOV"), "upload.MOV");
+        for name in ["noextension", ".env", "a.", "C:evil.dll:stream", "a.p n g", "a.ünï"] {
+            assert_eq!(staged_name(name), "upload", "{name}");
         }
     }
 
