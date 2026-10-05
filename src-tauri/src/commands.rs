@@ -26,7 +26,7 @@ use crate::watched::engine::Now;
 use crate::watched::model::{Hook, WatchedFolder};
 use crate::windows::AppWindow;
 use crate::thumbnails::{self, ThumbnailMode};
-use crate::{bucket, i18n, panel, t};
+use crate::{bucket, cloudflare_setup, i18n, panel, t};
 
 type Core<'a> = State<'a, SharedCore>;
 
@@ -378,6 +378,100 @@ pub fn import_destination(
             core.notify(events::SETTINGS_CHANGED);
         }
     }
+    Ok(core.destinations.find(Some(&saved.id)).unwrap_or(saved))
+}
+
+// MARK: - Set Up Cloudflare R2
+
+/// "Open Cloudflare": the token page with the permissions filled in.
+#[tauri::command]
+pub fn open_cloudflare_token_page(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url(cloudflare_setup::token_url(), None::<&str>).map_err(|error| error.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudflareToken {
+    /// Also the S3 access key ID.
+    token_id: String,
+    accounts: Vec<cloudflare_setup::Account>,
+}
+
+/// The pasted token's ID and the accounts it can see.
+#[tauri::command]
+pub async fn cloudflare_check_token(token: String) -> Result<CloudflareToken, String> {
+    let token_id = cloudflare_setup::verify(&token).await?;
+    let accounts = cloudflare_setup::accounts(&token).await?;
+    if accounts.is_empty() {
+        return Err(t!("This token can’t see any Cloudflare account. Create it with the button above, for all accounts."));
+    }
+    Ok(CloudflareToken { token_id, accounts })
+}
+
+#[derive(Serialize)]
+pub struct CloudflareAccount {
+    buckets: Vec<String>,
+    zones: Vec<cloudflare_setup::Zone>,
+}
+
+/// An account's buckets and domains. Without its domains the r2.dev
+/// address still works, so only the buckets can fail this.
+#[tauri::command]
+pub async fn cloudflare_account(token: String, account_id: String) -> Result<CloudflareAccount, String> {
+    let (buckets, zones) = tokio::join!(
+        cloudflare_setup::buckets(&account_id, &token),
+        cloudflare_setup::zones(&account_id, &token),
+    );
+    Ok(CloudflareAccount { buckets: buckets?, zones: zones.unwrap_or_default() })
+}
+
+#[tauri::command]
+pub async fn cloudflare_create_bucket(token: String, account_id: String, bucket: String) -> Result<(), String> {
+    cloudflare_setup::create_bucket(&bucket, &account_id, &token).await
+}
+
+/// Turns on public links for the bucket: its r2.dev address, or `domain`
+/// on `zone` (left as it is when it's already connected). Returns the
+/// public base URL.
+#[tauri::command]
+pub async fn cloudflare_enable_public_links(
+    token: String,
+    account_id: String,
+    bucket: String,
+    zone: Option<cloudflare_setup::Zone>,
+    domain: Option<String>,
+) -> Result<String, String> {
+    let (Some(zone), Some(domain)) = (zone, domain) else {
+        return cloudflare_setup::enable_public_dev_url(&bucket, &account_id, &token).await;
+    };
+    let domain = domain.trim().to_ascii_lowercase();
+    if !cloudflare_setup::is_valid_domain(&domain, &zone.name) {
+        return Err(t!("Cloudflare refused the request."));
+    }
+    let connected = cloudflare_setup::custom_domains(&bucket, &account_id, &token).await?;
+    if !connected.iter().any(|existing| existing.eq_ignore_ascii_case(&domain)) {
+        cloudflare_setup::attach_domain(&domain, &zone, &bucket, &account_id, &token).await?;
+    }
+    Ok(format!("https://{domain}"))
+}
+
+/// Saves the set-up bucket as a normal R2 destination, with the keys made
+/// from the token (the token itself isn't kept). Its auto-delete rules
+/// aren't checked yet. Returns it as saved, default flag included.
+#[tauri::command]
+pub fn cloudflare_save_destination(
+    core: Core,
+    token: String,
+    token_id: String,
+    account_id: String,
+    bucket: String,
+    public_base_url: String,
+    name: String,
+) -> Result<DestinationConfig, String> {
+    let name = Some(name.trim()).filter(|name| !name.is_empty()).unwrap_or("Cloudflare R2");
+    let config = cloudflare_setup::destination(name, account_id.trim(), bucket.trim(), &public_base_url);
+    let credentials = cloudflare_setup::credentials(token_id.trim(), token.trim());
+    let saved = store_destination(&core, config, Some(credentials), None, true)?;
     Ok(core.destinations.find(Some(&saved.id)).unwrap_or(saved))
 }
 

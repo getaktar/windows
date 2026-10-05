@@ -488,6 +488,66 @@ export function installMockBackend(route: string) {
           window.setTimeout(() => emit("destinations-changed"), 0);
           return config;
         }
+        // "Set Up Cloudflare R2": a token with "bad" in it is refused;
+        // ?onecf shows a single account.
+        case "open_cloudflare_token_page":
+          return null;
+        case "cloudflare_check_token":
+          return new Promise((resolve, reject) =>
+            window.setTimeout(
+              () =>
+                String(args.token).includes("bad")
+                  ? reject("Invalid API Token")
+                  : resolve({
+                      tokenId: "0123456789abcdef0123456789abcdef",
+                      accounts: new URLSearchParams(window.location.search).has("onecf")
+                        ? [{ id: "a1", name: "Mert's Account" }]
+                        : [
+                            { id: "a1", name: "Mert's Account" },
+                            { id: "a2", name: "Mivo Studio" },
+                          ],
+                    }),
+              500,
+            ),
+          );
+        case "cloudflare_account":
+          return new Promise((resolve) =>
+            window.setTimeout(
+              () =>
+                resolve(
+                  args.accountId === "a1"
+                    ? { buckets: ["aktar", "photos"], zones: [{ id: "z1", name: "example.com" }, { id: "z2", name: "example.org" }] }
+                    : { buckets: [], zones: [] },
+                ),
+              400,
+            ),
+          );
+        case "cloudflare_create_bucket":
+        case "cloudflare_enable_public_links":
+          return new Promise((resolve) =>
+            window.setTimeout(
+              () => resolve(args.domain ? `https://${args.domain}` : "https://pub-0123456789abcdef.r2.dev"),
+              700,
+            ),
+          );
+        case "cloudflare_save_destination": {
+          const config: DestinationConfig = {
+            id: `D${Date.now()}`,
+            name: String(args.name),
+            preset: "cloudflareR2",
+            accountID: String(args.accountId),
+            endpoint: `https://${args.accountId}.r2.cloudflarestorage.com`,
+            region: "auto",
+            bucket: String(args.bucket),
+            publicBaseURL: String(args.publicBaseUrl),
+            objectPathTemplate: "{year}/{month}/{uuid}.{ext}",
+            forcePathStyle: false,
+            isDefault: destinations.length === 0,
+          };
+          destinations.push(config);
+          window.setTimeout(() => emit("destinations-changed"), 0);
+          return config;
+        }
         case "set_rename_shortcut":
           settings = { ...settings, renameShortcut: (args.accelerator as string | null) ?? null };
           return null;

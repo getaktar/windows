@@ -4,6 +4,7 @@
 mod bucket;
 mod clipboard;
 mod cloudflare;
+mod cloudflare_setup;
 mod commands;
 mod core;
 mod credentials;
@@ -153,6 +154,12 @@ pub fn run() {
             commands::check_transfer_link,
             commands::open_transfer,
             commands::import_destination,
+            commands::open_cloudflare_token_page,
+            commands::cloudflare_check_token,
+            commands::cloudflare_account,
+            commands::cloudflare_create_bucket,
+            commands::cloudflare_enable_public_links,
+            commands::cloudflare_save_destination,
             commands::set_destination_expiry,
             commands::set_destination_link,
             commands::record_temporary_link,

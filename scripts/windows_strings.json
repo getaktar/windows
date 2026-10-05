@@ -5348,5 +5348,23 @@
     "ru": "Файл заменен, но не удалось очистить кэш Cloudflare: {0}",
     "uk": "Файл замінено, але не вдалося очистити кеш Cloudflare: {0}",
     "pl": "Plik został zastąpiony, ale nie można wyczyścić pamięci podręcznej Cloudflare: {0}"
+  },
+  "The token isn’t stored. Aktar keeps only the storage keys made from it, in Credential Manager.": {
+    "tr": "Token saklanmaz. Aktar yalnızca bu token'dan üretilen depolama anahtarlarını Kimlik Bilgileri Yöneticisi'nde tutar.",
+    "de": "Das Token wird nicht gespeichert. Aktar behält nur die daraus erzeugten Speicherschlüssel, in der Anmeldeinformationsverwaltung.",
+    "fr": "Le jeton n’est pas conservé. Aktar ne garde que les clés de stockage créées à partir de celui-ci, dans le Gestionnaire d’identification.",
+    "es": "El token no se guarda. Aktar solo conserva las claves de almacenamiento creadas a partir de él, en el Administrador de credenciales.",
+    "pt-BR": "O token não é armazenado. O Aktar guarda apenas as chaves de armazenamento criadas a partir dele, no Gerenciador de Credenciais.",
+    "ja": "トークンは保存されません。Aktar が保持するのは、そこから作成されたストレージキーだけで、資格情報マネージャーに保存されます。",
+    "zh-Hans": "令牌不会被保存。Aktar 只会把由它生成的存储密钥保存在凭据管理器中。",
+    "it": "Il token non viene salvato. Aktar conserva solo le chiavi di archiviazione create a partire da esso, in Gestione credenziali.",
+    "ko": "토큰은 저장되지 않습니다. Aktar는 토큰으로 만든 스토리지 키만 자격 증명 관리자에 보관합니다.",
+    "vi": "Token không được lưu. Aktar chỉ giữ lại các khóa lưu trữ được tạo từ token, trong Trình quản lý thông tin xác thực.",
+    "zh-Hant": "權杖不會被儲存。Aktar 只會把由它產生的儲存金鑰保存在認證管理員中。",
+    "nl": "Het token wordt niet opgeslagen. Aktar bewaart alleen de opslagsleutels die ermee zijn gemaakt, in Referentiebeheer.",
+    "id": "Token tidak disimpan. Aktar hanya menyimpan kunci penyimpanan yang dibuat darinya, di Manajer Kredensial.",
+    "ru": "Токен не сохраняется. Aktar хранит только созданные с его помощью ключи хранилища, в диспетчере учетных данных.",
+    "uk": "Токен не зберігається. Aktar зберігає лише створені з нього ключі сховища, у диспетчері облікових даних.",
+    "pl": "Token nie jest zapisywany. Aktar przechowuje w Menedżerze poświadczeń tylko klucze magazynu utworzone na jego podstawie."
   }
 }

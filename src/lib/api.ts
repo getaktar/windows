@@ -453,6 +453,25 @@ export interface TransferPayload {
   customTemplate: string | null;
 }
 
+/** "Set Up Cloudflare R2": a Cloudflare account or zone (domain). */
+export interface CloudflareItem {
+  id: string;
+  name: string;
+}
+
+/** A pasted token's ID (also the S3 access key ID) and the accounts it
+ * can see. */
+export interface CloudflareToken {
+  tokenId: string;
+  accounts: CloudflareItem[];
+}
+
+/** What's on a Cloudflare account, for the setup's choices. */
+export interface CloudflareAccount {
+  buckets: string[];
+  zones: CloudflareItem[];
+}
+
 /** Why a transfer link couldn't be opened; `checkTransferLink` and
  * `openTransfer` reject with one of these. */
 export type TransferError = "notTransfer" | "newerVersion" | "wrongCode" | "expired";
@@ -504,6 +523,31 @@ export const api = {
    * it or updating the one here with that ID. Resolves to it as saved. */
   importDestination: (config: DestinationConfig, credentials: StorageCredentials, customTemplate: string | null) =>
     invoke<DestinationConfig>("import_destination", { config, credentials, customTemplate }),
+  /** "Set Up Cloudflare R2". The token is only sent to Cloudflare and used
+   * for the keys; Rust never keeps it. */
+  openCloudflareTokenPage: () => invoke<void>("open_cloudflare_token_page"),
+  cloudflareCheckToken: (token: string) => invoke<CloudflareToken>("cloudflare_check_token", { token }),
+  cloudflareAccount: (token: string, accountId: string) =>
+    invoke<CloudflareAccount>("cloudflare_account", { token, accountId }),
+  cloudflareCreateBucket: (token: string, accountId: string, bucket: string) =>
+    invoke<void>("cloudflare_create_bucket", { token, accountId, bucket }),
+  /** The r2.dev address without a zone and domain. Returns the public base URL. */
+  cloudflareEnablePublicLinks: (
+    token: string,
+    accountId: string,
+    bucket: string,
+    zone: CloudflareItem | null,
+    domain: string | null,
+  ) => invoke<string>("cloudflare_enable_public_links", { token, accountId, bucket, zone, domain }),
+  cloudflareSaveDestination: (
+    token: string,
+    tokenId: string,
+    accountId: string,
+    bucket: string,
+    publicBaseUrl: string,
+    name: string,
+  ) =>
+    invoke<DestinationConfig>("cloudflare_save_destination", { token, tokenId, accountId, bucket, publicBaseUrl, name }),
   setDestinationExpiry: (id: string, days: number) => invoke<void>("set_destination_expiry", { id, days }),
   setDestinationLink: (id: string, seconds: number | null) => invoke<void>("set_destination_link", { id, seconds }),
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>

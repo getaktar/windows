@@ -10,23 +10,30 @@ use serde_json::Value;
 
 use crate::t;
 
-const API: &str = "https://api.cloudflare.com/client/v4";
+pub(crate) const API: &str = "https://api.cloudflare.com/client/v4";
 const TIMEOUT: Duration = Duration::from_secs(20);
 
-fn client() -> Result<reqwest::Client, String> {
+pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder().timeout(TIMEOUT).build().map_err(|error| error.to_string())
 }
 
-/// Cloudflare's answer: `success`, or the first error's message.
-async fn outcome(response: reqwest::Response) -> Result<(), String> {
+/// Cloudflare answers `{"success": bool, "errors": [{"message"}], "result": ...}`:
+/// `result`, or the errors' messages (none when it didn't give any).
+pub(crate) async fn result(response: reqwest::Response) -> Result<Value, Option<String>> {
     let status = response.status();
     let bytes = response.bytes().await.unwrap_or_default();
-    let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let mut body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     if status.is_success() && body["success"].as_bool() == Some(true) {
-        return Ok(());
+        return Ok(body["result"].take());
     }
-    let message = body["errors"][0]["message"].as_str().map(str::to_string);
-    Err(message.unwrap_or_else(|| format!("HTTP {}", status.as_u16())))
+    let messages: Vec<&str> = body["errors"].as_array().into_iter().flatten().filter_map(|error| error["message"].as_str()).collect();
+    Err(Some(messages.join(" ")).filter(|message| !message.is_empty()))
+}
+
+/// Cloudflare's answer: `success`, or the errors' messages.
+async fn outcome(response: reqwest::Response) -> Result<(), String> {
+    let status = response.status();
+    result(response).await.map(drop).map_err(|message| message.unwrap_or_else(|| format!("HTTP {}", status.as_u16())))
 }
 
 /// "Check" in the destination form: whether the token is valid and active.

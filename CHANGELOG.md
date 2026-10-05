@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Set Up Cloudflare R2: opens Cloudflare's token page with the permissions
+  filled in, and with the pasted token creates the bucket (or uses an
+  existing one), turns on public links (the r2.dev address or a domain on
+  the Cloudflare account), saves the destination with keys made from the
+  token, and tests it. The token itself isn't stored. It's the main button
+  in Settings > Destinations when there's no destination yet
+
 ## [0.8.0] - 2026-10-05
 
 ### Added

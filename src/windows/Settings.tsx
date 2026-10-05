@@ -42,6 +42,7 @@ import {
 import { message } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState, type ReactElement } from "react";
 
+import { CloudflareSetupDialog } from "../components/CloudflareSetupDialog";
 import { ConfirmDialog } from "../components/Dialogs";
 import { DestinationForm } from "../components/DestinationForm";
 import { ProviderIcon } from "../components/FileVisuals";
@@ -341,6 +342,7 @@ function DestinationsSettings({
   const [removing, setRemoving] = useState<DestinationConfig | null>(null);
   const [sharing, setSharing] = useState<ShareRequest | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [cloudflareOpen, setCloudflareOpen] = useState(false);
   const [pendingImportLink, setPendingImportLink] = useState<string | null>(null);
 
   useEffect(() => {
@@ -379,8 +381,14 @@ function DestinationsSettings({
           <Text className="secondary pre-line" align="center">
             {t("Connect an S3-compatible storage provider\nto start uploading files.")}
           </Text>
-          <div className="inline-row">
-            <Button appearance="primary" onClick={() => openForm(null)}>
+          <Button appearance="primary" icon={<CloudRegular />} onClick={() => setCloudflareOpen(true)}>
+            {t("Set Up Cloudflare R2…")}
+          </Button>
+          <Text size={200} className="secondary">
+            {t("Free up to 10 GB, set up in a minute")}
+          </Text>
+          <div className="inline-row wrap-buttons">
+            <Button icon={<AddRegular />} onClick={() => openForm(null)}>
               {t("Add Destination")}
             </Button>
             <Button icon={<QrCodeRegular />} onClick={openImport}>
@@ -436,9 +444,12 @@ function DestinationsSettings({
               ))}
             </Card>
           </SettingsSection>
-          <div className="inline-row">
+          <div className="inline-row wrap-buttons">
             <Button icon={<AddRegular />} onClick={() => openForm(null)}>
               {t("Add Destination")}
+            </Button>
+            <Button icon={<CloudRegular />} onClick={() => setCloudflareOpen(true)}>
+              {t("Set Up Cloudflare R2…")}
             </Button>
             <Button icon={<QrCodeRegular />} onClick={openImport}>
               {t("Import from Another Device…")}
@@ -461,6 +472,15 @@ function DestinationsSettings({
         onDone={() => setImportOpen(false)}
         onEdit={(destination) => {
           setImportOpen(false);
+          openForm(destination);
+        }}
+      />
+      <CloudflareSetupDialog
+        open={cloudflareOpen}
+        onClose={() => setCloudflareOpen(false)}
+        onDone={() => setCloudflareOpen(false)}
+        onEdit={(destination) => {
+          setCloudflareOpen(false);
           openForm(destination);
         }}
       />

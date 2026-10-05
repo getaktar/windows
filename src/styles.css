@@ -130,6 +130,11 @@ body {
   gap: 4px 12px;
 }
 
+/* Buttons that move to the next line instead of wrapping their labels. */
+.inline-row.wrap-buttons {
+  flex-wrap: wrap;
+}
+
 .inline-row .grow {
   flex: 1;
   min-width: 0;
@@ -1331,6 +1336,23 @@ body {
   object-fit: cover;
   border-radius: 6px;
   background: #000;
+}
+
+/* Set Up Cloudflare R2 */
+.cloudflare-surface {
+  max-width: 480px;
+}
+
+.cloudflare-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cloudflare-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Name This Upload */
