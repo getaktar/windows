@@ -96,6 +96,9 @@ windows = { version = "0.61", features = ["ApplicationModel", "ApplicationModel_
 # For `#[implement]`: the Store package's File Explorer menu is a COM
 # server (see src/explorer_command.rs).
 windows-core = "0.61"
+# A notification with a Retry button for a short link that couldn't be made
+# (see src/short_links). Already built for the notification plugin.
+tauri-winrt-notification = "0.8"
 
 [profile.release]
 codegen-units = 1

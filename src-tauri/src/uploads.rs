@@ -66,6 +66,10 @@ pub struct UploadInput {
     /// "Replace File": `object_key` is an existing file's, written over so
     /// its link keeps working.
     pub replacing: Option<Replacing>,
+    /// Overrides the destination's Short Links for this upload (the local
+    /// API's `short=1` / `short=0`): true makes one whatever the length,
+    /// false makes none. None follows the destination.
+    pub short_link: Option<bool>,
 }
 
 /// A file written over an existing upload or bucket object, keeping its key
@@ -126,6 +130,7 @@ impl UploadInput {
             watched: None,
             keep_existing: false,
             replacing: None,
+            short_link: None,
         }
     }
 
@@ -151,8 +156,9 @@ pub enum JobState {
     /// `resuming` while it continues an upload left unfinished before.
     Uploading { progress: f64, resuming: bool },
     /// `reused` when an earlier upload of the same file was found, and its
-    /// link copied instead.
-    Succeeded { public_url: String, record_id: String, reused: bool },
+    /// link copied instead. `short_link_error`: its short link couldn't be
+    /// made, so the original link was copied.
+    Succeeded { public_url: String, record_id: String, reused: bool, short_link_error: Option<String> },
     Failed { message: String },
     Cancelled,
 }
@@ -1252,6 +1258,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
     let Outcome { result, link, filename, content_hash, original_hash, reused, thumbnail, _scratch } = outcome;
     let was_reused = reused.is_some();
     let replaced = input.replacing.is_some();
+    let shortening = shorten(core, input, destination, &result, &link, reused.as_ref()).await;
     let record = match reused {
         Some(record) => Some(record),
         None if replaced => {
@@ -1294,12 +1301,26 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
             Some(record)
         }
     };
+    let record_id = record.map(|record| record.id).unwrap_or_default();
+    let (short_url, short_failure) = short_link_for(core, shortening, &record_id, &link, &result.public_url);
+    if let Some(reason) = &short_failure {
+        crate::short_links::notify_failed(core, &filename, reason, &record_id);
+    }
     // A watched folder's own hooks run for its files; a reused link isn't
     // an upload at all.
     if input.watched.is_none() && !was_reused {
         let event = if replaced { crate::destination_hooks::Event::Replaced } else { crate::destination_hooks::Event::Uploaded };
-        let payload =
-            crate::destination_hooks::payload(event, destination, &input.path, &filename, result.byte_size, &result.object_key, &result.public_url);
+        let active = crate::short_links::active(core, &record_id).map(|link| link.short_url);
+        let payload = crate::destination_hooks::payload(
+            event,
+            destination,
+            &input.path,
+            &filename,
+            result.byte_size,
+            &result.object_key,
+            &result.public_url,
+            active.as_deref(),
+        );
         crate::destination_hooks::run(core, destination, payload);
     }
     drop(_scratch);
@@ -1310,8 +1331,9 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         job_id,
         JobState::Succeeded {
             public_url: result.public_url.clone(),
-            record_id: record.map(|record| record.id).unwrap_or_default(),
+            record_id,
             reused: was_reused,
+            short_link_error: short_failure.clone(),
         },
     );
     core.notify(events::HISTORY_CHANGED);
@@ -1337,12 +1359,13 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         let uploaded = crate::watched::engine::Uploaded {
             object_key: result.object_key.clone(),
             url: result.public_url.clone(),
-            link: format_link(core, destination, &link, &filename),
+            link: format_link(core, destination, &link, short_url.as_deref(), &filename),
             filename: filename.clone(),
             destination_id: destination.id.clone(),
             reused: was_reused,
             byte_size: result.byte_size,
             content_hash: original_hash,
+            short_url: short_url.clone(),
         };
         crate::watched::upload_succeeded(core, source, destination, uploaded).await;
         drain(core);
@@ -1356,7 +1379,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         let links = groups.get_mut(&group.id);
         let open = links.is_some();
         if let Some(links) = links {
-            links.insert(group.index, format_link(core, destination, &link, &filename));
+            links.insert(group.index, format_link(core, destination, &link, short_url.as_deref(), &filename));
         }
         open
     });
@@ -1364,8 +1387,8 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         finish_group_if_done(core, group);
     } else {
         let settings = core.settings.get();
-        crate::clipboard::copy(&format_link(core, destination, &link, &filename));
-        if settings.show_notification {
+        crate::clipboard::copy(&format_link(core, destination, &link, short_url.as_deref(), &filename));
+        if settings.show_notification && short_failure.is_none() {
             if replaced {
                 show_notification(core, &t!("Replaced"), &t!("{0} keeps its link.", filename));
             } else if was_reused {
@@ -1442,11 +1465,72 @@ async fn update_bucket_thumbnails(core: SharedCore, destination: DestinationConf
     }
 }
 
-/// What's copied for `link`: as the destination says, or Settings > Output.
-fn format_link(core: &SharedCore, destination: &DestinationConfig, link: &str, filename: &str) -> String {
+/// What's copied for `link` (with its short link, when there's one): as the
+/// destination says, or Settings > Output.
+pub(crate) fn format_link(core: &SharedCore, destination: &DestinationConfig, link: &str, short_url: Option<&str>, filename: &str) -> String {
     let settings = core.settings.get();
     let mode = destination.output_mode.unwrap_or(settings.output_mode);
-    output::format(link, mode, filename, &settings.custom_template)
+    output::format(link, short_url, mode, filename, &settings.custom_template)
+}
+
+/// The short link for a finished upload, made before anything is copied
+/// (docs/short-links.md, rules 2, 6, 8, 9 and 11). A replace keeps the key,
+/// so its short link stays as it is; a reused upload's active short link is
+/// reused (one for a fresh temporary link is new); a file of a folder
+/// uploaded with its structure isn't shortened on its own; `short=0` from
+/// the local API makes none.
+async fn shorten(
+    core: &SharedCore,
+    input: &UploadInput,
+    destination: &DestinationConfig,
+    result: &UploadResult,
+    link: &str,
+    reused: Option<&UploadRecord>,
+) -> crate::short_links::Attempt {
+    use crate::short_links::{rules::Shortening, Attempt};
+    let now = crate::util::now_millis();
+    // `link` differs from the public URL only when it's a temporary link.
+    let temporary_expires_at = destination.temporary_link.filter(|_| link != result.public_url).map(|seconds| now + seconds as i64 * 1000);
+    if input.replacing.is_some() || input.short_link == Some(false) {
+        return Attempt::Skipped;
+    }
+    let upload_expires_at = match reused {
+        Some(record) => {
+            if temporary_expires_at.is_none() && crate::short_links::active(core, &record.id).is_some() {
+                return Attempt::Skipped;
+            }
+            record.expires_at
+        }
+        None => input.expire_after_days().map(|days| now + days as i64 * 86_400_000),
+    };
+    let shortening = Shortening {
+        temporary_expires_at,
+        upload_expires_at,
+        is_folder_file: input.folder_key.is_some(),
+        explicit: input.short_link == Some(true),
+    };
+    crate::short_links::shorten(destination, link, shortening).await
+}
+
+/// The short link to copy for an upload, from what `shorten` did: the one
+/// it made (now stored), or, when it skipped and `link` is the public URL,
+/// the upload's active one (a replace, a reused link). The failure message
+/// when it couldn't be made.
+fn short_link_for(
+    core: &SharedCore,
+    shortening: crate::short_links::Attempt,
+    record_id: &str,
+    link: &str,
+    public_url: &str,
+) -> (Option<String>, Option<String>) {
+    use crate::short_links::Attempt;
+    match shortening {
+        Attempt::Created(pending) if !record_id.is_empty() => (Some(crate::short_links::store(core, pending, record_id).short_url), None),
+        Attempt::Created(pending) => (Some(pending.created.short_url), None),
+        Attempt::Failed(message) => (None, Some(message)),
+        Attempt::Skipped if link == public_url => (crate::short_links::active(core, record_id).map(|link| link.short_url), None),
+        Attempt::Skipped => (None, None),
+    }
 }
 
 fn close_panel_if_wanted(core: &SharedCore) {
@@ -1549,6 +1633,18 @@ pub async fn delete_remote(core: &SharedCore, record_id: &str) -> Result<(), Str
 /// `delete_remote`, saying whether a failure may go away on its own: a
 /// watched folder deleting the upload of a deleted file tries again then.
 pub async fn delete_upload(core: &SharedCore, record_id: &str) -> Result<(), Failure> {
+    delete_record(core, record_id, true).await
+}
+
+/// The expiry sweep's delete: the upload's short links are marked expired
+/// afterwards (rule 10) rather than deleted at the provider.
+pub async fn delete_expired(core: &SharedCore, record_id: &str) -> Result<(), String> {
+    delete_record(core, record_id, false).await.map_err(|failure| failure.message)
+}
+
+/// `clean_up_short_links`: once the file is gone, its short links follow
+/// in the background (rule 5).
+async fn delete_record(core: &SharedCore, record_id: &str, clean_up_short_links: bool) -> Result<(), Failure> {
     let Some(record) = core.history.get(record_id) else { return Ok(()) };
     let destination = core
         .destinations
@@ -1562,9 +1658,11 @@ pub async fn delete_upload(core: &SharedCore, record_id: &str) -> Result<(), Fai
         match credentials::load(&destination.id) {
             Ok(credentials) => {
                 let prefixes = crate::thumbnails::bucket_prefixes(&destination, &core.destinations.all());
-                let id = destination.id.clone();
-                crate::bucket::delete_object(&S3Provider::new(destination, credentials), &record.object_key, &prefixes).await?;
-                crate::thumbnails::remote::forget(core, &id, &record.object_key);
+                crate::bucket::delete_object(&S3Provider::new(destination.clone(), credentials), &record.object_key, &prefixes).await?;
+                crate::thumbnails::remote::forget(core, &destination.id, &record.object_key);
+                if clean_up_short_links {
+                    crate::short_links::clean_up_after_file_deleted(core, &record.id, Some(&destination), &record.local_filename);
+                }
             }
             Err(credentials::CredentialError::NotFound) => {}
             Err(error) => return Err(error.to_string().into()),
@@ -1614,6 +1712,9 @@ mod tests {
             replaced_at: None,
             has_thumbnail: false,
             thumbnail_path: None,
+            short_url: None,
+            short_link_id: None,
+            short_provider: None,
         }
     }
 

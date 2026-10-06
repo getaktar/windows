@@ -30,7 +30,12 @@ impl OutputMode {
     }
 }
 
-pub fn format(public_url: &str, mode: OutputMode, filename: &str, custom_template: &str) -> String {
+/// `long_url` is the upload's own link (public or temporary). With a
+/// `short_url`, that's what URL, Markdown, HTML and a custom template's
+/// {url} use; a custom template also has {shortUrl} (the short link, or the
+/// long one without it) and {longUrl}.
+pub fn format(long_url: &str, short_url: Option<&str>, mode: OutputMode, filename: &str, custom_template: &str) -> String {
+    let public_url = short_url.unwrap_or(long_url);
     match mode {
         OutputMode::Url => public_url.to_string(),
         OutputMode::Markdown if is_image(filename) => format!("![]({public_url})"),
@@ -42,6 +47,8 @@ pub fn format(public_url: &str, mode: OutputMode, filename: &str, custom_templat
             let (name, ext) = split_extension(filename);
             custom_template
                 .replace("{url}", public_url)
+                .replace("{shortUrl}", public_url)
+                .replace("{longUrl}", long_url)
                 .replace("{filename}", filename)
                 .replace("{name}", name)
                 .replace("{ext}", ext)
@@ -311,19 +318,19 @@ mod tests {
     #[test]
     fn formats_images_and_files_differently() {
         let url = "https://cdn.example.com/a.png";
-        assert_eq!(format(url, OutputMode::Markdown, "a.png", ""), "![](https://cdn.example.com/a.png)");
-        assert_eq!(format(url, OutputMode::Markdown, "a.pdf", ""), "[a.pdf](https://cdn.example.com/a.png)");
-        assert_eq!(format(url, OutputMode::Html, "a.png", ""), "<img src=\"https://cdn.example.com/a.png\" alt=\"\">");
-        assert_eq!(format(url, OutputMode::Custom, "a.b.png", "{name}|{ext}|{filename}|{url}"), "a.b|png|a.b.png|https://cdn.example.com/a.png");
+        assert_eq!(format(url, None, OutputMode::Markdown, "a.png", ""), "![](https://cdn.example.com/a.png)");
+        assert_eq!(format(url, None, OutputMode::Markdown, "a.pdf", ""), "[a.pdf](https://cdn.example.com/a.png)");
+        assert_eq!(format(url, None, OutputMode::Html, "a.png", ""), "<img src=\"https://cdn.example.com/a.png\" alt=\"\">");
+        assert_eq!(format(url, None, OutputMode::Custom, "a.b.png", "{name}|{ext}|{filename}|{url}"), "a.b|png|a.b.png|https://cdn.example.com/a.png");
     }
 
     #[test]
     fn escapes_file_names_in_markup() {
         let url = "https://x.dev/a";
-        assert_eq!(format(url, OutputMode::Html, "<b>&'\".pdf", ""), "<a href=\"https://x.dev/a\">&lt;b&gt;&amp;&#39;&quot;.pdf</a>");
-        assert_eq!(format(url, OutputMode::Markdown, "a](evil) \\[1].pdf", ""), "[a\\]\\(evil\\) \\\\\\[1\\].pdf](https://x.dev/a)");
+        assert_eq!(format(url, None, OutputMode::Html, "<b>&'\".pdf", ""), "<a href=\"https://x.dev/a\">&lt;b&gt;&amp;&#39;&quot;.pdf</a>");
+        assert_eq!(format(url, None, OutputMode::Markdown, "a](evil) \\[1].pdf", ""), "[a\\]\\(evil\\) \\\\\\[1\\].pdf](https://x.dev/a)");
         // The custom template is the user's own.
-        assert_eq!(format(url, OutputMode::Custom, "<a>.txt", "{filename}"), "<a>.txt");
+        assert_eq!(format(url, None, OutputMode::Custom, "<a>.txt", "{filename}"), "<a>.txt");
     }
 
     #[test]

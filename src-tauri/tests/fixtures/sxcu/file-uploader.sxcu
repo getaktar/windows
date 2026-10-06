@@ -1,0 +1,9 @@
+{
+  "Name": "Images",
+  "DestinationType": "ImageUploader, FileUploader",
+  "RequestMethod": "POST",
+  "RequestURL": "https://img.example.com/upload",
+  "Body": "MultipartFormData",
+  "FileFormName": "file",
+  "URL": "{json:url}"
+}

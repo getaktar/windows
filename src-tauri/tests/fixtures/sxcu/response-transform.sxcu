@@ -1,0 +1,7 @@
+{
+  "Name": "Plain text",
+  "DestinationType": "URLShortener",
+  "RequestMethod": "GET",
+  "RequestURL": "https://short.example.com/api?url={input}",
+  "URL": "https://short.example.com/{response}"
+}

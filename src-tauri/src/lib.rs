@@ -30,6 +30,7 @@ mod routing;
 mod settings;
 mod shell;
 mod short_keys;
+mod short_links;
 mod storage;
 mod system;
 mod thumbnails;
@@ -111,6 +112,15 @@ pub fn run() {
             commands::list_destinations,
             commands::save_destination,
             commands::has_cloudflare_token,
+            commands::saved_short_link_provider,
+            commands::short_link_providers,
+            commands::test_short_links,
+            commands::pick_sharex_configuration,
+            commands::short_link_info,
+            commands::create_short_link,
+            commands::retry_short_link,
+            commands::delete_short_link,
+            commands::short_link_move_plan,
             commands::check_cloudflare_token,
             commands::test_destination_hook,
             commands::set_destination_shortcut,

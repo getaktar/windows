@@ -1,0 +1,14 @@
+{
+  "Name": "YOURLS",
+  "DestinationType": "URLShortener",
+  "RequestType": "GET",
+  "RequestURL": "https://sho.rt/yourls-api.php",
+  "Arguments": {
+    "signature": "5f3c2a1b9e",
+    "action": "shorturl",
+    "format": "json",
+    "url": "$input$"
+  },
+  "ResponseType": "Text",
+  "URL": "$json:shorturl$"
+}

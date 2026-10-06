@@ -116,6 +116,9 @@ pub struct Uploaded {
     /// it out (and the file went up unchanged), for telling a later change
     /// from a touch without reading it again.
     pub content_hash: Option<String>,
+    /// The upload's short link, which `link` uses (`upload.shortUrl` in the
+    /// hooks' payload).
+    pub short_url: Option<String>,
 }
 
 /// What the engine needs from the app.
@@ -1468,7 +1471,7 @@ impl<H: Host> Engine<H> {
             "event": "upload.succeeded",
             "folder": { "id": folder.id, "name": folder.name, "path": folder.path.to_string_lossy() },
             "file": { "path": path.to_string_lossy(), "name": crate::util::last_component(relative), "size": entry.size },
-            "upload": { "key": uploaded.object_key, "url": uploaded.url, "destinationID": uploaded.destination_id, "reused": uploaded.reused },
+            "upload": { "key": uploaded.object_key, "url": uploaded.url, "destinationID": uploaded.destination_id, "reused": uploaded.reused, "shortUrl": uploaded.short_url },
         });
         Some(AfterSuccess { folder, hooks, payload })
     }

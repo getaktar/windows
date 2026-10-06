@@ -1,0 +1,10 @@
+{
+  "Name": "Regex",
+  "DestinationType": "URLShortener",
+  "RequestMethod": "POST",
+  "RequestURL": "https://short.example.com/api",
+  "Body": "FormURLEncoded",
+  "Arguments": { "url": "{input}" },
+  "RegexList": [ "href=\"(.+?)\"" ],
+  "URL": "{regex:1|1}"
+}

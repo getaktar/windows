@@ -1,0 +1,18 @@
+{
+  "Version": "15.0.0",
+  "Name": "Bearer form",
+  "DestinationType": "ImageUploader, URLShortener",
+  "RequestMethod": "POST",
+  "RequestURL": "https://api.example.com/v2/shorten?client=sharex",
+  "Headers": {
+    "Authorization": "Bearer abc.def.ghi",
+    "Accept": "application/json"
+  },
+  "Body": "FormURLEncoded",
+  "Arguments": {
+    "link": "{input}",
+    "api_key": "abc.def.ghi"
+  },
+  "URL": "{json:$.data[0].short_link}",
+  "DeletionURL": "{json:data[0].delete_url}"
+}

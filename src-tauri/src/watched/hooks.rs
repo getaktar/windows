@@ -36,7 +36,7 @@ pub async fn test(core: &SharedCore, folder: &WatchedFolder, hook: &Hook) -> Res
         "event": "upload.succeeded",
         "folder": { "id": folder.id, "name": folder.name, "path": folder.path.to_string_lossy() },
         "file": { "path": path.to_string_lossy(), "name": "example.png", "size": 12345 },
-        "upload": { "key": "example/example.png", "url": "https://example.com/example/example.png", "destinationID": folder.destination_id.clone().unwrap_or_default(), "reused": false },
+        "upload": { "key": "example/example.png", "url": "https://example.com/example/example.png", "destinationID": folder.destination_id.clone().unwrap_or_default(), "reused": false, "shortUrl": null },
     });
     send(core, hook, &payload).await.map_err(|message| failure(hook, &message))
 }

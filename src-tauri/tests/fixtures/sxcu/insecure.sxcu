@@ -1,0 +1,11 @@
+{
+  "Name": "Local Kutt",
+  "DestinationType": "URLShortener",
+  "RequestMethod": "POST",
+  "RequestURL": "http://localhost:8082/api/v2/links",
+  "Headers": { "X-API-KEY": "kutt-local-key" },
+  "Body": "JSON",
+  "Data": "{\"target\":\"{input}\",\"reuse\":false}",
+  "URL": "{json:link}",
+  "DeletionURL": "http://localhost:8082/api/v2/links/{json:id}"
+}

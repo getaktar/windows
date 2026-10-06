@@ -123,6 +123,7 @@ pub fn credentials(token_id: &str, token: &str) -> StorageCredentials {
         secret_access_key: crate::util::hex(&digest),
         session_token: None,
         cloudflare_token: None,
+        short_link_token: None,
     }
 }
 
@@ -153,6 +154,7 @@ pub fn destination(name: &str, account: &str, bucket: &str, public_base_url: &st
         short_cache: None,
         cloudflare_zone_id: None,
         hooks: None,
+        short_links: None,
     }
 }
 

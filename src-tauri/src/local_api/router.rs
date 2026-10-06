@@ -7,15 +7,17 @@
 //! GET    /v1/status
 //! GET    /v1/destinations
 //! GET    /v1/uploads?query=&destinationId=&limit=
-//! POST   /v1/uploads?filename=&destinationId=&prefix=&expires=     (raw file bytes)
-//! POST   /v1/uploads/clipboard?destinationId=&expires=
+//! POST   /v1/uploads?filename=&destinationId=&prefix=&expires=&short=     (raw file bytes)
+//! POST   /v1/uploads/clipboard?destinationId=&expires=&short=
 //! DELETE /v1/uploads/{id}
+//! GET    /v1/uploads/{id}/short-link                          (the active short link with its stats, or null)
+//! POST   /v1/uploads/{id}/short-link                          (makes one, or returns the active one: 201 / 200)
 //! POST   /v1/uploads/{id}/replace?filename=                    (raw file bytes; same key and link)
 //! GET    /v1/uploads/{id}/thumbnail?px=&generate=             (PNG; 204 when there's none)
 //! GET    /v1/destinations/{id}/objects?prefix=&continuationToken=
 //! DELETE /v1/destinations/{id}/objects?key=
 //! PUT    /v1/destinations/{id}/objects?key=&filename=          (raw file bytes; replaces the file at key)
-//! POST   /v1/destinations/{id}/objects/move                {"from", "to"}
+//! POST   /v1/destinations/{id}/objects/move                {"from", "to"} ("shortLinkStatus" in the reply)
 //! POST   /v1/destinations/{id}/folders                     {"prefix", "name"}
 //! POST   /v1/destinations/{id}/links                       {"key", "expiresIn"}
 //! GET    /v1/destinations/{id}/thumbnail?key=&objectSize=&lastModified=&px=&generate=  (PNG; 204 when there's none)
@@ -40,6 +42,18 @@
 //! applies here, so a script is never surprised by a file disappearing. It's
 //! refused (409) for a destination whose bucket doesn't have Aktar's
 //! lifecycle rules yet, since nothing would delete the file.
+//!
+//! Short links (the Mac repo's docs/short-links.md): every upload has
+//! `shortUrl`, its active short link or null, and its `formats` use it.
+//! `short=1` makes one for this upload whatever the destination's length
+//! rule (409 when the destination has no shortener), `short=0` makes none;
+//! left out, the destination decides. When making one fails the upload
+//! still succeeds, with the reason in `shortLinkError`. A move can't ask
+//! first the way the bucket view does: links whose provider can't change
+//! their target are moved anyway and marked orphaned, and `shortLinkStatus`
+//! says what happened ("none", "updated", "orphaned", or "notUpdated" when
+//! an update failed and the original file was kept so the link still
+//! works).
 
 use std::path::PathBuf;
 
@@ -74,6 +88,8 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
         ("POST", ["uploads"]) => upload_body(core, &request).await,
         ("POST", ["uploads", "clipboard"]) => upload_clipboard(core, &request).await,
         ("DELETE", ["uploads", id]) => delete_upload(core, id).await,
+        ("GET", ["uploads", id, "short-link"]) => short_link(core, id).await,
+        ("POST", ["uploads", id, "short-link"]) => create_short_link(core, id).await,
         ("POST", ["uploads", id, "replace"]) => replace_upload(core, &request, id).await,
         ("GET", ["uploads", id, "thumbnail"]) => upload_thumbnail(core, &request, id).await,
         ("GET", ["watched-folders"]) => Response::json(200, watched_dto(core)),
@@ -121,6 +137,63 @@ pub async fn handle(core: &SharedCore, request: Request) -> Response {
         }
         _ => Response::error(404, "Not found."),
     }
+}
+
+// MARK: - Short links
+
+/// The upload's active short link, with clicks when its provider has them
+/// (fetched at most every few minutes), or null.
+async fn short_link(core: &SharedCore, id: &str) -> Response {
+    let Some(record) = core.history.get(id) else {
+        return Response::error(404, "No upload with that ID.");
+    };
+    let link = match crate::short_links::active(core, &record.id) {
+        Some(active) => Some(crate::short_links::refresh_stats(core, active, false).await),
+        None => None,
+    };
+    Response::json(200, serde_json::json!({ "shortLink": link.as_ref().map(crate::short_links::ShortLinkDto::new) }))
+}
+
+/// Makes a short link for the upload, or returns its active one.
+async fn create_short_link(core: &SharedCore, id: &str) -> Response {
+    let Some(record) = core.history.get(id) else {
+        return Response::error(404, "No upload with that ID.");
+    };
+    if let Some(active) = crate::short_links::active(core, &record.id) {
+        return Response::json(200, serde_json::json!({ "shortLink": crate::short_links::ShortLinkDto::new(&active), "upload": upload_dto(core, &record) }));
+    }
+    let Some(destination) = core.destinations.all().into_iter().find(|destination| destination.id == record.destination_id) else {
+        return Response::error(409, "This upload's destination was removed.");
+    };
+    if destination.short_links.as_ref().and_then(|settings| settings.definition()).is_none() {
+        return Response::error(409, crate::short_links::engine::ShortLinkError::NotConfigured.to_string());
+    }
+    match crate::short_links::create_for_record(core, &record).await {
+        Ok(link) => {
+            let record = core.history.get(&record.id).unwrap_or(record);
+            Response::json(201, serde_json::json!({ "shortLink": crate::short_links::ShortLinkDto::new(&link), "upload": upload_dto(core, &record) }))
+        }
+        Err(message) => Response::error(502, message),
+    }
+}
+
+/// `short=1` / `short=0`: none when left out; the error response for
+/// anything else.
+fn short_override(request: &Request) -> Result<Option<bool>, Response> {
+    match request.query.get("short").map(|value| value.trim().to_ascii_lowercase()).as_deref() {
+        None | Some("") => Ok(None),
+        Some("1" | "true") => Ok(Some(true)),
+        Some("0" | "false") => Ok(Some(false)),
+        _ => Err(Response::error(400, "short must be 1 or 0.")),
+    }
+}
+
+/// A forced short link needs a shortener to make it with.
+fn check_short_links(short: Option<bool>, destination: &DestinationConfig) -> Result<(), Response> {
+    if short == Some(true) && destination.short_links.as_ref().and_then(|settings| settings.definition()).is_none() {
+        return Err(Response::error(409, crate::short_links::engine::ShortLinkError::NotConfigured.to_string()));
+    }
+    Ok(())
 }
 
 // MARK: - Thumbnails
@@ -264,6 +337,10 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     if request.query.contains_key("prefix") && expiry != Expiry::Never {
         return Response::error(400, "The expires parameter can't be combined with prefix.");
     }
+    let short = match short_override(request).and_then(|short| check_short_links(short, &destination).map(|()| short)) {
+        Ok(short) => short,
+        Err(response) => return response,
+    };
 
     // The file is staged under a fixed name: the caller's name only becomes
     // the object key and history entry. Joining it into a path would let
@@ -285,7 +362,7 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
         return Response::error(500, "Could not stage the file for upload.");
     }
 
-    let mut input = UploadInput { original_filename: filename.clone(), expiry, ..UploadInput::from_path(path) };
+    let mut input = UploadInput { original_filename: filename.clone(), expiry, short_link: short, ..UploadInput::from_path(path) };
     if let Some(prefix) = prefix {
         let key = match credentials::load(&destination.id) {
             Ok(creds) => bucket::available_key(&S3Provider::new(destination.clone(), creds), &filename, &prefix, &[]).await,
@@ -321,6 +398,10 @@ fn staged_name(filename: &str) -> String {
 }
 
 async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
+    let short = match short_override(request) {
+        Ok(short) => short,
+        Err(response) => return response,
+    };
     let named = request.query.get("destinationId").map(String::as_str).filter(|id| !id.trim().is_empty());
     if core.destinations.find(named).is_none() {
         return Response::error(404, "No destination to upload to. Add one in Aktar's Settings.");
@@ -346,7 +427,12 @@ async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
             return response;
         }
     };
+    if let Err(response) = check_short_links(short, &destination) {
+        input.remove_if_temporary();
+        return response;
+    }
     input.expiry = expiry;
+    input.short_link = short;
     // One request, one upload: a folder always goes up as a ZIP here,
     // whatever the destination does with folders.
     let mut destination = destination;
@@ -466,7 +552,7 @@ async fn run(core: &SharedCore, input: UploadInput, destination: DestinationConf
     loop {
         let state = queued.receiver.borrow_and_update().clone();
         match state {
-            JobState::Succeeded { record_id, reused, .. } => {
+            JobState::Succeeded { record_id, reused, short_link_error, .. } => {
                 // `reused`: the file was already in the bucket, and that
                 // upload's entry is what's returned.
                 return match core.history.get(&record_id) {
@@ -476,6 +562,10 @@ async fn run(core: &SharedCore, input: UploadInput, destination: DestinationConf
                         let mut upload = serde_json::to_value(upload_dto(core, &record)).unwrap_or_default();
                         if let Some(fields) = upload.as_object_mut() {
                             fields.insert("reused".into(), reused.into());
+                            // The upload succeeded; its short link didn't.
+                            if let Some(message) = short_link_error {
+                                fields.insert("shortLinkError".into(), message.into());
+                            }
                         }
                         Response::json(201, serde_json::json!({ "upload": upload, "reused": reused }))
                     }
@@ -596,6 +686,7 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             match bucket::delete_object(&storage, key, &thumbnail_prefixes).await {
                 Ok(()) => {
                     crate::thumbnails::remote::forget(core, &destination.id, key);
+                    crate::short_links::clean_up_object(core, &destination, key);
                     core.history.object_deleted(key, &destination.id);
                     core.notify(events::HISTORY_CHANGED);
                     Response::json(200, serde_json::json!({ "deleted": key }))
@@ -615,13 +706,24 @@ async fn handle_bucket(core: &SharedCore, request: &Request, destination: Destin
             if let Err(message) = bucket::check_key(&new_key) {
                 return Response::error(400, message);
             }
-            match bucket::move_object(&storage, &body.from, &new_key, &thumbnail_prefixes).await {
-                Ok(()) => {
-                    crate::thumbnails::remote::forget(core, &destination.id, &body.from);
+            // The bucket view's rule 7, without the question: links that can
+            // follow are updated between the copy and the delete, the others
+            // are orphaned.
+            match crate::short_links::move_object(core, &destination, &storage, &body.from, &new_key, &thumbnail_prefixes).await {
+                Ok(status) => {
+                    // A link that couldn't be updated still points at the
+                    // old object, so that stays.
+                    if status != crate::short_links::MoveStatus::NotUpdated {
+                        crate::thumbnails::remote::forget(core, &destination.id, &body.from);
+                    }
                     core.history.object_moved(&body.from, &new_key, &destination, crate::expiry::is_active(core, &destination.id));
                     core.notify(events::HISTORY_CHANGED);
                     let object = BucketObject { key: new_key, size: 0, last_modified: Some(crate::util::now_millis()) };
-                    Response::json(200, object_dto(&object, &destination))
+                    let mut reply = serde_json::to_value(object_dto(&object, &destination)).unwrap_or_default();
+                    if let Some(fields) = reply.as_object_mut() {
+                        fields.insert("shortLinkStatus".into(), serde_json::to_value(status).unwrap_or_default());
+                    }
+                    Response::json(200, reply)
                 }
                 Err(bucket::MoveError::Exists) => {
                     Response::error(409, format!("An object named \u{201C}{new_key}\u{201D} already exists."))
@@ -844,12 +946,16 @@ struct UploadDto {
     /// When the file was last replaced in place.
     #[serde(skip_serializing_if = "Option::is_none")]
     replaced_at: Option<String>,
+    /// The formats use the active short link, as copying does.
     formats: Formats,
+    /// The active short link; null (written out) when there's none.
+    short_url: Option<String>,
 }
 
 fn upload_dto(core: &SharedCore, record: &UploadRecord) -> UploadDto {
     let template = core.settings.get().custom_template;
-    let formatted = |mode: OutputMode| output::format(&record.public_url, mode, &record.local_filename, &template);
+    let short_url = record.short_url.as_deref();
+    let formatted = |mode: OutputMode| output::format(&record.public_url, short_url, mode, &record.local_filename, &template);
     UploadDto {
         id: record.id.clone(),
         filename: record.local_filename.clone(),
@@ -868,6 +974,7 @@ fn upload_dto(core: &SharedCore, record: &UploadRecord) -> UploadDto {
             html: formatted(OutputMode::Html),
             custom: formatted(OutputMode::Custom),
         },
+        short_url: record.short_url.clone(),
     }
 }
 

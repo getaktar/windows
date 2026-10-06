@@ -183,6 +183,7 @@ mod tests {
             short_cache: None,
             cloudflare_zone_id: None,
             hooks: None,
+            short_links: None,
         }
     }
 

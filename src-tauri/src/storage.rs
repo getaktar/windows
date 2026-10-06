@@ -1213,6 +1213,7 @@ mod tests {
             short_cache: None,
             cloudflare_zone_id: None,
             hooks: None,
+            short_links: None,
         }
     }
 
@@ -1290,6 +1291,7 @@ mod live_tests {
             short_cache: None,
             cloudflare_zone_id: None,
             hooks: None,
+            short_links: None,
         };
         // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
@@ -1297,6 +1299,7 @@ mod live_tests {
             secret_access_key: std::env::var("AKTAR_TEST_S3_SECRET").unwrap_or_else(|_| secret.into()),
             session_token: None,
             cloudflare_token: None,
+            short_link_token: None,
         };
         Some(S3Provider::new(config, credentials))
     }

@@ -122,7 +122,18 @@ impl From<StorageError> for MoveError {
 /// and refuses to overwrite something already at `new_key`. Its thumbnails
 /// in the bucket's thumbnail folders (`prefixes`) go along, and a file
 /// can't be put inside one of those folders.
+/// The app moves with `short_links::move_object`, which points short links
+/// to the file at the new key between the copy and the delete.
+#[cfg(test)]
 pub async fn move_object(storage: &S3Provider, from: &str, new_key: &str, prefixes: &[String]) -> Result<(), MoveError> {
+    copy_for_move(storage, from, new_key, prefixes).await?;
+    remove_moved(storage, from, prefixes).await?;
+    Ok(())
+}
+
+/// The first half of a move: the object and its thumbnails copied to
+/// `new_key`, which must be free.
+pub async fn copy_for_move(storage: &S3Provider, from: &str, new_key: &str, prefixes: &[String]) -> Result<(), MoveError> {
     if crate::thumbnails::is_thumbnail(new_key, prefixes) {
         return Err(MoveError::Storage(StorageError::Unknown(t!("That folder holds this bucket’s thumbnails. Pick another one."))));
     }
@@ -131,6 +142,11 @@ pub async fn move_object(storage: &S3Provider, from: &str, new_key: &str, prefix
     }
     storage.copy(from, new_key).await?;
     crate::thumbnails::bucket::copy(storage, from, new_key, prefixes).await;
+    Ok(())
+}
+
+/// The second half: the original and its thumbnails deleted.
+pub async fn remove_moved(storage: &S3Provider, from: &str, prefixes: &[String]) -> Result<(), MoveError> {
     crate::thumbnails::bucket::delete(storage, from, prefixes).await?;
     storage.delete(from).await?;
     Ok(())

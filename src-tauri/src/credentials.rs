@@ -1,6 +1,6 @@
-//! Secrets (Access Key ID, Secret Access Key, session token, and the local
-//! API token) live only in Windows Credential Manager, never in the JSON
-//! config or the SQLite history.
+//! Secrets (Access Key ID, Secret Access Key, session token, the Cloudflare
+//! and link shortener tokens, and the local API token) live only in Windows
+//! Credential Manager, never in the JSON config or the SQLite history.
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,10 @@ pub struct StorageCredentials {
     /// for replaced files; see `cloudflare`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloudflare_token: Option<String>,
+    /// The API key, signature or token of the destination's link shortener
+    /// (`DestinationConfig::short_links`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_link_token: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]

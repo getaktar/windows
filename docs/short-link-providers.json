@@ -1,0 +1,470 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-10-06",
+  "providers": [
+    {
+      "id": "shlink",
+      "name": "Shlink",
+      "kind": "selfHosted",
+      "baseUrl": null,
+      "needsDomain": false,
+      "auth": { "type": "header", "name": "X-Api-Key" },
+      "create": {
+        "method": "POST",
+        "path": "/rest/v3/short-urls",
+        "query": {},
+        "headers": {},
+        "body": {
+          "longUrl": "{url}",
+          "validUntil": "{expiresAt}",
+          "domain": "{domain}",
+          "findIfExists": false
+        },
+        "bodyType": "json",
+        "errorPath": "detail",
+        "shortUrlPath": "shortUrl",
+        "idPath": "shortCode"
+      },
+      "delete": {
+        "method": "DELETE",
+        "path": "/rest/v3/short-urls/{id}",
+        "query": { "domain": "{domain}" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "detail"
+      },
+      "update": {
+        "method": "PATCH",
+        "path": "/rest/v3/short-urls/{id}",
+        "query": { "domain": "{domain}" },
+        "headers": {},
+        "body": { "longUrl": "{url}" },
+        "bodyType": "json",
+        "errorPath": "detail"
+      },
+      "stats": {
+        "method": "GET",
+        "path": "/rest/v3/short-urls/{id}/visits",
+        "query": { "domain": "{domain}", "itemsPerPage": "1" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "detail",
+        "clicksPath": "visits.pagination.totalItems",
+        "lastClickPath": "visits.data.0.date"
+      },
+      "test": {
+        "method": "GET",
+        "path": "/rest/v3/short-urls",
+        "query": { "itemsPerPage": "1" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "detail"
+      },
+      "capabilities": {
+        "delete": true,
+        "updateDestination": true,
+        "expiration": "absolute",
+        "customCode": true,
+        "customDomain": true,
+        "stats": { "clicks": true, "lastClick": true }
+      },
+      "notes": "Shlink 5.x, REST API v3 (path /rest/v{version}/...). Errors are RFC 7807 problem+json; 'detail' is the human message, 'type' the machine code. validUntil is ISO 8601. The 'domain' query parameter on delete/update/stats MUST be omitted (not sent empty) when no domain is set: Shlink reads '?domain=' as the domain '' and answers 404 for links on the default domain. Sending the server's default domain is also fine (it is dropped server side). Delete can fail with 422 'invalid-short-url-deletion' once a link exceeds the server's DELETE_SHORT_URL_THRESHOLD visits (default 15). Visits are returned newest first (ORDER BY id DESC), so visits.data.0.date is the last visit; visits.pagination.totalItems counts bots too (add excludeBots=true to exclude them). An API key with the DOMAIN_SPECIFIC role forces its own domain on create.",
+      "examples": {
+        "create": {
+          "request": {
+            "method": "POST",
+            "url": "https://s.example.com/rest/v3/short-urls",
+            "headers": { "X-Api-Key": "<redacted>", "Content-Type": "application/json" },
+            "body": { "longUrl": "https://files.example.com/a/b.png", "validUntil": "2026-10-13T12:00:00+00:00", "findIfExists": false }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "shortCode": "12C18",
+              "shortUrl": "https://s.example.com/12C18",
+              "longUrl": "https://files.example.com/a/b.png",
+              "dateCreated": "2026-10-06T12:00:00+00:00",
+              "visitsSummary": { "total": 0, "nonBots": 0, "bots": 0 },
+              "tags": [],
+              "meta": { "validSince": null, "validUntil": "2026-10-13T12:00:00+00:00", "maxVisits": null },
+              "domain": null,
+              "title": null,
+              "crawlable": false,
+              "forwardQuery": true,
+              "hasRedirectRules": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "yourls",
+      "name": "YOURLS",
+      "kind": "selfHosted",
+      "baseUrl": null,
+      "needsDomain": false,
+      "auth": { "type": "query", "name": "signature" },
+      "create": {
+        "method": "POST",
+        "path": "/yourls-api.php",
+        "query": { "action": "shorturl", "format": "json" },
+        "headers": {},
+        "body": { "url": "{url}" },
+        "bodyType": "form",
+        "errorPath": "message",
+        "successStatuses": [409],
+        "shortUrlPath": "shorturl",
+        "idPath": "url.keyword"
+      },
+      "delete": null,
+      "update": null,
+      "stats": {
+        "method": "GET",
+        "path": "/yourls-api.php",
+        "query": { "action": "url-stats", "shorturl": "{id}", "format": "json" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "message",
+        "clicksPath": "link.clicks",
+        "lastClickPath": null
+      },
+      "test": {
+        "method": "GET",
+        "path": "/yourls-api.php",
+        "query": { "action": "db-stats", "format": "json" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "message"
+      },
+      "capabilities": {
+        "delete": false,
+        "updateDestination": false,
+        "expiration": false,
+        "customCode": true,
+        "customDomain": false,
+        "stats": { "clicks": true, "lastClick": false }
+      },
+      "notes": "YOURLS 1.10.x core API actions are only shorturl, stats, db-stats, url-stats, expand and version: no delete, edit or expiry without plugins. Parameters are read from $_REQUEST, so GET or POST both work; create uses a form body so long upload URLs stay out of the request line. 'format' defaults to xml, so format=json is required on every call. HTTP status mirrors the JSON statusCode/errorCode. A bad or missing signature returns 403 with the reason in 'message'; a public install (YOURLS_PRIVATE false) accepts any signature, so Test cannot detect a wrong key there. With YOURLS_UNIQUE_URLS true (the default in config-sample.php, and also when undefined) shortening a URL that already exists returns HTTP 409, status 'fail', code 'error:url', with the EXISTING link in 'shorturl' and 'url.keyword'. When no 'title' is sent, YOURLS fetches the destination URL server side to read a page title. Unauthenticated callers on public installs are rate limited (YOURLS_FLOOD_DELAY_SECONDS, default 15 s, HTTP 429). The time-limited signature (timestamp + hash) is not used. clicks is returned as a string in JSON.",
+      "examples": {
+        "create": {
+          "request": {
+            "method": "POST",
+            "url": "https://sho.rt/yourls-api.php?action=shorturl&format=json&signature=<redacted>",
+            "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+            "body": "url=https%3A%2F%2Ffiles.example.com%2Fa%2Fb.png"
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "status": "success",
+              "code": "",
+              "message": "https://files.example.com/a/b.png added to database",
+              "errorCode": "",
+              "statusCode": "200",
+              "url": { "keyword": "3x", "url": "https://files.example.com/a/b.png", "title": "b.png", "date": "2026-10-06 12:00:00", "ip": "203.0.113.5" },
+              "title": "b.png",
+              "shorturl": "https://sho.rt/3x"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "kutt",
+      "name": "Kutt",
+      "kind": "selfHosted",
+      "baseUrl": null,
+      "needsDomain": false,
+      "auth": { "type": "header", "name": "X-API-KEY" },
+      "create": {
+        "method": "POST",
+        "path": "/api/v2/links",
+        "query": {},
+        "headers": {},
+        "body": {
+          "target": "{url}",
+          "expire_in": "{expiresInMinutes} minutes",
+          "domain": "{domain}",
+          "reuse": false
+        },
+        "bodyType": "json",
+        "errorPath": "error",
+        "shortUrlPath": "link",
+        "idPath": "id"
+      },
+      "delete": {
+        "method": "DELETE",
+        "path": "/api/v2/links/{id}",
+        "query": {},
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error"
+      },
+      "update": {
+        "method": "PATCH",
+        "path": "/api/v2/links/{id}",
+        "query": {},
+        "headers": {},
+        "body": { "target": "{url}" },
+        "bodyType": "json",
+        "errorPath": "error"
+      },
+      "stats": {
+        "method": "GET",
+        "path": "/api/v2/links/{id}/stats",
+        "query": {},
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error",
+        "clicksPath": "visit_count",
+        "lastClickPath": null
+      },
+      "test": {
+        "method": "GET",
+        "path": "/api/v2/users",
+        "query": {},
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error"
+      },
+      "capabilities": {
+        "delete": true,
+        "updateDestination": true,
+        "expiration": "relative",
+        "customCode": true,
+        "customDomain": true,
+        "stats": { "clicks": true, "lastClick": false }
+      },
+      "notes": "Kutt v3.x (verified against v3.2.6 source); the API is mounted at both /api/v2 and /api. expire_in is a string parsed by the 'ms' package ('30 minutes', '8h', '42 days'), must be at least 1 minute, and is converted to an absolute expiry at request time. The expire_in value contains literal text, so the engine must omit the key when {expiresInMinutes} has no value (otherwise ' minutes' fails validation with 'Expire format is invalid'). The API key strategy is non-strict: on POST /links a wrong key falls through to anonymous link creation when DISALLOW_ANONYMOUS_LINKS is false. Sending 'reuse' (and 'domain') turns that into a 400 'Only users can use this field.', so keep 'reuse': false in the body; Test uses GET /users, which answers 401 {\"error\":\"Unauthorized.\"} on a bad key. 'domain' must be a domain added to the user's account; the instance's DEFAULT_DOMAIN is treated as no domain. PATCH needs at least one changed field: sending the current target returns 400 'Should at least update one field.'. The link id is a 36 character UUID ('id' in responses). There is no single-link GET; stats come from GET /links/{id}/stats (heavier, computes charts) whose body includes the link fields such as visit_count. No last-click timestamp is exposed.",
+      "examples": {
+        "create": {
+          "request": {
+            "method": "POST",
+            "url": "https://kutt.example.com/api/v2/links",
+            "headers": { "X-API-KEY": "<redacted>", "Content-Type": "application/json" },
+            "body": { "target": "https://files.example.com/a/b.png", "expire_in": "10080 minutes", "reuse": false }
+          },
+          "response": {
+            "status": 201,
+            "body": {
+              "id": "6a7b2c1e-3f4d-4e5a-9b8c-0d1e2f3a4b5c",
+              "address": "Ab3dE",
+              "banned": false,
+              "created_at": "2026-10-06T12:00:00.000Z",
+              "updated_at": "2026-10-06T12:00:00.000Z",
+              "password": false,
+              "description": null,
+              "expire_in": "2026-10-13T12:00:00.000Z",
+              "target": "https://files.example.com/a/b.png",
+              "visit_count": 0,
+              "link": "https://kutt.example.com/Ab3dE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "dub",
+      "name": "Dub",
+      "kind": "hosted",
+      "baseUrl": "https://api.dub.co",
+      "needsDomain": false,
+      "auth": { "type": "bearer", "name": "Authorization" },
+      "create": {
+        "method": "POST",
+        "path": "/links",
+        "query": {},
+        "headers": {},
+        "body": {
+          "url": "{url}",
+          "domain": "{domain}",
+          "expiresAt": "{expiresAt}"
+        },
+        "bodyType": "json",
+        "errorPath": "error.message",
+        "shortUrlPath": "shortLink",
+        "idPath": "id"
+      },
+      "delete": {
+        "method": "DELETE",
+        "path": "/links/{id}",
+        "query": {},
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error.message"
+      },
+      "update": {
+        "method": "PATCH",
+        "path": "/links/{id}",
+        "query": {},
+        "headers": {},
+        "body": { "url": "{url}" },
+        "bodyType": "json",
+        "errorPath": "error.message"
+      },
+      "stats": {
+        "method": "GET",
+        "path": "/links/info",
+        "query": { "linkId": "{id}" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error.message",
+        "clicksPath": "clicks",
+        "lastClickPath": "lastClicked"
+      },
+      "test": {
+        "method": "GET",
+        "path": "/links",
+        "query": { "pageSize": "1" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error.message"
+      },
+      "capabilities": {
+        "delete": true,
+        "updateDestination": true,
+        "expiration": "absolute",
+        "customCode": true,
+        "customDomain": true,
+        "stats": { "clicks": true, "lastClick": true }
+      },
+      "notes": "Workspace API key (dub_...) as a Bearer token; it needs the links.read and links.write scopes. A personal (non-workspace) key gets 404 'Workspace ID not found'. Without 'domain' the workspace's primary domain is used (dub.sh if it has none). expiresAt is ISO 8601 and is a Pro plan feature: on the Free plan create fails with 403 'You can only use link expiration on a Pro plan and above...'. dub.link and *.dub.link domains are also plan gated. Errors are {error:{code,message,doc_url}}. Delete returns {id}. clicks and lastClicked on the link object are aggregated asynchronously, so they can lag behind real clicks. GET /links/{id} exists in the source but is undocumented; the documented single-link read is GET /links/info?linkId=.",
+      "examples": {
+        "create": {
+          "request": {
+            "method": "POST",
+            "url": "https://api.dub.co/links",
+            "headers": { "Authorization": "Bearer <redacted>", "Content-Type": "application/json" },
+            "body": { "url": "https://files.example.com/a/b.png", "domain": "dub.sh" }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "id": "link_1J9xxxxxxxxxxxxxxxxxxxxx",
+              "domain": "dub.sh",
+              "key": "try",
+              "url": "https://files.example.com/a/b.png",
+              "expiresAt": null,
+              "shortLink": "https://dub.sh/try",
+              "clicks": 0,
+              "lastClicked": null,
+              "workspaceId": "ws_xxxxxxxxxxxxxxxxxxxxxxxx",
+              "createdAt": "2026-10-06T12:00:00.000Z",
+              "updatedAt": "2026-10-06T12:00:00.000Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "shortio",
+      "name": "Short.io",
+      "kind": "hosted",
+      "baseUrl": "https://api.short.io",
+      "needsDomain": true,
+      "auth": { "type": "header", "name": "Authorization" },
+      "create": {
+        "method": "POST",
+        "path": "/links",
+        "query": {},
+        "headers": {},
+        "body": {
+          "domain": "{domain}",
+          "originalURL": "{url}",
+          "expiresAt": "{expiresAt}",
+          "allowDuplicates": true
+        },
+        "bodyType": "json",
+        "errorPath": "message",
+        "shortUrlPath": "secureShortURL",
+        "idPath": "idString"
+      },
+      "delete": {
+        "method": "DELETE",
+        "path": "/links/{id}",
+        "query": {},
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error",
+        "successPath": "success",
+        "successValue": true
+      },
+      "update": {
+        "method": "POST",
+        "path": "/links/{id}",
+        "query": {},
+        "headers": {},
+        "body": { "originalURL": "{url}" },
+        "bodyType": "json",
+        "errorPath": "message"
+      },
+      "stats": {
+        "method": "GET",
+        "path": "https://statistics.short.io/statistics/link/{id}",
+        "query": { "period": "total" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error",
+        "clicksPath": "totalClicks",
+        "lastClickPath": null
+      },
+      "test": {
+        "method": "GET",
+        "path": "/api/domains",
+        "query": { "limit": "1" },
+        "headers": {},
+        "body": null,
+        "bodyType": null,
+        "errorPath": "error"
+      },
+      "capabilities": {
+        "delete": true,
+        "updateDestination": true,
+        "expiration": "absolute",
+        "customCode": true,
+        "customDomain": true,
+        "stats": { "clicks": true, "lastClick": false }
+      },
+      "notes": "Secret API key sent raw in the Authorization header (no 'Bearer'). 'domain' (hostname) is required on create; 404 if the domain is not in the organization. expiresAt accepts an ISO string or epoch milliseconds (not seconds). allowDuplicates defaults to false, in which case an existing link for the same originalURL is returned instead of a new one; true keeps one link per upload so deleting it never removes a shared link. Use idString (lnk_..._...); the numeric 'id' is deprecated and removed for new accounts. Error bodies differ per endpoint: create/update use 'message', delete and /api/domains use 'error'; delete can also return 200 with success false and 'error', so its delete request has successPath 'success' (successValue true): a 200 without success true is a failure. Expiration and some link features are plan dependent (402 Payment required). Stats use the separate Statistics API host (https://statistics.short.io/statistics, same Authorization header); period=total gives all-time totalClicks (humanClicks excludes bots). The docs type linkId as a string without an example; idString is assumed because numeric ids no longer exist for new users, so confirm with a live key before release. Statistics retention/availability may depend on the plan. Last click needs POST /domain/{domainId}/last_clicks with the numeric domain id, which no placeholder provides, so lastClick is false. Rate limits: create 50/s, update and delete 20/s.",
+      "examples": {
+        "create": {
+          "request": {
+            "method": "POST",
+            "url": "https://api.short.io/links",
+            "headers": { "Authorization": "<redacted>", "Content-Type": "application/json" },
+            "body": { "domain": "short.gy", "originalURL": "https://files.example.com/a/b.png", "expiresAt": "2026-10-13T12:00:00.000Z", "allowDuplicates": true }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "idString": "lnk_1A2b_3Cd4Ef5Gh",
+              "path": "abc123",
+              "originalURL": "https://files.example.com/a/b.png",
+              "expiresAt": "2026-10-13T12:00:00.000Z",
+              "shortURL": "https://short.gy/abc123",
+              "secureShortURL": "https://short.gy/abc123",
+              "DomainId": 12345,
+              "createdAt": "2026-10-06T12:00:00.000Z",
+              "updatedAt": "2026-10-06T12:00:00.000Z",
+              "duplicate": false,
+              "success": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

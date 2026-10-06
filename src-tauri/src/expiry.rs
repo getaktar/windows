@@ -403,9 +403,13 @@ async fn sweep(core: &SharedCore) {
         if failures.get(&record.destination_id).is_some_and(|count| *count >= 3) {
             continue;
         }
-        if let Err(message) = sweep_one(core, &record).await {
-            log::warn!("Could not clear expired upload {}: {message}", record.object_key);
-            *failures.entry(record.destination_id).or_default() += 1;
+        match sweep_one(core, &record).await {
+            // Its short links expired with it (they're kept, as expired).
+            Ok(()) => crate::short_links::mark_expired(core, &record.id),
+            Err(message) => {
+                log::warn!("Could not clear expired upload {}: {message}", record.object_key);
+                *failures.entry(record.destination_id).or_default() += 1;
+            }
         }
     }
 }
@@ -435,7 +439,7 @@ async fn sweep_one(core: &SharedCore, record: &crate::history::UploadRecord) -> 
     match written {
         None => drop_entry(core, record),
         Some(written) if uploaded_again(record, written) => drop_entry(core, record),
-        Some(_) => crate::uploads::delete_remote(core, &record.id).await,
+        Some(_) => crate::uploads::delete_expired(core, &record.id).await,
     }
 }
 

@@ -139,6 +139,7 @@ impl Setup {
             reused: false,
             byte_size: 3,
             content_hash: None,
+            short_url: None,
         };
         self.engine.succeeded(&planned.folder_id, &planned.relative_path, &planned.batch_id, &uploaded, true, self.now);
     }
@@ -737,6 +738,7 @@ fn aktars_own_moves_never_delete_uploads() {
         reused: false,
         byte_size: 3,
         content_hash: None,
+        short_url: None,
     };
     // Not confirmed in the bucket: the original stays, for this test.
     trash.engine.succeeded(&planned.folder_id, "a.png", &planned.batch_id, &uploaded, false, trash.now);

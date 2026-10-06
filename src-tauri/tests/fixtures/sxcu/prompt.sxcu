@@ -1,0 +1,9 @@
+{
+  "Name": "Asks",
+  "DestinationType": "URLShortener",
+  "RequestMethod": "POST",
+  "RequestURL": "https://short.example.com/api",
+  "Body": "JSON",
+  "Data": "{\"url\":\"{input}\",\"slug\":\"{prompt:Slug}\"}",
+  "URL": "{json:link}"
+}

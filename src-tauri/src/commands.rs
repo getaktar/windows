@@ -68,6 +68,7 @@ fn filled(credentials: Option<StorageCredentials>) -> Option<StorageCredentials>
             secret_access_key: c.secret_access_key.trim().to_string(),
             session_token: c.session_token.filter(|token| !token.trim().is_empty()),
             cloudflare_token: None,
+            short_link_token: None,
         }
     })
 }
@@ -82,7 +83,12 @@ fn filled(credentials: Option<StorageCredentials>) -> Option<StorageCredentials>
 ///
 /// `cloudflare_token`: none keeps the stored one, an empty one removes it.
 /// A destination saved without a Cloudflare zone ID loses its token.
+///
+/// `short_link_token`: the one typed in Short Links; without one the saved
+/// token stays while the provider does, and none is kept with short links
+/// off.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn save_destination(
     core: Core,
     mut config: DestinationConfig,
@@ -90,12 +96,15 @@ pub fn save_destination(
     rules: Option<FormRules>,
     delete_old_thumbnails: Option<bool>,
     cloudflare_token: Option<String>,
+    short_link_token: Option<String>,
 ) -> Result<DestinationConfig, String> {
     let is_new = config.id.is_empty();
     if is_new {
         config.id = crate::util::new_id();
     }
     check_destination_hooks(&core, &config)?;
+    config.sanitize();
+    let saved_provider = (!is_new).then(|| short_link_provider_with_token(&core, &config.id)).flatten();
     // Read before saving replaces them: the old folder may be in another
     // bucket, with other keys.
     let cleanup = delete_old_thumbnails
@@ -113,6 +122,25 @@ pub fn save_destination(
             keys.cloudflare_token = token;
             credentials::save(&keys, &saved.id).map_err(|error| error.to_string())?;
         }
+    }
+    let typed = short_link_token.map(|token| token.trim().to_string()).filter(|token| !token.is_empty());
+    let short_link_token = match &saved.short_links {
+        None => None,
+        Some(_) if typed.is_some() => typed,
+        Some(settings) if saved_provider.as_deref() == Some(settings.provider_id.as_str()) => {
+            credentials::load(&saved.id).ok().and_then(|keys| keys.short_link_token)
+        }
+        Some(_) => None,
+    };
+    match credentials::load(&saved.id) {
+        Ok(mut keys) if keys.short_link_token != short_link_token => {
+            keys.short_link_token = short_link_token;
+            credentials::save(&keys, &saved.id).map_err(|error| error.to_string())?;
+        }
+        Ok(_) => {}
+        // Nothing to keep it with; a token typed here has to be.
+        Err(error) if short_link_token.is_some() => return Err(error.to_string()),
+        Err(_) => {}
     }
     if let Some((old, prefix, keys)) = cleanup {
         let core = core.inner().clone();
@@ -156,8 +184,10 @@ fn store_destination(
         core.destinations.add(config.clone());
     } else {
         if let Some(mut credentials) = credentials {
-            // New keys keep the Cloudflare token saved with the old ones.
-            credentials.cloudflare_token = credentials::load(&config.id).ok().and_then(|keys| keys.cloudflare_token);
+            // New keys keep the tokens saved with the old ones.
+            let saved = credentials::load(&config.id).ok();
+            credentials.cloudflare_token = saved.as_ref().and_then(|keys| keys.cloudflare_token.clone());
+            credentials.short_link_token = saved.and_then(|keys| keys.short_link_token);
             credentials::save(&credentials, &config.id).map_err(|error| error.to_string())?;
         }
         let old = core.destinations.find(Some(&config.id)).filter(|saved| saved.id == config.id);
@@ -194,6 +224,20 @@ fn check_destination_hooks(core: &SharedCore, config: &DestinationConfig) -> Res
         }
     }
     Ok(())
+}
+
+/// The provider whose short link token is saved with the destination's
+/// keys, for the form (which never sees the token itself): a token typed
+/// for another provider replaces it.
+#[tauri::command]
+pub fn saved_short_link_provider(core: Core, id: String) -> Option<String> {
+    short_link_provider_with_token(&core, &id)
+}
+
+fn short_link_provider_with_token(core: &SharedCore, id: &str) -> Option<String> {
+    let provider = core.destinations.find(Some(id)).filter(|saved| saved.id == id)?.short_links?.provider_id;
+    credentials::load(id).ok()?.short_link_token.filter(|token| !token.is_empty())?;
+    Some(provider)
 }
 
 /// Whether the destination has a Cloudflare token saved with its keys, for
@@ -371,7 +415,18 @@ pub fn import_destination(
         config.id = existing.id.clone();
     }
     let custom = config.output_mode == Some(crate::output::OutputMode::Custom);
+    config.sanitize();
+    // The tokens come along with the keys: a short link token only with the
+    // short link settings it's for.
+    let cloudflare_token = credentials.cloudflare_token.clone().filter(|token| !token.trim().is_empty());
+    let short_link_token = credentials.short_link_token.clone().filter(|token| !token.trim().is_empty() && config.short_links.is_some());
     let saved = store_destination(&core, config, Some(credentials), None, existing.is_none())?;
+    let mut keys = credentials::load(&saved.id).map_err(|error| error.to_string())?;
+    if keys.cloudflare_token != cloudflare_token || keys.short_link_token != short_link_token {
+        keys.cloudflare_token = cloudflare_token;
+        keys.short_link_token = short_link_token;
+        credentials::save(&keys, &saved.id).map_err(|error| error.to_string())?;
+    }
     if let Some(template) = custom_template.filter(|template| custom && !template.is_empty()) {
         if core.settings.get().custom_template == Settings::default().custom_template {
             core.settings.update(|settings| settings.custom_template = template);
@@ -800,9 +855,116 @@ pub async fn delete_remote(core: Core<'_>, ids: Vec<String>) -> Result<HashMap<S
 #[tauri::command]
 pub fn remove_from_history(core: Core, ids: Vec<String>) {
     for id in ids {
+        // The entry and its short link records go; the file and the short
+        // links themselves stay where they are.
+        crate::short_links::forget(&core, &id);
         core.history.delete(&id);
     }
     core.notify(events::HISTORY_CHANGED);
+}
+
+// MARK: - Short links
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortLinkProviders {
+    /// The built-in shorteners, in the order the form lists them.
+    providers: Vec<crate::short_links::definition::Definition>,
+    /// What a new custom definition starts as.
+    custom_template: crate::short_links::definition::Definition,
+}
+
+#[tauri::command]
+pub fn short_link_providers() -> ShortLinkProviders {
+    ShortLinkProviders {
+        providers: crate::short_links::definition::built_in().to_vec(),
+        custom_template: crate::short_links::definition::custom_template(),
+    }
+}
+
+/// "Test" in Short Links: the shortener's read-only request, or for a
+/// custom one, a link made (and deleted again when it can be). `token`: the
+/// one typed; without one, the saved one while the provider is the same.
+#[tauri::command]
+pub async fn test_short_links(
+    core: Core<'_>,
+    destination_id: Option<String>,
+    settings: crate::short_links::definition::ShortLinkSettings,
+    token: Option<String>,
+) -> Result<crate::short_links::engine::TestResult, String> {
+    use crate::short_links::engine::{Engine, ShortLinkError};
+    let definition = settings.definition().cloned().ok_or_else(|| ShortLinkError::NotConfigured.to_string())?;
+    let token = token.map(|token| token.trim().to_string()).filter(|token| !token.is_empty()).or_else(|| {
+        let id = destination_id?;
+        (short_link_provider_with_token(&core, &id)? == settings.provider_id).then(|| credentials::load(&id).ok()?.short_link_token).flatten()
+    });
+    let engine = Engine::new(definition, settings, token);
+    engine.test().await.map_err(|error| crate::short_links::message(&error, engine.token.as_deref()))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareXFailure {
+    message: String,
+    /// Refused for http://: the form shows "Allow insecure HTTP".
+    insecure: bool,
+}
+
+/// "Import ShareX Configuration (.sxcu)…": Rust opens the file dialog and
+/// reads the file; nothing changes until the form's consent screen is
+/// confirmed. None when the dialog was cancelled.
+#[tauri::command]
+pub async fn pick_sharex_configuration(
+    window: tauri::WebviewWindow,
+    allow_insecure_http: bool,
+) -> Result<Option<crate::short_links::sharex::ShareXImport>, ShareXFailure> {
+    use crate::short_links::sharex::{self, ShareXImportError};
+    use tauri_plugin_dialog::DialogExt;
+    let failure = |error: ShareXImportError| ShareXFailure { insecure: error == ShareXImportError::Insecure, message: error.to_string() };
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(t!("Choose a ShareX custom uploader for a URL shortener."))
+        .add_filter("ShareX (.sxcu)", &["sxcu", "json"])
+        .pick_file(move |path| {
+            let _ = sender.send(path);
+        });
+    let Some(path) = receiver.await.ok().flatten() else { return Ok(None) };
+    let path = path.into_path().map_err(|_| failure(ShareXImportError::Invalid))?;
+    let too_big = std::fs::metadata(&path).is_ok_and(|metadata| metadata.len() > sharex::MAX_FILE_SIZE as u64);
+    let data = if too_big { Vec::new() } else { std::fs::read(&path).map_err(|_| failure(ShareXImportError::Invalid))? };
+    sharex::parse(&data, allow_insecure_http).map(Some).map_err(failure)
+}
+
+/// An upload's short links for its details; `refresh` fetches the active
+/// one's clicks first when they're more than a few minutes old.
+#[tauri::command]
+pub async fn short_link_info(core: Core<'_>, id: String, refresh: bool) -> Result<crate::short_links::ShortLinkInfo, String> {
+    let record = core.history.get(&id).ok_or_else(|| t!("This upload is no longer in your history."))?;
+    Ok(crate::short_links::info(&core, &record, refresh).await)
+}
+
+/// "Create Short Link" in an upload's details: the reason when it couldn't.
+#[tauri::command]
+pub async fn create_short_link(core: Core<'_>, id: String) -> Result<(), String> {
+    let record = core.history.get(&id).ok_or_else(|| t!("This upload is no longer in your history."))?;
+    crate::short_links::create_for_record(&core, &record).await.map(drop)
+}
+
+/// "Create Short Link" in a menu: makes one and copies it, or says why it
+/// couldn't in a notification with Retry.
+#[tauri::command]
+pub fn retry_short_link(core: Core, id: String) {
+    let core: SharedCore = core.inner().clone();
+    tauri::async_runtime::spawn(async move { crate::short_links::retry(&core, &id).await });
+}
+
+/// "Delete Short Link": at the provider; nothing changes when it can't.
+#[tauri::command]
+pub async fn delete_short_link(core: Core<'_>, link_id: String) -> Result<(), String> {
+    crate::short_links::delete(&core, &link_id).await
 }
 
 // MARK: - Bucket browser
@@ -844,28 +1006,54 @@ pub async fn bucket_delete(core: Core<'_>, destination_id: String, key: String) 
     let prefixes = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
     bucket::delete_object(&storage, &key, &prefixes).await.map_err(|error| error.to_string())?;
     thumbnails::remote::forget(&core, &destination.id, &key);
+    crate::short_links::clean_up_object(&core, &destination, &key);
     core.history.object_deleted(&key, &destination.id);
     core.notify(events::HISTORY_CHANGED);
     Ok(())
 }
 
-/// Renames or moves an object; `new_key` is a full key, so changing the
-/// folder part moves it. Returns the cleaned-up key it ended up at.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BucketMoved {
+    /// The cleaned-up key it ended up at.
+    key: String,
+    /// A short link to the file couldn't be pointed at the new key, so the
+    /// original stays where it was (and the short link with it).
+    kept_original: bool,
+}
+
+/// What moving the object at `key` would mean for short links to it:
+/// "warn" when they can't follow it, which the bucket view asks about first.
 #[tauri::command]
-pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, to: String) -> Result<String, String> {
+pub fn short_link_move_plan(core: Core, destination_id: String, key: String) -> crate::short_links::rules::MovePlan {
+    match core.destinations.find(Some(&destination_id)) {
+        Some(destination) => crate::short_links::move_plan(&core, &destination, &key),
+        None => crate::short_links::rules::MovePlan::Nothing,
+    }
+}
+
+/// Renames or moves an object; `new_key` is a full key, so changing the
+/// folder part moves it. Short links to it follow when their provider can
+/// update them, and are marked as possibly broken otherwise (the view
+/// warned first).
+#[tauri::command]
+pub async fn bucket_move(core: Core<'_>, destination_id: String, from: String, to: String) -> Result<BucketMoved, String> {
     let new_key = to.trim().trim_end_matches('/').to_string();
     if new_key.is_empty() || new_key == from {
-        return Ok(from);
+        return Ok(BucketMoved { key: from, kept_original: false });
     }
     bucket::check_key(&new_key)?;
     let (destination, storage) = storage_for(&core, &destination_id)?;
     let prefixes = thumbnails::bucket_prefixes(&destination, &core.destinations.all());
-    match bucket::move_object(&storage, &from, &new_key, &prefixes).await {
-        Ok(()) => {
-            thumbnails::remote::forget(&core, &destination.id, &from);
+    match crate::short_links::move_object(&core, &destination, &storage, &from, &new_key, &prefixes).await {
+        Ok(status) => {
+            let kept_original = status == crate::short_links::MoveStatus::NotUpdated;
+            if !kept_original {
+                thumbnails::remote::forget(&core, &destination.id, &from);
+            }
             core.history.object_moved(&from, &new_key, &destination, expiry::is_active(&core, &destination.id));
             core.notify(events::HISTORY_CHANGED);
-            Ok(new_key)
+            Ok(BucketMoved { key: new_key, kept_original })
         }
         Err(bucket::MoveError::Exists) => Err(t!("An object named “{0}” already exists.", new_key)),
         Err(bucket::MoveError::Storage(error)) => Err(error.to_string()),

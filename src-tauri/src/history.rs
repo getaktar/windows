@@ -42,6 +42,11 @@ pub struct UploadRecord {
     pub has_thumbnail: bool,
     /// The thumbnail file on this PC, for the windows to show.
     pub thumbnail_path: Option<String>,
+    /// The upload's active short link (see `short_links`): what's copied
+    /// and shown for it, and its record's ID and provider.
+    pub short_url: Option<String>,
+    pub short_link_id: Option<String>,
+    pub short_provider: Option<String>,
 }
 
 impl UploadRecord {
@@ -82,7 +87,14 @@ pub struct History {
     pub thumbnails: LocalStore,
 }
 
-const COLUMNS: &str = "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name, replaced_at";
+macro_rules! columns {
+    () => {
+        "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name, replaced_at"
+    };
+}
+const COLUMNS: &str = columns!();
+/// `COLUMNS` and the upload's active short link, for reading.
+const SELECT_COLUMNS: &str = concat!(columns!(), ", ", crate::short_links::store::active_column!());
 
 /// The `source` of a watched folder's uploads.
 pub fn watched_source(folder_id: &str) -> String {
@@ -102,6 +114,11 @@ impl History {
         Ok(Self { connection: Arc::new(Mutex::new(connection)), thumbnails })
     }
 
+    /// The short links of uploads, in this database.
+    pub fn short_links(&self) -> crate::short_links::store::ShortLinkStore {
+        crate::short_links::store::ShortLinkStore::new(self.connection.clone())
+    }
+
     /// The watched folders' ledger, in this database.
     pub fn ledger(&self) -> rusqlite::Result<crate::watched::ledger::Ledger> {
         crate::watched::ledger::Ledger::new(self.connection.clone())
@@ -110,6 +127,7 @@ impl History {
     fn record_from_row(&self, row: &Row) -> rusqlite::Result<UploadRecord> {
         let id: String = row.get(0)?;
         let thumbnail_path = self.thumbnails.path(&id).map(|path| path.to_string_lossy().into_owned());
+        let short = crate::short_links::store::split_active(row.get(14)?);
         Ok(UploadRecord {
             id,
             local_filename: row.get(1)?,
@@ -127,6 +145,9 @@ impl History {
             replaced_at: row.get(13)?,
             has_thumbnail: thumbnail_path.is_some(),
             thumbnail_path,
+            short_link_id: short.as_ref().map(|(id, _, _)| id.clone()),
+            short_provider: short.as_ref().map(|(_, provider, _)| provider.clone()),
+            short_url: short.map(|(_, _, url)| url),
         })
     }
 
@@ -149,6 +170,9 @@ impl History {
             replaced_at: None,
             has_thumbnail: false,
             thumbnail_path: None,
+            short_url: None,
+            short_link_id: None,
+            short_provider: None,
         };
         let connection = self.connection.lock().unwrap();
         let result = connection.execute(
@@ -179,7 +203,7 @@ impl History {
     /// Newest first.
     pub fn all(&self) -> Vec<UploadRecord> {
         let connection = self.connection.lock().unwrap();
-        let Ok(mut statement) = connection.prepare(&format!("SELECT {COLUMNS} FROM uploads ORDER BY created_at DESC")) else {
+        let Ok(mut statement) = connection.prepare(&format!("SELECT {SELECT_COLUMNS} FROM uploads ORDER BY created_at DESC")) else {
             return Vec::new();
         };
         statement
@@ -192,7 +216,7 @@ impl History {
     pub fn expired(&self, now: i64) -> Vec<UploadRecord> {
         let connection = self.connection.lock().unwrap();
         let Ok(mut statement) = connection.prepare(&format!(
-            "SELECT {COLUMNS} FROM uploads WHERE expires_at IS NOT NULL AND expires_at <= ?1 ORDER BY expires_at"
+            "SELECT {SELECT_COLUMNS} FROM uploads WHERE expires_at IS NOT NULL AND expires_at <= ?1 ORDER BY expires_at"
         )) else {
             return Vec::new();
         };
@@ -206,7 +230,7 @@ impl History {
     pub fn with_content(&self, destination_id: &str, content_hash: &str) -> Vec<UploadRecord> {
         let connection = self.connection.lock().unwrap();
         let Ok(mut statement) = connection.prepare(&format!(
-            "SELECT {COLUMNS} FROM uploads WHERE destination_id = ?1 AND content_hash = ?2 ORDER BY created_at DESC"
+            "SELECT {SELECT_COLUMNS} FROM uploads WHERE destination_id = ?1 AND content_hash = ?2 ORDER BY created_at DESC"
         )) else {
             return Vec::new();
         };
@@ -220,7 +244,7 @@ impl History {
     pub fn with_object(&self, destination_id: &str, object_key: &str) -> Vec<UploadRecord> {
         let connection = self.connection.lock().unwrap();
         let Ok(mut statement) = connection.prepare(&format!(
-            "SELECT {COLUMNS} FROM uploads WHERE destination_id = ?1 AND object_key = ?2 ORDER BY created_at DESC"
+            "SELECT {SELECT_COLUMNS} FROM uploads WHERE destination_id = ?1 AND object_key = ?2 ORDER BY created_at DESC"
         )) else {
             return Vec::new();
         };
@@ -233,7 +257,7 @@ impl History {
     pub fn get(&self, id: &str) -> Option<UploadRecord> {
         let connection = self.connection.lock().unwrap();
         connection
-            .query_row(&format!("SELECT {COLUMNS} FROM uploads WHERE id = ?1 COLLATE NOCASE"), [id], |row| self.record_from_row(row))
+            .query_row(&format!("SELECT {SELECT_COLUMNS} FROM uploads WHERE id = ?1 COLLATE NOCASE"), [id], |row| self.record_from_row(row))
             .optional()
             .ok()
             .flatten()
@@ -374,7 +398,7 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     if !has_column(connection, "uploads", "replaced_at")? {
         connection.execute_batch("ALTER TABLE uploads ADD COLUMN replaced_at INTEGER;")?;
     }
-    Ok(())
+    crate::short_links::store::prepare(connection)
 }
 
 fn has_column(connection: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
@@ -418,6 +442,7 @@ mod tests {
             short_cache: None,
             cloudflare_zone_id: None,
             hooks: None,
+            short_links: None,
         }
     }
 

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::output::OutputMode;
 use crate::routing::FileRouting;
+use crate::short_links::definition::ShortLinkSettings;
 use crate::thumbnails::ThumbnailMode;
 use crate::watched::model::Hook;
 use crate::t;
@@ -126,6 +127,11 @@ pub struct DestinationConfig {
     /// files, which run their folder's own).
     #[serde(default)]
     pub hooks: Option<Vec<Hook>>,
+    /// The link shortener uploads here go through; none is off. Its token
+    /// is in Credential Manager with the keys (`StorageCredentials`).
+    /// Settings this version can't use (an unknown provider) read as off.
+    #[serde(default, deserialize_with = "crate::short_links::definition::lenient")]
+    pub short_links: Option<ShortLinkSettings>,
 }
 
 /// How long a temporary (presigned) link can stay valid, in seconds: 5 and
@@ -254,6 +260,9 @@ impl DestinationConfig {
         }
         if self.hooks.as_ref().is_some_and(Vec::is_empty) {
             self.hooks = None;
+        }
+        if self.short_links.as_ref().is_some_and(|settings| settings.definition().is_none()) {
+            self.short_links = None;
         }
     }
 }

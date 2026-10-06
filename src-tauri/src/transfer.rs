@@ -191,7 +191,12 @@ fn encode_payload(payload: &TransferPayload, now: i64) -> Vec<u8> {
     let mut destination = serde_json::to_value(&payload.destination).unwrap_or(Value::Null);
     if let Value::Object(object) = &mut destination {
         object.remove("isDefault");
+        // Kept as written: a custom body template's nulls are its own.
+        let short_links = object.remove("shortLinks").filter(|value| !value.is_null());
         remove_nulls(object);
+        if let Some(short_links) = short_links {
+            object.insert("shortLinks".into(), short_links);
+        }
         if object.get("accountID").and_then(Value::as_str).is_some_and(str::is_empty) {
             object.remove("accountID");
         }
@@ -205,6 +210,11 @@ fn encode_payload(payload: &TransferPayload, now: i64) -> Vec<u8> {
     }
     if let Some(token) = payload.credentials.cloudflare_token.as_deref().filter(|token| !token.is_empty()) {
         credentials["cloudflareToken"] = token.into();
+    }
+    if let Some(token) = payload.credentials.short_link_token.as_deref().filter(|token| !token.is_empty()) {
+        if payload.destination.short_links.is_some() {
+            credentials["shortLinkToken"] = token.into();
+        }
     }
     let mut root = json!({
         "v": FORMAT_VERSION,
@@ -276,6 +286,9 @@ fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferErro
         // Dropped by `sanitize` when it isn't a zone ID.
         cloudflare_zone_id: trimmed(object.get("cloudflareZoneId")),
         hooks: hooks(object.get("hooks")),
+        // Settings for a provider this app doesn't know (or a custom one it
+        // can't read) leave short links off.
+        short_links: object.get("shortLinks").and_then(crate::short_links::definition::from_value),
     };
     // Values this app doesn't offer (a "Delete after" or link duration)
     // are dropped, the same as in destinations.json.
@@ -286,6 +299,8 @@ fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferErro
         secret_access_key: required(keys, "secretAccessKey")?,
         session_token: string(keys.get("sessionToken")),
         cloudflare_token: trimmed(keys.get("cloudflareToken")),
+        // Only along with the settings it's for.
+        short_link_token: destination.short_links.as_ref().and_then(|_| trimmed(keys.get("shortLinkToken"))),
     };
     Ok(TransferPayload { destination, credentials, custom_template: string(root.get("customTemplate")) })
 }
@@ -488,6 +503,7 @@ mod tests {
                 secret_access_key: "secret ".into(),
                 session_token: None,
                 cloudflare_token: None,
+                short_link_token: None,
             },
             custom_template: None,
         };
@@ -575,6 +591,74 @@ mod tests {
     }
 
     #[test]
+    fn short_links_travel() {
+        use crate::short_links::definition::{custom_template, ShortLinkSettings};
+        let mut destination = open(FULL, CODE).unwrap().destination;
+        let mut custom = custom_template();
+        custom.create.path = "https://api.example.com/shorten".into();
+        custom.create.body = Some(json!({ "url": "{url}", "note": null }));
+        destination.short_links = Some(ShortLinkSettings {
+            custom: Some(custom),
+            only_longer_than: 30,
+            allow_insecure_http: true,
+            ..ShortLinkSettings::new("custom")
+        });
+        let credentials = StorageCredentials {
+            access_key_id: "id".into(),
+            secret_access_key: "secret".into(),
+            session_token: None,
+            cloudflare_token: None,
+            short_link_token: Some("short-secret".into()),
+        };
+        let payload = TransferPayload { destination: destination.clone(), credentials, custom_template: None };
+        let plaintext = encode_payload(&payload, 1_000);
+        let root: Value = serde_json::from_slice(&plaintext).unwrap();
+        assert_eq!(root["credentials"]["shortLinkToken"], "short-secret");
+        let sent = &root["destination"]["shortLinks"];
+        assert_eq!(sent["providerId"], "custom");
+        assert_eq!(sent["onlyLongerThan"], 30);
+        assert_eq!(sent["allowInsecureHTTP"], true);
+        assert_eq!(sent["custom"]["kind"], "custom");
+        assert_eq!(sent["custom"]["needsDomain"], false);
+        assert_eq!(sent["custom"]["capabilities"]["expiration"], false);
+        // A body template's own null stays; unset fields are left out.
+        assert!(sent["custom"]["create"]["body"]["note"].is_null() && sent["custom"]["create"]["body"].get("note").is_some());
+        assert!(sent.get("endpoint").is_none() && sent["custom"].get("baseUrl").is_none());
+        // The token is never in the settings.
+        assert!(!sent.to_string().contains("short-secret"));
+
+        let decoded = decode_payload(&plaintext, 1_000).unwrap();
+        assert_eq!(decoded.destination.short_links, destination.short_links);
+        assert_eq!(decoded.credentials.short_link_token.as_deref(), Some("short-secret"));
+
+        // The Mac app's JSON for a built-in provider.
+        let mut mac = root.clone();
+        mac["destination"]["shortLinks"] = json!({ "providerId": "shlink", "endpoint": "https://s.example.com", "onlyLongerThan": 0, "shortenTemporaryLinks": false, "allowInsecureHTTP": false });
+        let from_mac = decode_payload(&serde_json::to_vec(&mac).unwrap(), 1_000).unwrap();
+        assert_eq!(from_mac.destination.short_links.as_ref().map(|settings| settings.provider_id.as_str()), Some("shlink"));
+        assert_eq!(from_mac.credentials.short_link_token.as_deref(), Some("short-secret"));
+
+        // A provider this app doesn't know leaves short links off, and its
+        // token isn't kept; the rest of the destination imports.
+        let mut unknown = root.clone();
+        unknown["destination"]["shortLinks"] = json!({ "providerId": "bitly-next", "onlyLongerThan": "x" });
+        let lenient = decode_payload(&serde_json::to_vec(&unknown).unwrap(), 1_000).unwrap();
+        assert_eq!(lenient.destination.short_links, None);
+        assert_eq!(lenient.credentials.short_link_token, None);
+        assert_eq!(lenient.destination.name, destination.name);
+        // A custom provider without a definition too.
+        unknown["destination"]["shortLinks"] = json!({ "providerId": "custom" });
+        assert_eq!(decode_payload(&serde_json::to_vec(&unknown).unwrap(), 1_000).unwrap().destination.short_links, None);
+
+        // No short links: neither field is sent.
+        let mut without = payload.clone();
+        without.destination.short_links = None;
+        let json: Value = serde_json::from_slice(&encode_payload(&without, 1_000)).unwrap();
+        assert!(json["destination"].get("shortLinks").is_none());
+        assert!(json["credentials"].get("shortLinkToken").is_none());
+    }
+
+    #[test]
     fn round_trips() {
         let mut destination = open(FULL, CODE).unwrap().destination;
         destination.output_mode = Some(OutputMode::Custom);
@@ -602,6 +686,7 @@ mod tests {
                 secret_access_key: "secret".into(),
                 session_token: Some("token".into()),
                 cloudflare_token: Some("cf-token".into()),
+                short_link_token: None,
             },
             custom_template: Some("<{url}>".into()),
         };

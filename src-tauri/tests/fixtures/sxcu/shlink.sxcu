@@ -1,0 +1,15 @@
+{
+  "Version": "16.1.0",
+  "Name": "Shlink (s.example.com)",
+  "DestinationType": "URLShortener",
+  "RequestMethod": "POST",
+  "RequestURL": "https://s.example.com/rest/v3/short-urls",
+  "Headers": {
+    "X-Api-Key": "c0ffee-1234-secret"
+  },
+  "Body": "JSON",
+  "Data": "{\n  \"longUrl\": \"{input}\",\n  \"findIfExists\": true\n}",
+  "URL": "{json:shortUrl}",
+  "DeletionURL": "https://s.example.com/admin/delete/{json:shortCode}",
+  "ErrorMessage": "{json:detail}"
+}

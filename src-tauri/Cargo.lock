@@ -108,6 +108,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tauri-winrt-notification",
  "thiserror 2.0.21",
  "tokio",
  "trash",
