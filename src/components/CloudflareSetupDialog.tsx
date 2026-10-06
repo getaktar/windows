@@ -253,7 +253,7 @@ export function CloudflareSetupDialog({
 
       stage = "save";
       mark("save", "running");
-      const destination = await api.cloudflareSaveDestination(trimmedToken, tokenId, accountId, bucket, baseURL, name.trim());
+      const destination = await api.cloudflareSaveDestination(trimmedToken, tokenId, accountId, bucket, baseURL, name.trim(), domain !== null);
       if (!isCurrent()) return;
       setSaved(destination);
       setStep("saved");

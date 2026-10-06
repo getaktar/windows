@@ -115,6 +115,9 @@ pub enum StorageError {
     /// at its key.
     #[error("{}", t!("Something else was uploaded under this name at the same time."))]
     AlreadyExists,
+    /// Every `{short}` key tried was taken; see `short_keys`.
+    #[error("{}", t!("Couldn’t find an unused short name for this file after {0} tries. Nothing was overwritten. Try again.", crate::short_keys::MAX_SHORT_KEY_ATTEMPTS))]
+    NoFreeShortKey,
     #[error("{0}")]
     Unknown(String),
 }
@@ -374,7 +377,14 @@ impl S3Provider {
         PartSender { client: self.client.clone(), bucket: self.bucket().to_string() }
     }
 
-    pub async fn complete_multipart(&self, object_key: &str, upload_id: &str, parts: &[UploadedPart]) -> Result<(), StorageError> {
+    /// Puts the parts together. `only_if_new` as for `upload`.
+    pub async fn complete_multipart(
+        &self,
+        object_key: &str,
+        upload_id: &str,
+        parts: &[UploadedPart],
+        only_if_new: bool,
+    ) -> Result<(), StorageError> {
         let mut parts = parts.to_vec();
         parts.sort_by_key(|part| part.number);
         let completed = CompletedMultipartUpload::builder()
@@ -388,6 +398,7 @@ impl S3Provider {
             .key(object_key)
             .upload_id(upload_id)
             .multipart_upload(completed)
+            .set_if_none_match(only_if_new.then(|| "*".to_string()))
             // Putting a big file together can take the server minutes (S3
             // keeps the connection alive meanwhile); timing out would throw
             // the finished upload away.
@@ -1055,7 +1066,9 @@ where
     let code = error.code().unwrap_or_default().to_ascii_lowercase();
     let description = format!("{code} {}", DisplayErrorContext(&error)).to_ascii_lowercase();
 
-    if status == Some(412) || code == "preconditionfailed" {
+    // A conditional write whose key is taken, or one that raced another
+    // conditional write of the same key (S3's 409).
+    if status == Some(412) || code == "preconditionfailed" || code == "conditionalrequestconflict" {
         return StorageError::AlreadyExists;
     }
     // HeadBucket's 404 has no body, so it arrives as a bare "NotFound".
@@ -1455,6 +1468,40 @@ mod live_tests {
         storage.abort_multipart("replace/big.bin", &upload_id).await.unwrap();
     }
 
+    /// A taken key refuses a conditional PUT and a conditional multipart
+    /// completion, which aborts the upload; the file there stays.
+    #[tokio::test]
+    #[ignore]
+    async fn conditional_writes_never_replace() {
+        use crate::multipart;
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+        let (store, directory) = session_store();
+        let key = "live/ABC1234.txt";
+        let file = directory.join("conditional.txt");
+        std::fs::write(&file, b"first").unwrap();
+        storage.upload(&file, key, "text/plain", Arc::new(Progress::default()), true).await.unwrap();
+        std::fs::write(&file, b"second").unwrap();
+        let again = storage.upload(&file, key, "text/plain", Arc::new(Progress::default()), true).await;
+        assert!(matches!(again, Err(StorageError::AlreadyExists)), "{again:?}");
+
+        let session = multipart::start(&storage, &store, "TEST", "aktar-test", key, "text/plain", 6, None, None, None).await.unwrap();
+        let completed = multipart::upload(&storage, &store, session, &file, "text/plain", false, Arc::new(Progress::default()), true).await;
+        assert!(matches!(completed, Err(StorageError::AlreadyExists)), "{completed:?}");
+        assert!(store.all().is_empty());
+        let uploads = storage.client.list_multipart_uploads().bucket(storage.bucket()).prefix(key).send().await.unwrap();
+        assert!(uploads.uploads().is_empty());
+        assert_eq!(storage.object_info(key).await.unwrap().map(|object| object.size), Some(5));
+
+        // A new key goes up the same way.
+        let fresh = "live/XYZ9876.txt";
+        let session = multipart::start(&storage, &store, "TEST", "aktar-test", fresh, "text/plain", 6, None, None, None).await.unwrap();
+        multipart::upload(&storage, &store, session, &file, "text/plain", false, Arc::new(Progress::default()), true).await.unwrap();
+        assert_eq!(storage.object_info(fresh).await.unwrap().map(|object| object.size), Some(6));
+        storage.delete(key).await.unwrap();
+        storage.delete(fresh).await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[tokio::test]
     #[ignore]
     async fn uploads_big_files_in_parts() {
@@ -1469,7 +1516,7 @@ mod live_tests {
             .unwrap();
         assert_eq!(session.part_size, 16 * 1024 * 1024);
         let progress = Arc::new(Progress::default());
-        multipart::upload(&storage, &store, session, &file, "application/octet-stream", false, progress.clone()).await.unwrap();
+        multipart::upload(&storage, &store, session, &file, "application/octet-stream", false, progress.clone(), false).await.unwrap();
         assert_eq!(progress.fraction(), Some(1.0));
         assert!(store.all().is_empty());
         assert_eq!(downloaded_sha256(&storage, key).await, sha256);
@@ -1510,7 +1557,7 @@ mod live_tests {
                 store.put(saved);
             }
         }
-        let interrupted = multipart::upload(&storage, &store, session.clone(), &file, "application/octet-stream", true, Arc::new(Progress::default()));
+        let interrupted = multipart::upload(&storage, &store, session.clone(), &file, "application/octet-stream", true, Arc::new(Progress::default()), false);
         assert!(tokio::time::timeout(Duration::from_millis(30), interrupted).await.is_err());
 
         let restarted = SessionStore::load(&directory);
@@ -1519,7 +1566,7 @@ mod live_tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].object_key, key);
         let progress = Arc::new(Progress::default());
-        multipart::upload(&storage, &restarted, found[0].clone(), &file, "application/octet-stream", true, progress.clone())
+        multipart::upload(&storage, &restarted, found[0].clone(), &file, "application/octet-stream", true, progress.clone(), false)
             .await
             .unwrap();
         assert_eq!(progress.fraction(), Some(1.0));
@@ -1551,7 +1598,7 @@ mod live_tests {
         assert!(!storage.object_exists(key).await.unwrap());
         // Continuing it after all starts over under the same key.
         store.put(session.clone());
-        multipart::upload(&storage, &store, session, &file, "application/octet-stream", true, Arc::new(Progress::default())).await.unwrap();
+        multipart::upload(&storage, &store, session, &file, "application/octet-stream", true, Arc::new(Progress::default()), false).await.unwrap();
         assert!(storage.object_exists(key).await.unwrap());
         storage.delete(key).await.unwrap();
         std::fs::remove_file(file).unwrap();

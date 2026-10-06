@@ -458,6 +458,8 @@ pub async fn cloudflare_enable_public_links(
 /// Saves the set-up bucket as a normal R2 destination, with the keys made
 /// from the token (the token itself isn't kept). Its auto-delete rules
 /// aren't checked yet. Returns it as saved, default flag included.
+/// `own_domain` says the links are on a domain of the user's own.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn cloudflare_save_destination(
     core: Core,
@@ -467,9 +469,10 @@ pub fn cloudflare_save_destination(
     bucket: String,
     public_base_url: String,
     name: String,
+    own_domain: bool,
 ) -> Result<DestinationConfig, String> {
     let name = Some(name.trim()).filter(|name| !name.is_empty()).unwrap_or("Cloudflare R2");
-    let config = cloudflare_setup::destination(name, account_id.trim(), bucket.trim(), &public_base_url);
+    let config = cloudflare_setup::destination(name, account_id.trim(), bucket.trim(), &public_base_url, own_domain);
     let credentials = cloudflare_setup::credentials(token_id.trim(), token.trim());
     let saved = store_destination(&core, config, Some(credentials), None, true)?;
     Ok(core.destinations.find(Some(&saved.id)).unwrap_or(saved))

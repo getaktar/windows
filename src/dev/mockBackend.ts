@@ -540,7 +540,7 @@ export function installMockBackend(route: string) {
             region: "auto",
             bucket: String(args.bucket),
             publicBaseURL: String(args.publicBaseUrl),
-            objectPathTemplate: "{year}/{month}/{uuid}.{ext}",
+            objectPathTemplate: args.ownDomain ? "{short}.{ext}" : "{year}/{month}/{short}.{ext}",
             forcePathStyle: false,
             isDefault: destinations.length === 0,
           };

@@ -546,8 +546,11 @@ export const api = {
     bucket: string,
     publicBaseUrl: string,
     name: string,
+    /** The links are on a domain of the user's own, so the path is just
+     * the {short} code. */
+    ownDomain: boolean,
   ) =>
-    invoke<DestinationConfig>("cloudflare_save_destination", { token, tokenId, accountId, bucket, publicBaseUrl, name }),
+    invoke<DestinationConfig>("cloudflare_save_destination", { token, tokenId, accountId, bucket, publicBaseUrl, name, ownDomain }),
   setDestinationExpiry: (id: string, days: number) => invoke<void>("set_destination_expiry", { id, days }),
   setDestinationLink: (id: string, seconds: number | null) => invoke<void>("set_destination_link", { id, seconds }),
   testConnection: (config: DestinationConfig, credentials: StorageCredentials | null) =>

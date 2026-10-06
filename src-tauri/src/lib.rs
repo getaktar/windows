@@ -29,6 +29,7 @@ mod qr;
 mod routing;
 mod settings;
 mod shell;
+mod short_keys;
 mod storage;
 mod system;
 mod thumbnails;

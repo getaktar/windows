@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Clean URLs: `{short}` in a path template becomes a random 7-character
+  code (0-9, A-Z, a-z, from the system's secure random generator), for
+  links like `files.example.com/A7kdP2x.png`. It never replaces a file:
+  on Amazon S3 and Cloudflare R2 the upload is only written if the key is
+  new (`If-None-Match: *`, also when completing a multipart upload), on
+  other providers the key is checked first; a taken key gets a whole new
+  code, and after 5 tries the upload fails with nothing overwritten.
+  New destinations use `{year}/{month}/{short}.{ext}`; saved ones keep
+  their path. Set Up Cloudflare R2 uses `{short}.{ext}` with a domain of
+  your own and the new default with r2.dev
+- A Presets menu next to the destination's path: Clean URL (Recommended),
+  Short with Date and Original File Name
+- A destination whose links use a domain of your own and whose path has
+  no `{short}` suggests Clean URLs in its form, with an example on that
+  domain; the note can be dismissed for each destination
+
 ## [0.9.0] - 2026-10-06
 
 ### Added

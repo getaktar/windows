@@ -9,11 +9,21 @@ import {
   DialogTitle,
   Field,
   Input,
+  Menu,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
+  MessageBar,
+  MessageBarActions,
+  MessageBarBody,
+  MessageBarTitle,
   Select,
   Spinner,
   Switch,
   Text,
 } from "@fluentui/react-components";
+import { ChevronDownRegular, DismissRegular } from "@fluentui/react-icons";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -44,12 +54,16 @@ import {
   type WatchHook,
 } from "../lib/api";
 import {
+  cleanURLTemplate,
+  defaultObjectPathTemplate,
   durationLabel,
   expiryRulesExplanation,
   formatDateTime,
+  ownDomainHost,
   providerName,
   rulesStatusMessage,
   temporaryLinkLabel,
+  usesShortCode,
 } from "../lib/format";
 import { useSettings } from "../lib/hooks";
 import { useI18n, type Translate } from "../lib/i18n";
@@ -109,8 +123,11 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [bucket, setBucket] = useState("");
   const [publicBaseURL, setPublicBaseURL] = useState("");
-  const [objectPathTemplate, setObjectPathTemplate] = useState("{year}/{month}/{uuid}.{ext}");
+  const [objectPathTemplate, setObjectPathTemplate] = useState(defaultObjectPathTemplate);
   const [forcePathStyle, setForcePathStyle] = useState(false);
+  /** The note suggesting {short} for a domain of the user's own was closed
+   * for this destination. */
+  const [cleanURLSuggestionDismissed, setCleanURLSuggestionDismissed] = useState(false);
   const [settings] = useSettings();
   /** Upload Defaults; null follows Settings > Output. */
   const [outputMode, setOutputMode] = useState<OutputMode | null>(null);
@@ -180,8 +197,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setSecretAccessKey("");
     setBucket(existing?.bucket ?? "");
     setPublicBaseURL(existing?.publicBaseURL ?? "");
-    setObjectPathTemplate(existing?.objectPathTemplate ?? "{year}/{month}/{uuid}.{ext}");
+    setObjectPathTemplate(existing?.objectPathTemplate ?? defaultObjectPathTemplate);
     setForcePathStyle(existing?.forcePathStyle ?? defaultForcePathStyle(initialPreset));
+    setCleanURLSuggestionDismissed(existing ? isCleanURLSuggestionDismissed(existing.id) : false);
     setOutputMode(existing?.outputMode ?? null);
     setTemporaryLink(existing?.temporaryLink ?? null);
     setExpiryDays(existing?.expiryDays ?? settings?.deleteAfterDays ?? 0);
@@ -212,6 +230,10 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     // Settings only supply the starting "Delete after" of a new form.
   }, [open, existing]);
 
+  /** The public links' host when it's a domain of the user's own and the
+   * path has no {short} yet, so a note can suggest it; null otherwise. */
+  const cleanURLSuggestionHost =
+    cleanURLSuggestionDismissed || usesShortCode(objectPathTemplate) ? null : ownDomainHost(publicBaseURL, endpoint);
   const hasNewCredentials = accessKeyId.trim() !== "" && secretAccessKey !== "";
   const canTest = endpoint.trim() !== "" && bucket.trim() !== "" && (hasNewCredentials || existing !== null);
   const prefixProblem = thumbnailMode === "bucket" ? thumbnailPrefixProblem(thumbnailPrefix, t) : null;
@@ -240,7 +262,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     region: region.trim(),
     bucket: bucket.trim(),
     publicBaseURL: publicBaseURL.trim(),
-    objectPathTemplate: objectPathTemplate.trim() || "{year}/{month}/{uuid}.{ext}",
+    objectPathTemplate: objectPathTemplate.trim() || defaultObjectPathTemplate,
     forcePathStyle,
     isDefault: existing?.isDefault ?? false,
     outputMode,
@@ -414,6 +436,8 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       }
       const saved = await api.saveDestination(config, credentials(), formRules, deleteOldThumbnails ?? false, tokenChange());
       if (!existing && shortcut) await api.setDestinationShortcut(saved.id, shortcut).catch(() => {});
+      // A new destination's note closed before it had an id.
+      if (cleanURLSuggestionDismissed) dismissCleanURLSuggestion(saved.id);
       onSaved(saved);
     } catch (error) {
       setSaveError(errorMessage(error));
@@ -575,20 +599,67 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                   label={t("Object Path")}
                   hint={
                     <>
-                      {t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}")}
+                      {t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {short} {ext} {md5} {sha256} {folder} {subpath}")}
+                      <br />
+                      {"{short}"}: {t("a random 7-character code, such as A7kdP2x")}
                       <br />
                       {"{md5}"}: {t("MD5 of the file’s contents")} · {"{sha256}"}: {t("SHA-256 of the file’s contents")}
                       <br />
                       {"{folder}"}: {t("the watched folder’s name")} · {"{subpath}"}: {t("the file’s folder inside it")}
+                      <br />
+                      {t("{short} makes links shorter, not private. For private sharing, keep the bucket private and copy temporary links.")}
                     </>
                   }
                 >
-                  <Input
-                    value={objectPathTemplate}
-                    spellCheck={false}
-                    onChange={(_, data) => setObjectPathTemplate(data.value)}
-                  />
+                  <div className="inline-row">
+                    <Input
+                      className="grow"
+                      value={objectPathTemplate}
+                      spellCheck={false}
+                      onChange={(_, data) => setObjectPathTemplate(data.value)}
+                    />
+                    <Menu>
+                      <MenuTrigger disableButtonEnhancement>
+                        <Button icon={<ChevronDownRegular />} iconPosition="after">
+                          {t("Presets")}
+                        </Button>
+                      </MenuTrigger>
+                      <MenuPopover>
+                        <MenuList>
+                          <MenuItem onClick={() => setObjectPathTemplate(cleanURLTemplate)}>{t("Clean URL (Recommended)")}</MenuItem>
+                          <MenuItem onClick={() => setObjectPathTemplate(defaultObjectPathTemplate)}>{t("Short with Date")}</MenuItem>
+                          <MenuItem onClick={() => setObjectPathTemplate("{filename}.{ext}")}>{t("Original File Name")}</MenuItem>
+                        </MenuList>
+                      </MenuPopover>
+                    </Menu>
+                  </div>
                 </Field>
+                {cleanURLSuggestionHost && (
+                  <MessageBar intent="info" layout="multiline">
+                    <MessageBarBody>
+                      <MessageBarTitle>{t("Make your links cleaner.")}</MessageBarTitle>
+                      {t("Use {short} to create links like {0}.", `${cleanURLSuggestionHost}/A7kdP2x.png`)}
+                    </MessageBarBody>
+                    <MessageBarActions
+                      containerAction={
+                        <Button
+                          appearance="transparent"
+                          aria-label={t("Dismiss")}
+                          title={t("Dismiss")}
+                          icon={<DismissRegular />}
+                          onClick={() => {
+                            setCleanURLSuggestionDismissed(true);
+                            if (existing) dismissCleanURLSuggestion(existing.id);
+                          }}
+                        />
+                      }
+                    >
+                      <Button size="small" onClick={() => setObjectPathTemplate(cleanURLTemplate)}>
+                        {t("Use Clean URL")}
+                      </Button>
+                    </MessageBarActions>
+                  </MessageBar>
+                )}
               </div>
 
               <Text weight="semibold" className="form-heading">
@@ -1048,4 +1119,25 @@ function ExpiryRulesState({ check }: { check: ExpiryRulesCheck | null }) {
       )}
     </div>
   );
+}
+
+/** Where the clean URL note's dismissal is kept, per destination. */
+function cleanURLSuggestionKey(id: string) {
+  return `cleanURLSuggestionDismissed.${id}`;
+}
+
+function isCleanURLSuggestionDismissed(id: string) {
+  try {
+    return localStorage.getItem(cleanURLSuggestionKey(id)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function dismissCleanURLSuggestion(id: string) {
+  try {
+    localStorage.setItem(cleanURLSuggestionKey(id), "1");
+  } catch {
+    // Shown again next time; nothing else depends on it.
+  }
 }

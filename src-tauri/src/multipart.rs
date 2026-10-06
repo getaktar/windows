@@ -222,7 +222,11 @@ pub async fn start(
 /// being resumed first asks the server which parts it has; if the server
 /// no longer knows the upload, it starts over under the same key. On
 /// success the session is gone from `store`; on failure it stays, with the
-/// parts that made it.
+/// parts that made it. `only_if_new` completes it only when nothing is at
+/// its key yet (see `short_keys`); when something is, the upload is
+/// aborted and `StorageError::AlreadyExists` returned, as its parts can't
+/// move to another key.
+#[allow(clippy::too_many_arguments)]
 pub async fn upload(
     provider: &S3Provider,
     store: &SessionStore,
@@ -231,6 +235,7 @@ pub async fn upload(
     content_type: &str,
     resuming: bool,
     progress: Arc<Progress>,
+    only_if_new: bool,
 ) -> Result<(), StorageError> {
     if resuming {
         match provider.uploaded_parts(&session.object_key, &session.upload_id).await? {
@@ -271,7 +276,13 @@ pub async fn upload(
         session.parts.push(part);
     }
 
-    provider.complete_multipart(&session.object_key, &session.upload_id, &session.parts).await?;
+    match provider.complete_multipart(&session.object_key, &session.upload_id, &session.parts, only_if_new).await {
+        Err(StorageError::AlreadyExists) => {
+            abort(provider, store, &session).await;
+            return Err(StorageError::AlreadyExists);
+        }
+        result => result?,
+    }
     store.remove(&session.id);
     Ok(())
 }

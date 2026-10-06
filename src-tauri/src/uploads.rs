@@ -5,7 +5,7 @@
 //! copy to clipboard -> notify. Runs up to `MAX_CONCURRENT` jobs at once.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -21,6 +21,7 @@ use crate::folder_upload;
 use crate::history::{NewRecord, Replacement, UploadRecord};
 use crate::multipart::{self, Candidate, Session, SourceFile};
 use crate::output::{self, ContentHashes};
+use crate::short_keys::{self, ShortKeyTarget};
 use crate::storage::{BucketObject, Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
 use crate::{image_metadata, image_processing};
 use crate::t;
@@ -915,7 +916,29 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     let progress = Arc::new(Progress::default());
     // Only S3 and R2 are known to honor If-None-Match on uploads.
     let only_if_new = input.keep_existing && input.object_key.is_some() && destination.preset.supports_conditional_writes();
+    let sending = Sending {
+        core,
+        job_id,
+        provider: &provider,
+        destination,
+        path: &path,
+        content_type: &content_type,
+        file_size,
+        source: source.clone(),
+        sha256: hashes.as_ref().map(|hashes| hashes.sha256.clone()),
+        key_basis: key_basis.clone(),
+        progress: progress.clone(),
+    };
+    // A key with {short} never replaces a file that has it already: a
+    // taken one is made again with a new code (see `short_keys`).
+    let short_key = generated_key && output::uses_short_code(&destination.object_path_template);
+    let key_filename = filename.clone();
     let upload = async {
+        if short_key {
+            let mut target = ShortUpload { sending: &sending, resumed };
+            let new_key = || object_key_for(input, destination, &key_filename, hashes.as_ref(), new_extension);
+            return short_keys::write_short_key(&mut target, object_key.clone(), destination.preset.supports_conditional_writes(), new_key).await;
+        }
         if file_size <= SINGLE_UPLOAD_LIMIT {
             let mut key = object_key.clone();
             let mut taken = Vec::new();
@@ -931,31 +954,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 }
             }
         }
-        let resuming = resumed.is_some();
-        let session: Session = match resumed {
-            Some(session) => session,
-            None => {
-                multipart::start(
-                    &provider,
-                    &core.upload_sessions,
-                    &destination.id,
-                    &destination.bucket,
-                    &object_key,
-                    &content_type,
-                    file_size,
-                    source.clone(),
-                    hashes.as_ref().map(|hashes| hashes.sha256.clone()),
-                    key_basis.clone(),
-                )
-                .await?
-            }
-        };
-        core.uploads.job_sessions.lock().unwrap().insert(job_id.to_string(), session.id.clone());
-        if resuming {
-            set_resuming(core, job_id);
-        }
-        multipart::upload(&provider, &core.upload_sessions, session, &path, &content_type, resuming, progress.clone()).await?;
-        core.uploads.job_sessions.lock().unwrap().remove(job_id);
+        sending.multipart(&object_key, resumed, false).await?;
         Ok(object_key.clone())
     };
     tokio::pin!(upload);
@@ -997,6 +996,98 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 }
             }
         }
+    }
+}
+
+/// What a job sends and where from, for its single or multipart upload.
+struct Sending<'a> {
+    core: &'a SharedCore,
+    job_id: &'a str,
+    provider: &'a S3Provider,
+    destination: &'a DestinationConfig,
+    path: &'a Path,
+    content_type: &'a str,
+    file_size: u64,
+    source: Option<SourceFile>,
+    sha256: Option<String>,
+    key_basis: Option<String>,
+    progress: Arc<Progress>,
+}
+
+impl Sending<'_> {
+    /// Sends the file in parts to `key`: continuing `resumed` (whose key it
+    /// is), or a new multipart upload. `only_if_new` as for
+    /// `multipart::upload`.
+    async fn multipart(&self, key: &str, resumed: Option<Session>, only_if_new: bool) -> Result<(), StorageError> {
+        let resuming = resumed.is_some();
+        let session: Session = match resumed {
+            Some(session) => session,
+            None => {
+                multipart::start(
+                    self.provider,
+                    &self.core.upload_sessions,
+                    &self.destination.id,
+                    &self.destination.bucket,
+                    key,
+                    self.content_type,
+                    self.file_size,
+                    self.source.clone(),
+                    self.sha256.clone(),
+                    self.key_basis.clone(),
+                )
+                .await?
+            }
+        };
+        self.core.uploads.job_sessions.lock().unwrap().insert(self.job_id.to_string(), session.id.clone());
+        if resuming {
+            set_resuming(self.core, self.job_id);
+        }
+        let result = multipart::upload(
+            self.provider,
+            &self.core.upload_sessions,
+            session,
+            self.path,
+            self.content_type,
+            resuming,
+            self.progress.clone(),
+            only_if_new,
+        )
+        .await;
+        // Done, or aborted because the key was taken: either way there's
+        // nothing left to continue.
+        if matches!(result, Ok(()) | Err(StorageError::AlreadyExists)) {
+            self.core.uploads.job_sessions.lock().unwrap().remove(self.job_id);
+        }
+        result
+    }
+}
+
+/// An upload to a key with {short}, for `short_keys::write_short_key`.
+struct ShortUpload<'a> {
+    sending: &'a Sending<'a>,
+    /// The unfinished upload being continued, until a key is tried.
+    resumed: Option<Session>,
+}
+
+impl ShortKeyTarget for ShortUpload<'_> {
+    async fn exists(&mut self, key: &str) -> Result<bool, StorageError> {
+        self.sending.provider.object_exists(key).await
+    }
+
+    async fn write(&mut self, key: &str, only_if_new: bool) -> Result<(), StorageError> {
+        let sending = self.sending;
+        if sending.file_size <= SINGLE_UPLOAD_LIMIT {
+            return sending.provider.upload(sending.path, key, sending.content_type, sending.progress.clone(), only_if_new).await.map(drop);
+        }
+        // A continued upload keeps its key unless that one is taken; then
+        // its parts can't move, so it's thrown away and the file starts
+        // over under the new key.
+        let mut resumed = self.resumed.take();
+        if let Some(session) = resumed.take_if(|session| session.object_key != key) {
+            sending.core.uploads.job_sessions.lock().unwrap().remove(sending.job_id);
+            multipart::abort(sending.provider, &sending.core.upload_sessions, &session).await;
+        }
+        sending.multipart(key, resumed, only_if_new).await
     }
 }
 

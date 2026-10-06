@@ -132,6 +132,17 @@ pub fn uses_hashes(template: &str) -> bool {
     template.contains("{md5}") || template.contains("{sha256}")
 }
 
+/// The path template of a new destination. Saved ones keep theirs.
+pub const DEFAULT_OBJECT_PATH_TEMPLATE: &str = "{year}/{month}/{short}.{ext}";
+/// The shortest links: just the code, on the bucket's own domain.
+pub const CLEAN_URL_TEMPLATE: &str = "{short}.{ext}";
+
+/// Keys with `{short}` are never written over an existing file; see
+/// `short_keys`.
+pub fn uses_short_code(template: &str) -> bool {
+    template.contains("{short}")
+}
+
 /// Where a file came from, for the `{folder}` and `{subpath}` tokens: a
 /// watched folder's name, and the file's folder inside it ("" at its
 /// root). Both are "" for every other upload.
@@ -162,12 +173,26 @@ pub fn generate_key_at(
     place: &KeyPlace,
     date: DateTime<Local>,
 ) -> String {
+    generate_key_with(template, original_filename, hashes, place, date, crate::short_keys::short_code)
+}
+
+/// `generate_key_at` with `short_code` filling `{short}` (see
+/// `short_keys`); it's only asked when the template has one.
+pub fn generate_key_with(
+    template: &str,
+    original_filename: &str,
+    hashes: Option<&ContentHashes>,
+    place: &KeyPlace,
+    date: DateTime<Local>,
+    short_code: impl FnOnce() -> String,
+) -> String {
     let (name, ext) = split_extension(original_filename);
     // A name can't add folders to the key, nor an extension.
     let name = key_segment(name);
     let ext = if ext.is_empty() { String::new() } else { key_segment(ext) };
     let uuid = uuid::Uuid::new_v4().to_string();
     let random: String = uuid::Uuid::new_v4().to_string().chars().take(8).collect();
+    let short = if uses_short_code(template) { short_code() } else { String::new() };
     let subpath = place.subpath.trim_matches('/').to_string();
     let replacements = [
         ("{year}", format!("{:04}", date.year())),
@@ -178,6 +203,7 @@ pub fn generate_key_at(
         ("{filename}", name.clone()),
         ("{uuid}", uuid),
         ("{random}", random),
+        ("{short}", short),
         ("{ext}", ext.clone()),
         ("{md5}", hashes.map(|hashes| hashes.md5.clone()).unwrap_or_default()),
         ("{sha256}", hashes.map(|hashes| hashes.sha256.clone()).unwrap_or_default()),
@@ -342,6 +368,20 @@ mod tests {
         assert_eq!(key, "2026/03/07/2026-03-07-090501-shot.final.png");
         let random = generate_key_at("{random}", "x", None, &none, date);
         assert_eq!(random.len(), 8);
+    }
+
+    #[test]
+    fn fills_the_short_code() {
+        let date = Local.with_ymd_and_hms(2026, 3, 7, 9, 5, 1).unwrap();
+        let none = KeyPlace::default();
+        let key = generate_key_with("{year}/{short}.{ext}", "photo.png", None, &none, date, || "A7kdP2x".into());
+        assert_eq!(key, "2026/A7kdP2x.png");
+        // No code is drawn for a template without {short}.
+        let key = generate_key_with("{filename}.{ext}", "photo.png", None, &none, date, || panic!("drew a code"));
+        assert_eq!(key, "photo.png");
+        assert_eq!(generate_key_at(DEFAULT_OBJECT_PATH_TEMPLATE, "a.png", None, &none, date).len(), "2026/03/".len() + 7 + ".png".len());
+        assert!(uses_short_code(CLEAN_URL_TEMPLATE));
+        assert!(!uses_short_code("{year}/{uuid}.{ext}"));
     }
 
     #[test]

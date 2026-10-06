@@ -4034,24 +4034,6 @@
     "uk": "Використовувати адресацію у стилі шляху",
     "pl": "Użyj adresowania w stylu ścieżki"
   },
-  "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}": {
-    "tr": "Değişkenler: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "de": "Variablen: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "fr": "Variables : {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "es": "Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "pt-BR": "Variáveis: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "ja": "変数: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "zh-Hans": "变量：{year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "it": "Variabili: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "ko": "변수: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "vi": "Biến: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "zh-Hant": "變數：{year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "nl": "Variabelen: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "id": "Variabel: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "ru": "Переменные: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "uk": "Змінні: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}",
-    "pl": "Zmienne: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}"
-  },
   "Version {0}": {
     "tr": "Sürüm {0}",
     "de": "Version {0}",

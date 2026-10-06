@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use crate::cloudflare::{client, result, API};
 use crate::credentials::StorageCredentials;
 use crate::destinations::{DestinationConfig, ProviderPreset};
+use crate::output::{CLEAN_URL_TEMPLATE, DEFAULT_OBJECT_PATH_TEMPLATE};
 use crate::t;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,8 +126,9 @@ pub fn credentials(token_id: &str, token: &str) -> StorageCredentials {
     }
 }
 
-/// The destination the setup saves: a normal R2 one.
-pub fn destination(name: &str, account: &str, bucket: &str, public_base_url: &str) -> DestinationConfig {
+/// The destination the setup saves: a normal R2 one. Links on a domain of
+/// the user's own (`own_domain`) get the shortest paths.
+pub fn destination(name: &str, account: &str, bucket: &str, public_base_url: &str, own_domain: bool) -> DestinationConfig {
     DestinationConfig {
         id: crate::util::new_id(),
         name: name.trim().to_string(),
@@ -136,7 +138,7 @@ pub fn destination(name: &str, account: &str, bucket: &str, public_base_url: &st
         region: "auto".into(),
         bucket: bucket.to_string(),
         public_base_url: public_base_url.to_string(),
-        object_path_template: "{year}/{month}/{uuid}.{ext}".into(),
+        object_path_template: if own_domain { CLEAN_URL_TEMPLATE } else { DEFAULT_OBJECT_PATH_TEMPLATE }.into(),
         force_path_style: false,
         is_default: false,
         output_mode: None,
@@ -277,13 +279,15 @@ mod tests {
 
     #[test]
     fn destination_is_a_normal_r2_one() {
-        let config = destination(" Cloudflare R2 ", "0123456789abcdef0123456789abcdef", "aktar", "https://pub-1.r2.dev");
+        let config = destination(" Cloudflare R2 ", "0123456789abcdef0123456789abcdef", "aktar", "https://pub-1.r2.dev", false);
         assert_eq!(config.name, "Cloudflare R2");
         assert_eq!(config.preset, ProviderPreset::CloudflareR2);
         assert_eq!(config.endpoint, "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com");
         assert_eq!(config.region, "auto");
-        assert_eq!(config.object_path_template, "{year}/{month}/{uuid}.{ext}");
+        assert_eq!(config.object_path_template, "{year}/{month}/{short}.{ext}");
         assert!(!config.force_path_style && !config.id.is_empty());
+        let own = destination("R2", "0123456789abcdef0123456789abcdef", "aktar", "https://files.example.com", true);
+        assert_eq!(own.object_path_template, "{short}.{ext}");
     }
 
     #[test]

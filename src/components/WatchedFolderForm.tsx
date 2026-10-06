@@ -186,7 +186,7 @@ export function WatchedFolderForm({
                     hint={
                       draft.customPath ? (
                         <>
-                          {t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {ext} {md5} {sha256}")}
+                          {t("Variables: {year} {month} {day} {date} {time} {filename} {uuid} {random} {short} {ext} {md5} {sha256} {folder} {subpath}")}
                           <br />
                           {"{folder}"}: {t("the watched folder’s name")} · {"{subpath}"}: {t("the file’s folder inside it")}
                         </>

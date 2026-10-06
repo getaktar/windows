@@ -241,6 +241,43 @@ export function providerName(preset: ProviderPreset, t: Translate) {
   }
 }
 
+// Object paths.
+
+/** The path template of a new destination. Saved ones keep theirs. */
+export const defaultObjectPathTemplate = "{year}/{month}/{short}.{ext}";
+/** The shortest links: just the code, on the bucket's own domain. */
+export const cleanURLTemplate = "{short}.{ext}";
+
+export function usesShortCode(template: string) {
+  return template.includes("{short}");
+}
+
+/** The lowercase host of an http(s) address (a bare domain counts, as
+ * https), or null when it has none. */
+function hostOf(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.hostname.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The host of `baseURL` when it's a domain of the user's own, not one the
+ * provider made: the endpoint's host (or a bucket under it), r2.dev, or an
+ * S3, Backblaze or DigitalOcean bucket host. Null otherwise. */
+export function ownDomainHost(baseURL: string, endpoint: string) {
+  const host = hostOf(baseURL);
+  if (!host) return null;
+  const providerHosts = ["r2.dev", "amazonaws.com", "backblazeb2.com", "digitaloceanspaces.com"];
+  const endpointHost = hostOf(endpoint);
+  if (endpointHost) providerHosts.push(endpointHost);
+  return providerHosts.some((domain) => host === domain || host.endsWith(`.${domain}`)) ? null : host;
+}
+
 export function withoutScheme(url: string) {
   return url.replace(/^https?:\/\//, "");
 }
