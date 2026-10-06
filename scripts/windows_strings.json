@@ -5348,5 +5348,24 @@
     "ru": "Токен не сохраняется. Aktar хранит только созданные с его помощью ключи хранилища, в диспетчере учетных данных.",
     "uk": "Токен не зберігається. Aktar зберігає лише створені з нього ключі сховища, у диспетчері облікових даних.",
     "pl": "Token nie jest zapisywany. Aktar przechowuje w Menedżerze poświadczeń tylko klucze magazynu utworzone na jego podstawie."
+  },
+  "// Short links": "Bring Your Own Shortener (the Mac repo's docs/short-links.md). Everything else comes from the Mac catalog; this is its Keychain sentence with Credential Manager.",
+  "The token is kept in Credential Manager with this destination’s keys, not in its settings.": {
+    "tr": "Token, ayarlarında değil, bu hedefin anahtarlarıyla birlikte Kimlik Bilgileri Yöneticisi'nde saklanır.",
+    "de": "Das Token wird mit den Schlüsseln dieses Ziels in der Anmeldeinformationsverwaltung gespeichert, nicht in seinen Einstellungen.",
+    "fr": "Le jeton est conservé dans le Gestionnaire d’identification avec les clés de cette destination, pas dans ses réglages.",
+    "es": "El token se guarda en el Administrador de credenciales con las claves de este destino, no en su configuración.",
+    "pt-BR": "O token fica no Gerenciador de Credenciais junto com as chaves deste destino, não nos ajustes dele.",
+    "ja": "トークンは設定ではなく、この保存先のキーと一緒に資格情報マネージャーに保存されます。",
+    "zh-Hans": "令牌与此目标的密钥一起保存在凭据管理器中，而不是保存在其设置里。",
+    "it": "Il token è conservato in Gestione credenziali con le chiavi di questa destinazione, non nelle sue impostazioni.",
+    "ko": "토큰은 설정이 아니라 이 대상의 키와 함께 자격 증명 관리자에 보관됩니다.",
+    "vi": "Token được lưu trong Trình quản lý thông tin xác thực cùng với khóa của đích đến này, không phải trong cài đặt của nó.",
+    "zh-Hant": "權杖會與此目的地的金鑰一起保存在認證管理員中，而不是保存在其設定裡。",
+    "nl": "Het token wordt met de sleutels van deze bestemming in Referentiebeheer bewaard, niet in de instellingen.",
+    "id": "Token disimpan di Manajer Kredensial bersama kunci tujuan ini, bukan di pengaturannya.",
+    "ru": "Токен хранится в диспетчере учетных данных вместе с ключами этого места назначения, а не в его настройках.",
+    "uk": "Токен зберігається в диспетчері облікових даних разом із ключами цього місця призначення, а не в його налаштуваннях.",
+    "pl": "Token jest przechowywany w Menedżerze poświadczeń razem z kluczami tego miejsca docelowego, a nie w jego ustawieniach."
   }
 }

@@ -38,6 +38,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
 import { QrCodeDialog } from "../components/QrCodeDialog";
+import { shortLinkMenu } from "../components/shortLinkMenu";
 import { temporaryLinkMenu } from "../components/temporaryLinkMenu";
 import { ExpiryBadge, FileIcon, Thumbnail } from "../components/FileVisuals";
 import {
@@ -676,8 +677,9 @@ function RecentRow({
   const [settings] = useSettings();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showingQr, setShowingQr] = useState(false);
+  // The short link when the upload has one.
   const copy = (mode: "url" | "markdown" | "html") =>
-    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType));
+    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType, record.shortUrl));
 
   const deleteRemote = async () => {
     setConfirmingDelete(false);
@@ -690,7 +692,7 @@ function RecentRow({
   };
 
   const items: MenuEntry[] = [
-    { label: t("Copy URL"), onClick: () => copy("url") },
+    ...shortLinkMenu(record, destinations, t, onError),
     { label: t("Copy Markdown"), onClick: () => copy("markdown") },
     { label: t("Copy HTML"), onClick: () => copy("html") },
     temporaryLinkMenu(record, t, onError),

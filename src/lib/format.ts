@@ -68,13 +68,19 @@ export function previewKind(filename: string, mimeType?: string): PreviewKind {
   return { kind: "unsupported" };
 }
 
+/** `longURL` is the upload's own link. With a `shortURL`, that's what URL,
+ * Markdown, HTML and a custom template's {url} use; a custom template also
+ * has {shortUrl} (the short link, or the long one without it) and
+ * {longUrl}. */
 export function formatOutput(
-  url: string,
+  longURL: string,
   mode: OutputMode,
   filename: string,
   customTemplate = "![{filename}]({url})",
   mimeType?: string,
+  shortURL?: string | null,
 ) {
+  const url = shortURL || longURL;
   switch (mode) {
     case "url":
       return url;
@@ -86,6 +92,8 @@ export function formatOutput(
       const [name, ext] = splitExtension(filename);
       return customTemplate
         .split("{url}").join(url)
+        .split("{shortUrl}").join(url)
+        .split("{longUrl}").join(longURL)
         .split("{filename}").join(filename)
         .split("{name}").join(name)
         .split("{ext}").join(ext);

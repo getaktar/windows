@@ -65,13 +65,15 @@ import {
   temporaryLinkLabel,
   usesShortCode,
 } from "../lib/format";
-import { useSettings } from "../lib/hooks";
+import { useSettings, useShortLinkProviders } from "../lib/hooks";
+import { formProblem, formSettings, shortLinkFormState, type ShortLinkFormState } from "../lib/shortLinks";
 import { useI18n, type Translate } from "../lib/i18n";
 import { defaultThumbnailPrefix, normalizedThumbnailPrefix, thumbnailPrefixProblem } from "../lib/thumbnails";
 import { ConnectionTestResult } from "./ConnectionTestResult";
 import { ConfirmDialog } from "./Dialogs";
 import { HookEditor } from "./HookEditor";
 import { ShortcutRecorder } from "./ShortcutRecorder";
+import { ShortLinksFormSection } from "./ShortLinksFormSection";
 
 const presets: ProviderPreset[] = ["cloudflareR2", "amazonS3", "minIO", "backblazeB2", "digitalOceanSpaces", "customS3"];
 
@@ -154,6 +156,10 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   const [tokenCheck, setTokenCheck] = useState<{ kind: "checking" } | { kind: "passed" } | { kind: "failed"; message: string } | null>(null);
   const [hooks, setHooks] = useState<WatchHook[]>([]);
   const [hookError, setHookError] = useState<string | null>(null);
+  const [shortLinks, setShortLinks] = useState<ShortLinkFormState>(() => shortLinkFormState(null, t));
+  /** The provider of the short link token saved for this destination. */
+  const [savedShortLinkProvider, setSavedShortLinkProvider] = useState<string | null>(null);
+  const shortLinkProviders = useShortLinkProviders();
   /** Saving stopped to ask what happens to the thumbnails already in this
    * bucket folder, which the destination would stop using. */
   const [oldThumbnailPrefix, setOldThumbnailPrefix] = useState<string | null>(null);
@@ -224,6 +230,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     if (existing) api.hasCloudflareToken(existing.id).then(setHasSavedToken).catch(() => {});
     setHooks(existing?.hooks ?? []);
     setHookError(null);
+    setShortLinks(shortLinkFormState(existing?.shortLinks, t));
+    setSavedShortLinkProvider(null);
+    if (existing) api.savedShortLinkProvider(existing.id).then(setSavedShortLinkProvider).catch(() => {});
     setTestResult(null);
     setTestError(null);
     setSaveError(null);
@@ -243,10 +252,15 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
       ? t("Not an extension: {0}. Use letters and digits only, such as dmg or mp4.", invalidExtensions.map((part) => `“${part}”`).join(", "))
       : null;
   const zoneProblem = cloudflareZoneId.trim() !== "" && !isZoneId(cloudflareZoneId) ? t("The Cloudflare zone ID isn’t valid.") : null;
+  const shortLinksProblem =
+    shortLinks.providerId !== null &&
+    (shortLinkProviders === null ||
+      formProblem(shortLinks, shortLinkProviders, savedShortLinkProvider !== null && savedShortLinkProvider === shortLinks.providerId, t) !== null);
   const canSave =
     name.trim() !== "" &&
     extensionsProblem === null &&
     zoneProblem === null &&
+    !shortLinksProblem &&
     bucket.trim() !== "" &&
     endpoint.trim() !== "" &&
     publicBaseURL.trim() !== "" &&
@@ -277,6 +291,7 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     shortCache: shortCache || null,
     cloudflareZoneId: isZoneId(cloudflareZoneId) ? cloudflareZoneId.trim().toLowerCase() : null,
     hooks: hooks.length > 0 ? hooks : null,
+    shortLinks: formSettings(shortLinks, shortLinkProviders, t),
   });
 
   /** Null when it claims nothing, so uploads only come here when picked. */
@@ -434,7 +449,14 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
           return;
         }
       }
-      const saved = await api.saveDestination(config, credentials(), formRules, deleteOldThumbnails ?? false, tokenChange());
+      const saved = await api.saveDestination(
+        config,
+        credentials(),
+        formRules,
+        deleteOldThumbnails ?? false,
+        tokenChange(),
+        shortLinks.token.trim() || null,
+      );
       if (!existing && shortcut) await api.setDestinationShortcut(saved.id, shortcut).catch(() => {});
       // A new destination's note closed before it had an id.
       if (cleanURLSuggestionDismissed) dismissCleanURLSuggestion(saved.id);
@@ -949,6 +971,13 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
                   )}
                 </Text>
               </div>
+
+              <ShortLinksFormSection
+                state={shortLinks}
+                onChange={setShortLinks}
+                destinationId={existing?.id ?? null}
+                savedTokenProvider={savedShortLinkProvider}
+              />
 
               <Text weight="semibold" className="form-heading">
                 {t("After Upload")}

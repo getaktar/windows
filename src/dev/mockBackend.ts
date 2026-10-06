@@ -5,6 +5,8 @@
 // Only loaded in mock mode; production builds drop it entirely.
 
 import { emit } from "@tauri-apps/api/event";
+
+import shortLinkProviders from "../../docs/short-link-providers.json";
 import { mockConvertFileSrc, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 
 import type {
@@ -379,6 +381,16 @@ export function installMockBackend(route: string) {
               ];
               return `${parts.join(", ")} go to ${destination.name}.`;
             });
+        case "short_link_providers":
+          return { providers: shortLinkProviders.providers, customTemplate: null };
+        case "saved_short_link_provider":
+          return null;
+        case "short_link_info":
+          return { links: [], activeId: null, canCreate: false, hasStats: false };
+        case "short_link_move_plan":
+          return "nothing";
+        case "bucket_move":
+          return { key: args.to, keptOriginal: false };
         case "remove_from_history":
           history = history.filter((record) => !(args.ids as string[]).includes(record.id));
           return null;

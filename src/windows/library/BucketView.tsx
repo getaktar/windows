@@ -117,6 +117,13 @@ export function BucketView({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [moving, setMoving] = useState<BucketObject | null>(null);
+  /** A rename or move waiting for the user to confirm it, because a short
+   * link to the file can't follow it (rule 7 of the short links spec). */
+  const [pendingMove, setPendingMove] = useState<{ object: BucketObject; target: string } | null>(null);
+  const move = async (object: BucketObject, target: string) => {
+    const newKey = await model.move(object, target);
+    if (newKey) selection.set([newKey]);
+  };
   const [pendingDeletion, setPendingDeletion] = useState<string[]>([]);
   const searchBox = useRef<HTMLInputElement>(null);
 
@@ -449,8 +456,24 @@ export function BucketView({
           const object = moving;
           setMoving(null);
           if (!object) return;
-          const newKey = await model.move(object, target);
-          if (newKey) selection.set([newKey]);
+          // Moves right away, or asks first when the file's short links
+          // can't be pointed at its new place.
+          const plan = await api.shortLinkMovePlan(destination.id, object.key).catch(() => "nothing");
+          if (plan === "warn") setPendingMove({ object, target });
+          else await move(object, target);
+        }}
+      />
+      <ConfirmDialog
+        open={pendingMove !== null}
+        title={t("Move this file?")}
+        message={t("This short-link provider cannot update existing destinations. Moving this file may invalidate its short link.")}
+        confirmLabel={t("Move Anyway")}
+        destructive
+        onCancel={() => setPendingMove(null)}
+        onConfirm={() => {
+          const pending = pendingMove;
+          setPendingMove(null);
+          if (pending) void move(pending.object, pending.target);
         }}
       />
       <ConfirmDialog

@@ -37,12 +37,14 @@ import { ConfirmDialog, ContextMenu, MenuEntries, type ContextMenuState, type Me
 import { ExpiryBadge, FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
 import { Preview } from "../../components/Preview";
 import { QrCodeDialog } from "../../components/QrCodeDialog";
+import { shortLinkMenu } from "../../components/shortLinkMenu";
 import { temporaryLinkMenu } from "../../components/temporaryLinkMenu";
-import { api, errorMessage, type Job, type UploadRecord } from "../../lib/api";
+import { api, errorMessage, type DestinationConfig, type Job, type UploadRecord } from "../../lib/api";
 import { dayBucket, formatBytes, formatDateTime, formatOutput, formatTime, shortDay } from "../../lib/format";
 import { hasTextSelection, useDestinations, useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
 import { useI18n } from "../../lib/i18n";
 import { DetailRow, LinkSection } from "./BucketView";
+import { ShortLinkSection } from "./ShortLinkSection";
 
 /** The filter for every watched folder's uploads, next to the destinations. */
 const WATCHED_FILTER = "watched";
@@ -122,7 +124,7 @@ export function HistoryView({ active }: { active: boolean }) {
   const copyAll = (targets: UploadRecord[], mode: "url" | "markdown" | "html" | "custom") =>
     api.copyText(
       targets
-        .map((record) => formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType))
+        .map((record) => formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType, record.shortUrl))
         .join("\n"),
     );
 
@@ -162,7 +164,7 @@ export function HistoryView({ active }: { active: boolean }) {
       ];
     }
     return [
-      { label: t("Copy URL"), onClick: () => copyAll([record], "url") },
+      ...shortLinkMenu(record, destinations, t, showLinkError),
       { label: t("Copy Markdown"), onClick: () => copyAll([record], "markdown") },
       { label: t("Copy HTML"), onClick: () => copyAll([record], "html") },
       temporaryLinkMenu(record, t, showLinkError),
@@ -344,6 +346,7 @@ export function HistoryView({ active }: { active: boolean }) {
           <UploadDetail
             key={selectedRecords[0].id}
             record={selectedRecords[0]}
+            destinations={destinations}
             customTemplate={settings?.customTemplate}
             deleting={deleting.has(selectedRecords[0].id)}
             deletionError={deletionErrors[selectedRecords[0].id] ?? null}
@@ -487,6 +490,7 @@ function ActiveUploadRow({ job }: { job: Job }) {
 
 function UploadDetail(props: {
   record: UploadRecord;
+  destinations: DestinationConfig[];
   customTemplate?: string;
   deleting: boolean;
   deletionError: string | null;
@@ -501,8 +505,9 @@ function UploadDetail(props: {
   const { record } = props;
   const [copied, flashCopied] = useFlag();
   const thumbnail = useThumbnailURL(record);
+  // With the short link when the upload has one.
   const copy = (mode: "markdown" | "html" | "custom") =>
-    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, props.customTemplate, record.mimeType));
+    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, props.customTemplate, record.mimeType, record.shortUrl));
   const copyURL = () => {
     api.copyText(record.publicUrl);
     flashCopied();
@@ -517,6 +522,7 @@ function UploadDetail(props: {
         { label: t("Custom"), onClick: () => copy("custom") },
       ],
     },
+    ...shortLinkMenu(record, props.destinations, t, showLinkError),
     { label: t("Copy Object Key"), onClick: () => api.copyText(record.objectKey) },
     temporaryLinkMenu(record, t, showLinkError),
     { label: t("Show QR Code"), onClick: props.onShowQr },
@@ -581,6 +587,7 @@ function UploadDetail(props: {
           </MessageBar>
         )}
         <LinkSection url={record.publicUrl} copied={copied} onCopy={copyURL} />
+        <ShortLinkSection record={record} />
         <section className="detail-section">
           <Text weight="semibold" className="secondary">
             {t("Details")}

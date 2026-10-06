@@ -17,11 +17,12 @@ import { splitExtension } from "../lib/format";
 import { useFlag } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 
-/** The link "Show QR Code" encodes: the one that would be copied, so a
- * fresh temporary link of the same duration when the upload's destination
- * is set to temporary links, and the public URL otherwise (or when the
- * destination is gone). */
+/** The link "Show QR Code" encodes: the one that would be copied, so its
+ * short link when it has one, a fresh temporary link of the same duration
+ * when the upload's destination is set to temporary links, and the public
+ * URL otherwise (or when the destination is gone). */
 async function linkFor(record: UploadRecord, destinations: DestinationConfig[]) {
+  if (record.shortUrl) return record.shortUrl;
   const destination = destinations.find((candidate) => candidate.id === record.destinationId);
   if (destination?.temporaryLink) {
     try {

@@ -8,6 +8,7 @@ import {
   type Job,
   type LocalApiState,
   type Settings,
+  type ShortLinkDefinition,
   type UpdateStatus,
   type UploadRecord,
   type WatchOverview,
@@ -147,4 +148,26 @@ export function useSelection(ids: string[]) {
   }, []);
 
   return { selected, click, move, set };
+}
+
+/** The built-in link shorteners (the shared short-link-providers.json),
+ * read once; null until they're there. */
+let shortLinkProviders: ShortLinkDefinition[] | null = null;
+export function useShortLinkProviders(): ShortLinkDefinition[] | null {
+  const [providers, setProviders] = useState(shortLinkProviders);
+  useEffect(() => {
+    if (providers) return;
+    let current = true;
+    api
+      .shortLinkProviders()
+      .then((result) => {
+        shortLinkProviders = result.providers;
+        if (current) setProviders(result.providers);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [providers]);
+  return providers;
 }

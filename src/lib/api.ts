@@ -75,7 +75,140 @@ export interface DestinationConfig {
   cloudflareZoneId?: string | null;
   /** "After Upload": run after each upload and replace here. */
   hooks?: WatchHook[] | null;
+  /** The link shortener uploads here go through; null is off. Its token
+   * is kept with the keys. */
+  shortLinks?: ShortLinkSettings | null;
 }
+
+// MARK: - Short links (src-tauri/src/short_links)
+
+export type ShortLinkAuthType = "header" | "bearer" | "query" | "basic";
+export type ShortLinkBodyType = "json" | "form";
+
+/** One request of a shortener's definition. */
+export interface ShortLinkRequest {
+  method: string;
+  path: string;
+  query?: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: unknown;
+  bodyType?: ShortLinkBodyType;
+  errorPath?: string;
+  successStatuses?: number[];
+  successPath?: string;
+  successValue?: unknown;
+  shortUrlPath?: string;
+  idPath?: string;
+  clicksPath?: string;
+  lastClickPath?: string;
+}
+
+export interface ShortLinkCapabilities {
+  delete: boolean;
+  updateDestination: boolean;
+  /** false: links can't expire. */
+  expiration: "absolute" | "relative" | false;
+  customCode: boolean;
+  customDomain: boolean;
+  stats: { clicks: boolean; lastClick: boolean };
+}
+
+/** A link shortener described as HTTP configuration (the shared
+ * short-link-providers.json, or a custom one). */
+export interface ShortLinkDefinition {
+  id: string;
+  name: string;
+  kind: "selfHosted" | "hosted" | "custom";
+  /** Absent: requests go to the destination's endpoint. */
+  baseUrl?: string;
+  needsDomain: boolean;
+  auth?: { type: ShortLinkAuthType; name?: string };
+  create: ShortLinkRequest;
+  delete?: ShortLinkRequest;
+  update?: ShortLinkRequest;
+  stats?: ShortLinkRequest;
+  test?: ShortLinkRequest;
+  capabilities: ShortLinkCapabilities;
+}
+
+/** `DestinationConfig.shortLinks`, the same keys as the Mac app's. */
+export interface ShortLinkSettings {
+  /** A built-in definition's id, or "custom". */
+  providerId: string;
+  endpoint?: string;
+  domain?: string;
+  /** The definition when `providerId` is "custom". */
+  custom?: ShortLinkDefinition;
+  /** Shorten only links longer than this many characters; 0 always. */
+  onlyLongerThan: number;
+  shortenTemporaryLinks: boolean;
+  allowInsecureHTTP: boolean;
+}
+
+export type ShortLinkStatus = "active" | "expired" | "deleted" | "orphaned" | "unknown";
+
+export interface ShortLink {
+  id: string;
+  uploadId: string;
+  provider: string;
+  providerName: string;
+  providerId: string | null;
+  domain: string | null;
+  shortUrl: string;
+  targetUrl: string;
+  /** Unix milliseconds, like the other times. */
+  createdAt: number;
+  expiresAt: number | null;
+  status: ShortLinkStatus;
+  /** Active, but past its expiry: "expired". */
+  displayStatus: ShortLinkStatus;
+  clicks: number | null;
+  lastClickAt: number | null;
+  statsCheckedAt: number | null;
+}
+
+/** An upload's short links for its details. */
+export interface ShortLinkInfo {
+  /** Newest first. */
+  links: ShortLink[];
+  activeId: string | null;
+  canCreate: boolean;
+  /** The provider reports clicks for the active link. */
+  hasStats: boolean;
+}
+
+export interface ShortLinkTestResult {
+  /** The link a custom shortener made; null for a read-only test. */
+  created: { shortUrl: string; providerId: string | null } | null;
+  cleanup: { kind: "none" } | { kind: "deleted" } | { kind: "failed"; message: string };
+}
+
+export type ShareXSecretLocation = { kind: "header" | "query" | "body"; name: string };
+
+/** A ShareX configuration read for the consent screen. */
+export interface ShareXImport {
+  name: string | null;
+  definition: ShortLinkDefinition;
+  token: string | null;
+  secretLocations: ShareXSecretLocation[];
+  /** Where the token (and every link) is sent. */
+  host: string;
+  method: string;
+  endpoint: string;
+  usesHTTP: boolean;
+  /** Its deletion URL isn't a simple request. */
+  deletionSkipped: boolean;
+}
+
+/** Why a ShareX configuration couldn't be imported; `insecure` when it was
+ * refused for http://. */
+export interface ShareXFailure {
+  message: string;
+  insecure: boolean;
+}
+
+/** What moving a file means for short links to it. */
+export type ShortLinkMovePlan = "nothing" | "update" | "warn";
 
 export type FileKind = "image" | "video" | "audio" | "document" | "archive";
 export const fileKinds: FileKind[] = ["image", "video", "audio", "document", "archive"];
@@ -141,7 +274,7 @@ export type JobState =
   | { kind: "uploading"; progress: number; resuming: boolean }
   /** `reused` when an earlier upload of the same file was found, and its
    * link copied instead. */
-  | { kind: "succeeded"; publicUrl: string; recordId: string; reused: boolean }
+  | { kind: "succeeded"; publicUrl: string; recordId: string; reused: boolean; shortLinkError?: string | null }
   | { kind: "failed"; message: string }
   | { kind: "cancelled" };
 
@@ -178,6 +311,11 @@ export interface UploadRecord {
   hasThumbnail: boolean;
   /** The thumbnail file on this PC. */
   thumbnailPath?: string | null;
+  /** The active short link, which is what's copied; null without one. */
+  shortUrl?: string | null;
+  shortLinkId?: string | null;
+  /** Its provider (a definition's id, or "custom"). */
+  shortProvider?: string | null;
 }
 
 // MARK: - Watched folders (src-tauri/src/watched/model.rs)
@@ -484,14 +622,38 @@ export const api = {
   listDestinations: () => invoke<DestinationConfig[]>("list_destinations"),
   /** `deleteOldThumbnails` empties the bucket folder `thumbnailCleanupPrefix`
    * names, in the background. */
-  /** `cloudflareToken`: null keeps the saved one, "" removes it. */
+  /** `cloudflareToken`: null keeps the saved one, "" removes it.
+   * `shortLinkToken`: the one typed; null keeps the saved one while the
+   * provider stays the same. */
   saveDestination: (
     config: DestinationConfig,
     credentials: StorageCredentials | null,
     rules: FormRules,
     deleteOldThumbnails = false,
     cloudflareToken: string | null = null,
-  ) => invoke<DestinationConfig>("save_destination", { config, credentials, rules, deleteOldThumbnails, cloudflareToken }),
+    shortLinkToken: string | null = null,
+  ) =>
+    invoke<DestinationConfig>("save_destination", { config, credentials, rules, deleteOldThumbnails, cloudflareToken, shortLinkToken }),
+  /** The provider whose short link token is saved for the destination. */
+  savedShortLinkProvider: (id: string) => invoke<string | null>("saved_short_link_provider", { id }),
+  shortLinkProviders: () =>
+    invoke<{ providers: ShortLinkDefinition[]; customTemplate: ShortLinkDefinition }>("short_link_providers"),
+  /** `token`: the one typed; null tests with the saved one. */
+  testShortLinks: (destinationId: string | null, settings: ShortLinkSettings, token: string | null) =>
+    invoke<ShortLinkTestResult>("test_short_links", { destinationId, settings, token }),
+  /** Rust opens the file dialog; null when it was cancelled. Rejects with a
+   * `ShareXFailure`. */
+  pickShareXConfiguration: (allowInsecureHttp: boolean) =>
+    invoke<ShareXImport | null>("pick_sharex_configuration", { allowInsecureHttp }),
+  /** `refresh` fetches the active link's clicks first when they're old. */
+  shortLinkInfo: (id: string, refresh: boolean) => invoke<ShortLinkInfo>("short_link_info", { id, refresh }),
+  /** Rejects with the reason it couldn't be made. */
+  createShortLink: (id: string) => invoke<void>("create_short_link", { id }),
+  /** Makes one and copies it, or says why not in a notification. */
+  retryShortLink: (id: string) => invoke<void>("retry_short_link", { id }),
+  deleteShortLink: (linkId: string) => invoke<void>("delete_short_link", { linkId }),
+  shortLinkMovePlan: (destinationId: string, key: string) =>
+    invoke<ShortLinkMovePlan>("short_link_move_plan", { destinationId, key }),
   hasCloudflareToken: (id: string) => invoke<boolean>("has_cloudflare_token", { id }),
   /** Checks the token typed, or the destination's saved one. */
   checkCloudflareToken: (destinationId: string | null, token: string | null) =>
@@ -597,8 +759,9 @@ export const api = {
   listObjects: (destinationId: string, prefix: string, continuationToken: string | null, recursive: boolean) =>
     invoke<BucketListing>("list_objects", { destinationId, prefix, continuationToken, recursive }),
   bucketDelete: (destinationId: string, key: string) => invoke<void>("bucket_delete", { destinationId, key }),
+  /** `keptOriginal`: a short link couldn't follow, so the original stays. */
   bucketMove: (destinationId: string, from: string, to: string) =>
-    invoke<string>("bucket_move", { destinationId, from, to }),
+    invoke<{ key: string; keptOriginal: boolean }>("bucket_move", { destinationId, from, to }),
   bucketCreateFolder: (destinationId: string, prefix: string, name: string) =>
     invoke<string>("bucket_create_folder", { destinationId, prefix, name }),
   bucketPresign: (destinationId: string, key: string, seconds: number) =>

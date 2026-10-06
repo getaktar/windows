@@ -24,6 +24,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A destination whose links use a domain of your own and whose path has
   no `{short}` suggests Clean URLs in its form, with an example on that
   domain; the note can be dismissed for each destination
+- Short links with your own shortener: a destination's new Short Links
+  section picks Shlink, YOURLS, Kutt, Dub, Short.io or a custom HTTP
+  request, with its address, domain and API key (kept in Credential
+  Manager), a Test button, "Only shorten links longer than" and "Also
+  shorten temporary links" (for shorteners that can expire links; the
+  short link expires with the temporary link). After an upload the short
+  link is what's copied (URL, Markdown, HTML, and `{url}`, `{shortUrl}`
+  and `{longUrl}` in a custom template) and what the QR code shows; an
+  expiring upload's short link expires with it. If it can't be created
+  the original link is copied and a notification offers Retry. http://
+  addresses need "Allow insecure HTTP". Hosted shorteners are marked as
+  seeing every link and click. The shorteners are described by the same
+  definitions file as in the Mac app
+- History shows an upload's short link with its clicks and last click,
+  and offers Copy Short Link, Copy Original Link, Create Short Link and
+  Delete Short Link (also in the panel's recent uploads); earlier short
+  links are listed with their status
+- Deleting a file deletes its short links too; one that can't be deleted
+  is marked "may still exist" and you're told. Renaming or moving a file
+  in the bucket view points its short link at the new path when the
+  shortener can (and keeps the old file if that fails); otherwise it
+  warns first. A reused duplicate reuses its short link, Replace File
+  keeps it, and Remove from History forgets an upload's short link
+  records (the short links themselves are left alone)
+- Import ShareX Configuration (.sxcu) in the Short Links section reads a
+  ShareX custom URL shortener into a custom HTTP request. It first shows
+  where your token will be sent (host, method, endpoint, and which
+  headers or parameters carry it); secrets found in the file are moved to
+  Credential Manager. Configurations that use regular expressions,
+  `{response}`, file fields, `{select}`, `{prompt}` or other ShareX
+  syntax are refused with the reason, and http:// needs "Allow insecure
+  HTTP". Testing a custom HTTP shortener with a delete request deletes
+  the test link again, and says whether that worked
+- Local API: uploads have `shortUrl` (null without one) and their formats
+  use it; `short=1` or `short=0` on an upload overrides the destination
+  for that upload; `GET` and `POST /v1/uploads/{id}/short-link` read
+  (with clicks) or create an upload's short link; moving an object
+  reports `shortLinkStatus`, and deleting one cleans up its uploads'
+  short links
+- Webhooks and scripts after an upload get `upload.shortUrl` (null
+  without one), also for watched folders
+- Share to Another Device carries the destination's short link settings
+  and token, in the same format as the Mac app
+
+### Fixed
+
+- Import from Another Device keeps the destination's Cloudflare API token
+  that came with it
 
 ## [0.9.0] - 2026-10-06
 

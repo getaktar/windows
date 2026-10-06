@@ -1420,3 +1420,28 @@ body {
   background: var(--colorNeutralBackground1);
   border: 1px solid var(--colorNeutralStroke2);
 }
+
+/* Short links: the custom HTTP request's fields, the ShareX consent
+   screen, and an upload's short links in History. */
+.mono,
+.mono textarea {
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+.consent-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  align-items: baseline;
+}
+
+.short-link-older {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.short-link-badge {
+  flex-shrink: 0;
+}

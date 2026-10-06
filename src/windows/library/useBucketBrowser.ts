@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorMessage, events, type BucketObject, type DestinationConfig, type UploadSucceeded } from "../../lib/api";
 import { folderDisplayName, nameOfKey, parentOfFolder, parentOfKey, resolvePublicUrl } from "../../lib/format";
 import { useTauriEvent } from "../../lib/hooks";
+import { useI18n } from "../../lib/i18n";
 
 export const MAX_SEARCH_RESULTS = 2000;
 
@@ -65,6 +66,7 @@ const byKey = (a: BucketObject, b: BucketObject) => (a.key < b.key ? -1 : a.key 
 const withForwardSlashes = (path: string) => path.replace(/\\/g, "/");
 
 export function useBucketBrowser(destination: DestinationConfig) {
+  const { t } = useI18n();
   const id = destination.id;
   const [prefix, setPrefix] = useState("");
   const [folders, setFolders] = useState<string[]>([]);
@@ -360,8 +362,22 @@ export function useBucketBrowser(destination: DestinationConfig) {
       if (!cleaned || cleaned === object.key) return null;
       setBusy(object.key, true);
       try {
-        const newKey = await api.bucketMove(id, object.key, cleaned);
+        const { key: newKey, keptOriginal } = await api.bucketMove(id, object.key, cleaned);
         const moved: BucketObject = { key: newKey, size: object.size, lastModified: Date.now() };
+        if (keptOriginal) {
+          // A short link couldn't follow it, so the original stays too.
+          addToIndex(moved);
+          if (parentOfKey(newKey) === prefixRef.current) {
+            setObjects((list) => [...list.filter((existing) => existing.key !== newKey), moved].sort(byKey));
+          }
+          setActionError(
+            t(
+              "The file was copied to “{0}”, but its short link couldn’t be updated, so the original file was kept where it was. The short link may still point there.",
+              newKey,
+            ),
+          );
+          return null;
+        }
         previewURLs.current.delete(object.key);
         removeFromIndex(object.key);
         addToIndex(moved);
@@ -383,7 +399,7 @@ export function useBucketBrowser(destination: DestinationConfig) {
         setBusy(object.key, false);
       }
     },
-    [id, addToIndex, removeFromIndex],
+    [id, addToIndex, removeFromIndex, t],
   );
 
   const breadcrumbs = useMemo(() => {

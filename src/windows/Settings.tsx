@@ -562,7 +562,7 @@ function OutputSettings() {
                 }}
               />
               <Text size={100} className="secondary">
-                {t("Available variables: {url} {filename} {name} {ext}")}
+                {t("Available variables: {url} {shortUrl} {longUrl} {filename} {name} {ext}")}
               </Text>
             </div>
           )}
