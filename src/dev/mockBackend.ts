@@ -499,7 +499,7 @@ export function installMockBackend(route: string) {
                 String(args.token).includes("bad")
                   ? reject("Invalid API Token")
                   : resolve({
-                      tokenId: "0123456789abcdef0123456789abcdef",
+                      tokenId: "0123456789abcdef0123456789abcdef", // gitleaks:allow (sample)
                       accounts: new URLSearchParams(window.location.search).has("onecf")
                         ? [{ id: "a1", name: "Mert's Account" }]
                         : [

@@ -1,0 +1,4 @@
+# Test values, not secrets: the mock backend's sample token ID, and the
+# SHA-256 of "abc" (the standard test vector) in the R2 key derivation test.
+679c69e240eddc11135fab4e2c5fbb449ce3078f:src/dev/mockBackend.ts:generic-api-key:502
+679c69e240eddc11135fab4e2c5fbb449ce3078f:src-tauri/src/cloudflare_setup.rs:generic-api-key:250

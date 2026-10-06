@@ -247,7 +247,8 @@ mod tests {
     fn credentials_are_the_token_id_and_its_sha256() {
         let keys = credentials("token-id", "abc");
         assert_eq!(keys.access_key_id, "token-id");
-        assert_eq!(keys.secret_access_key, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        // SHA-256 of "abc", the standard test vector.
+        assert_eq!(keys.secret_access_key, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"); // gitleaks:allow
         assert!(keys.session_token.is_none() && keys.cloudflare_token.is_none());
     }
 
