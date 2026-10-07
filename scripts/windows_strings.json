@@ -5476,5 +5476,41 @@
     "uk": "Папка Uploaded веде за межі папки, що відстежується.",
     "id": "Folder Uploaded mengarah ke luar folder yang dipantau.",
     "vi": "Thư mục Uploaded trỏ ra ngoài thư mục được theo dõi."
+  },
+  "Resume Watched Folders?": {
+    "tr": "İzlenen Klasörler Devam Ettirilsin mi?",
+    "de": "Überwachte Ordner fortsetzen?",
+    "fr": "Reprendre les dossiers surveillés ?",
+    "es": "¿Reanudar las carpetas vigiladas?",
+    "pt-BR": "Retomar as pastas monitoradas?",
+    "ja": "監視フォルダを再開しますか？",
+    "zh-Hans": "要恢复监视的文件夹吗？",
+    "zh-Hant": "要恢復監看的資料夾嗎？",
+    "ko": "감시 폴더를 다시 시작하시겠습니까?",
+    "it": "Riprendere le cartelle monitorate?",
+    "nl": "Bewaakte mappen hervatten?",
+    "pl": "Wznowić obserwowane foldery?",
+    "ru": "Возобновить отслеживаемые папки?",
+    "uk": "Відновити папки, що відстежуються?",
+    "id": "Lanjutkan folder yang dipantau?",
+    "vi": "Tiếp tục các thư mục được theo dõi?"
+  },
+  "A link asked Aktar to resume watched folders you paused.": {
+    "tr": "Bir bağlantı, Aktar'dan duraklattığın izlenen klasörleri devam ettirmesini istedi.",
+    "de": "Ein Link hat Aktar gebeten, die von dir pausierten überwachten Ordner fortzusetzen.",
+    "fr": "Un lien a demandé à Aktar de reprendre les dossiers surveillés que vous avez mis en pause.",
+    "es": "Un enlace pidió a Aktar que reanude las carpetas vigiladas que pausaste.",
+    "pt-BR": "Um link pediu ao Aktar para retomar as pastas monitoradas que você pausou.",
+    "ja": "リンクが、一時停止した監視フォルダの再開をAktarに求めました。",
+    "zh-Hans": "有链接请求 Aktar 恢复你已暂停的监视文件夹。",
+    "zh-Hant": "有連結要求 Aktar 恢復你已暫停的監看資料夾。",
+    "ko": "링크에서 일시 중지한 감시 폴더를 다시 시작하도록 Aktar에 요청했습니다.",
+    "it": "Un link ha chiesto ad Aktar di riprendere le cartelle monitorate che hai messo in pausa.",
+    "nl": "Een link vroeg Aktar om de bewaakte mappen die je hebt gepauzeerd te hervatten.",
+    "pl": "Link poprosił Aktar o wznowienie obserwowanych folderów, które zostały przez ciebie wstrzymane.",
+    "ru": "Ссылка попросила Aktar возобновить отслеживаемые папки, которые вы приостановили.",
+    "uk": "Посилання попросило Aktar відновити папки, що відстежуються, які ви призупинили.",
+    "id": "Sebuah tautan meminta Aktar melanjutkan folder yang dipantau yang Anda jeda.",
+    "vi": "Một liên kết đã yêu cầu Aktar tiếp tục các thư mục được theo dõi mà bạn đã tạm dừng."
   }
 }

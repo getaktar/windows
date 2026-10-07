@@ -56,7 +56,7 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
         "library" => crate::windows::open(&core.app, AppWindow::Library),
         "settings" => crate::windows::open(&core.app, AppWindow::Settings),
         "watch" => match url.path().trim_matches('/').to_ascii_lowercase().as_str() {
-            // Off the UI thread: they write the folder list. Pausing is
+            // Off the UI thread: they write the folder list. Both are
             // asked about first; minutes that aren't a number from 1 up
             // make the link do nothing.
             "pause" => {
@@ -72,9 +72,19 @@ pub fn handle(core: &SharedCore, link: &str, launched_app: bool) {
                     }
                 });
             }
+            // Asked about too, when they're paused: the user paused them.
             "resume" => {
+                let paused = core.watched.engine.store.get().paused_until.is_active(crate::util::now_millis());
+                if !paused {
+                    return;
+                }
                 let core = core.clone();
-                tauri::async_runtime::spawn_blocking(move || crate::watched::resume(&core));
+                tauri::async_runtime::spawn(async move {
+                    let message = t!("A link asked Aktar to resume watched folders you paused.");
+                    if ask(&core.app, t!("Resume Watched Folders?"), message, t!("Resume")).await {
+                        let _ = tauri::async_runtime::spawn_blocking(move || crate::watched::resume(&core)).await;
+                    }
+                });
             }
             _ => crate::watched::show_settings(core),
         },
