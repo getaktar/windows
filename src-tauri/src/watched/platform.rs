@@ -5,6 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::t;
+
 /// One look at a file: everything the rules and the write-complete check
 /// need, from a single handle on Windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -307,24 +309,71 @@ pub fn move_to_trash(path: &Path) -> Result<(), String> {
     trash::delete(path).map_err(|error| error.to_string())
 }
 
+/// Whether the file at `path` is really in the watched folder `root`: no
+/// folder on its way is a link or junction that leads elsewhere, and it's
+/// no link itself. Checked again right before a file is moved, since a
+/// folder can be swapped for a junction after the scan.
+pub fn is_inside(root: &Path, path: &Path) -> bool {
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else { return false };
+    let is_link = std::fs::symlink_metadata(path).map_or(true, |metadata| metadata.file_type().is_symlink());
+    match (super::rules::real_path(root), super::rules::real_path(parent)) {
+        (Some(root), Some(parent)) => !is_link && parent.starts_with(&root) && parent.join(name) != root,
+        _ => false,
+    }
+}
+
 /// Moves a file into `<folder>/Uploaded/`, as "name (2).ext" when the name
-/// is taken there. Returns where it went.
+/// is taken there; never over another file, even one that appears at that
+/// name meanwhile. Refuses an Uploaded folder that's a link or junction to
+/// somewhere else. Returns where it went.
 pub fn move_to_uploaded(root: &Path, path: &Path) -> std::io::Result<PathBuf> {
     let target_folder = root.join(super::rules::UPLOADED_FOLDER);
     std::fs::create_dir_all(&target_folder)?;
+    let leads_elsewhere = std::fs::symlink_metadata(&target_folder).map_or(true, |metadata| metadata.file_type().is_symlink())
+        || match (super::rules::real_path(root), super::rules::real_path(&target_folder)) {
+            (Some(root), Some(target)) => target != root.join(super::rules::UPLOADED_FOLDER),
+            _ => true,
+        };
+    if leads_elsewhere {
+        return Err(std::io::Error::other(t!("The Uploaded folder leads outside the watched folder.")));
+    }
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
     let (stem, extension) = crate::util::split_extension(&name);
     let mut target = target_folder.join(&name);
     let mut number = 2;
-    while target.exists() {
-        target = target_folder.join(match extension {
-            "" => format!("{stem} ({number})"),
-            extension => format!("{stem} ({number}).{extension}"),
-        });
-        number += 1;
+    loop {
+        match move_without_replacing(path, &target) {
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && number < 10_000 => {
+                target = target_folder.join(match extension {
+                    "" => format!("{stem} ({number})"),
+                    extension => format!("{stem} ({number}).{extension}"),
+                });
+                number += 1;
+            }
+            Err(error) => return Err(error),
+            Ok(()) => return Ok(target),
+        }
     }
-    std::fs::rename(path, &target)?;
-    Ok(target)
+}
+
+/// A rename that fails with `AlreadyExists` instead of replacing a file
+/// at `to` (`std::fs::rename` replaces it on Windows).
+#[cfg(windows)]
+fn move_without_replacing(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+    let wide = |path: &Path| path.as_os_str().encode_wide().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    // No MOVEFILE_REPLACE_EXISTING (nor COPY_ALLOWED: it stays on the volume).
+    if unsafe { MoveFileExW(wide(from).as_ptr(), wide(to).as_ptr(), 0) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn move_without_replacing(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::hard_link(from, to)?;
+    std::fs::remove_file(from)
 }
 
 #[cfg(test)]
@@ -342,6 +391,31 @@ mod tests {
         assert_eq!(std::fs::read(dir.join("Uploaded/a.png")).unwrap(), b"old");
         std::fs::write(dir.join("README"), b"x").unwrap();
         assert_eq!(move_to_uploaded(&dir, &dir.join("README")).unwrap(), dir.join("Uploaded/README"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn checks_that_files_are_still_in_the_folder() {
+        let dir = std::env::temp_dir().join(format!("aktar-inside-{}", crate::util::new_id()));
+        std::fs::create_dir_all(dir.join("Watched/sub")).unwrap();
+        std::fs::write(dir.join("Watched/sub/a.png"), b"x").unwrap();
+        std::fs::write(dir.join("outside.png"), b"x").unwrap();
+        assert!(is_inside(&dir.join("Watched"), &dir.join("Watched/sub/a.png")));
+        assert!(!is_inside(&dir.join("Watched"), &dir.join("Watched/sub/missing.png")));
+        assert!(!is_inside(&dir.join("Watched"), &dir.join("Watched/../outside.png")));
+        assert!(!is_inside(&dir.join("Watched/sub"), &dir.join("Watched/sub")));
+        #[cfg(unix)]
+        {
+            // A folder swapped for a link to elsewhere, and an Uploaded
+            // folder that is one.
+            std::fs::create_dir_all(dir.join("Elsewhere")).unwrap();
+            std::fs::write(dir.join("Elsewhere/b.png"), b"x").unwrap();
+            std::os::unix::fs::symlink(dir.join("Elsewhere"), dir.join("Watched/swapped")).unwrap();
+            assert!(!is_inside(&dir.join("Watched"), &dir.join("Watched/swapped/b.png")));
+            std::os::unix::fs::symlink(dir.join("Elsewhere"), dir.join("Watched/Uploaded")).unwrap();
+            assert!(move_to_uploaded(&dir.join("Watched"), &dir.join("Watched/sub/a.png")).is_err());
+            assert!(dir.join("Watched/sub/a.png").exists());
+        }
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

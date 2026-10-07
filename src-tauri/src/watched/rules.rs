@@ -387,6 +387,40 @@ pub fn forbidden(path: &Path, protected: &Protected, watched: &[(PathBuf, String
     None
 }
 
+/// `path` with links and junctions resolved, written without Windows'
+/// `\\?\` prefix so it compares with other paths; None when it doesn't
+/// exist.
+pub fn real_path(path: &Path) -> Option<PathBuf> {
+    let real = std::fs::canonicalize(path).ok()?;
+    Some(without_verbatim_prefix(&real.to_string_lossy()).map(PathBuf::from).unwrap_or(real))
+}
+
+/// "\\?\C:\a" as "C:\a", and "\\?\UNC\server\share" as "\\server\share".
+fn without_verbatim_prefix(text: &str) -> Option<String> {
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        Some(format!(r"\\{rest}"))
+    } else {
+        text.strip_prefix(r"\\?\").map(str::to_string)
+    }
+}
+
+/// `forbidden`, and the same for where the folder really is: a link or
+/// junction that leads into a protected folder (or one already watched)
+/// is refused like that folder.
+pub fn forbidden_on_disk(path: &Path, protected: &Protected, watched: &[(PathBuf, String)]) -> Option<Forbidden> {
+    forbidden(path, protected, watched).or_else(|| {
+        let real = real_path(path)?;
+        let resolved = |path: &PathBuf| real_path(path).unwrap_or_else(|| path.clone());
+        let protected = Protected {
+            home: protected.home.as_ref().map(resolved),
+            system: protected.system.iter().map(resolved).collect(),
+            app: protected.app.iter().map(resolved).collect(),
+        };
+        let watched: Vec<(PathBuf, String)> = watched.iter().map(|(path, name)| (resolved(path), name.clone())).collect();
+        forbidden(&real, &protected, &watched)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,5 +564,27 @@ mod tests {
         );
         assert_eq!(forbidden(&home.join("Pictures/Screenshots2"), &protected, &watched), None);
         assert_eq!(forbidden(&home.join("Desktop"), &protected, &watched), None);
+    }
+
+    #[test]
+    fn compares_real_paths_without_the_verbatim_prefix() {
+        assert_eq!(without_verbatim_prefix(r"\\?\C:\Users\me\AppData"), Some(r"C:\Users\me\AppData".to_string()));
+        assert_eq!(without_verbatim_prefix(r"\\?\UNC\server\share\a"), Some(r"\\server\share\a".to_string()));
+        assert_eq!(without_verbatim_prefix(r"C:\a"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_links_into_protected_folders() {
+        let base = std::env::temp_dir().join(format!("aktar-forbidden-link-{}", crate::util::new_id()));
+        let app = base.join("AktarLocalAPI");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::create_dir_all(base.join("Pictures")).unwrap();
+        std::os::unix::fs::symlink(&app, base.join("Shortcut")).unwrap();
+        let protected = Protected { home: None, system: Vec::new(), app: vec![app.clone()] };
+        assert_eq!(forbidden(&base.join("Shortcut"), &protected, &[]), None);
+        assert_eq!(forbidden_on_disk(&base.join("Shortcut"), &protected, &[]), Some(Forbidden::AppData));
+        assert_eq!(forbidden_on_disk(&base.join("Pictures"), &protected, &[]), None);
+        std::fs::remove_dir_all(base).unwrap();
     }
 }

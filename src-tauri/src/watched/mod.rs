@@ -493,7 +493,12 @@ fn validate(core: &SharedCore, path: &Path, except: Option<&str>) -> Result<(), 
         .filter(|folder| Some(folder.id.as_str()) != except)
         .map(|folder| (folder.path, folder.name))
         .collect();
-    match rules::forbidden(path, &rules::Protected::current(app_dirs(core)), &watched) {
+    // Also the temp folders files are staged in before they're uploaded
+    // (thumbnails, ZIPs, the local API's bodies).
+    let temp = std::env::temp_dir();
+    let mut protected = app_dirs(core);
+    protected.extend([temp.join("Aktar"), temp.join("AktarLocalAPI")]);
+    match rules::forbidden_on_disk(path, &rules::Protected::current(protected), &watched) {
         Some(reason) => Err(reason.message()),
         None => Ok(()),
     }

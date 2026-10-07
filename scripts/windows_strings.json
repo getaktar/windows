@@ -5440,5 +5440,41 @@
     "uk": "Зберегти правила «Використовувати для»",
     "id": "Pertahankan aturan “Gunakan untuk”",
     "vi": "Giữ quy tắc “Dùng cho”"
+  },
+  "{0} was uploaded, but it’s no longer inside the watched folder, so the original was kept.": {
+    "tr": "{0} yüklendi, ancak artık izlenen klasörün içinde olmadığı için asıl dosya yerinde bırakıldı.",
+    "de": "{0} wurde hochgeladen, liegt aber nicht mehr im überwachten Ordner, daher wurde das Original behalten.",
+    "fr": "{0} a été envoyé, mais il n’est plus dans le dossier surveillé : l’original a été conservé.",
+    "es": "{0} se subió, pero ya no está dentro de la carpeta vigilada, así que se conservó el original.",
+    "pt-BR": "{0} foi enviado, mas não está mais dentro da pasta monitorada, então o original foi mantido.",
+    "ja": "{0}はアップロードされましたが、監視フォルダ内にもうないため、元のファイルは残しました。",
+    "zh-Hans": "{0} 已上传，但它已不在监视的文件夹中，因此保留了原文件。",
+    "zh-Hant": "{0} 已上傳，但它已不在監看的資料夾中，因此保留了原始檔案。",
+    "ko": "{0}이(가) 업로드되었지만 더 이상 감시 폴더 안에 없으므로 원본을 그대로 두었습니다.",
+    "it": "{0} è stato caricato, ma non si trova più nella cartella monitorata, quindi l’originale è stato mantenuto.",
+    "nl": "{0} is geüpload, maar staat niet meer in de bewaakte map, dus het origineel is bewaard.",
+    "pl": "{0} został przesłany, ale nie znajduje się już w obserwowanym folderze, więc oryginał został zachowany.",
+    "ru": "Файл {0} загружен, но он больше не находится в отслеживаемой папке, поэтому оригинал оставлен.",
+    "uk": "Файл {0} вивантажено, але він уже не в папці, що відстежується, тому оригінал залишено.",
+    "id": "{0} sudah diunggah, tetapi tidak lagi berada di dalam folder yang dipantau, jadi file aslinya dipertahankan.",
+    "vi": "{0} đã được tải lên, nhưng không còn nằm trong thư mục được theo dõi, nên tệp gốc được giữ lại."
+  },
+  "The Uploaded folder leads outside the watched folder.": {
+    "tr": "Uploaded klasörü, izlenen klasörün dışına çıkıyor.",
+    "de": "Der Ordner „Uploaded“ führt aus dem überwachten Ordner heraus.",
+    "fr": "Le dossier Uploaded mène hors du dossier surveillé.",
+    "es": "La carpeta Uploaded lleva fuera de la carpeta vigilada.",
+    "pt-BR": "A pasta Uploaded leva para fora da pasta monitorada.",
+    "ja": "Uploadedフォルダが監視フォルダの外を指しています。",
+    "zh-Hans": "Uploaded 文件夹指向监视的文件夹之外。",
+    "zh-Hant": "Uploaded 資料夾指向監看的資料夾之外。",
+    "ko": "Uploaded 폴더가 감시 폴더 바깥을 가리킵니다.",
+    "it": "La cartella Uploaded porta fuori dalla cartella monitorata.",
+    "nl": "De map Uploaded leidt naar buiten de bewaakte map.",
+    "pl": "Folder Uploaded prowadzi poza obserwowany folder.",
+    "ru": "Папка Uploaded ведет за пределы отслеживаемой папки.",
+    "uk": "Папка Uploaded веде за межі папки, що відстежується.",
+    "id": "Folder Uploaded mengarah ke luar folder yang dipantau.",
+    "vi": "Thư mục Uploaded trỏ ra ngoài thư mục được theo dõi."
   }
 }

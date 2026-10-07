@@ -1414,6 +1414,10 @@ impl<H: Host> Engine<H> {
         match folder.after_upload {
             AfterUpload::Keep | AfterUpload::Tag => {}
             _ if !verified => problem = Some(t!("{0} was uploaded, but Aktar couldn’t confirm it in the bucket, so the original was kept.", uploaded.filename)),
+            // A folder on its way was swapped for a junction since the scan.
+            _ if !platform::is_inside(&folder.path, &path) => {
+                problem = Some(t!("{0} was uploaded, but it’s no longer inside the watched folder, so the original was kept.", uploaded.filename))
+            }
             AfterUpload::Trash => {
                 self.ledger.remove(folder_id, relative);
                 if let Err(error) = platform::move_to_trash(&path) {
