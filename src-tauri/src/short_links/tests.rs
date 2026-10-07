@@ -390,6 +390,10 @@ async fn engine_create_and_errors() {
 
     transport.respond(200, r#"{"nothing":"here"}"#);
     assert_eq!(engine.create("https://f.example.com/a.png", None).await.unwrap_err(), ShortLinkError::NoShortLink("shortUrl".into()));
+    for short in ["javascript:alert(1)", "data:text/html,x", "file:///C:/x"] {
+        transport.respond(200, &format!(r#"{{"shortUrl":"{short}"}}"#));
+        assert_eq!(engine.create("https://f.example.com/a.png", None).await.unwrap_err(), ShortLinkError::NoShortLink("shortUrl".into()), "{short}");
+    }
 
     transport.fail("operation timed out (secret-key)");
     let ShortLinkError::Network(message) = engine.create("https://f.example.com/a.png", None).await.unwrap_err() else { panic!() };

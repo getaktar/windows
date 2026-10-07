@@ -638,7 +638,8 @@ impl<T: Transport> Operations for Engine<T> {
         let json = self.perform(&self.definition.create, &values).await?;
         let path = self.definition.create.short_url_path.clone().unwrap_or_default();
         let short_url = string_at(Some(&path), json.as_ref())
-            .filter(|short| url::Url::parse(short).is_ok())
+            // Only a web link: it's copied, pasted and opened as one.
+            .filter(|short| url::Url::parse(short).is_ok_and(|parsed| matches!(parsed.scheme(), "http" | "https")))
             .ok_or_else(|| ShortLinkError::NoShortLink(path.clone()))?;
         Ok(Created { short_url, provider_id: string_at(self.definition.create.id_path.as_deref(), json.as_ref()) })
     }

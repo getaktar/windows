@@ -40,8 +40,9 @@ pub fn format(long_url: &str, short_url: Option<&str>, mode: OutputMode, filenam
         OutputMode::Url => public_url.to_string(),
         OutputMode::Markdown if is_image(filename) => format!("![]({public_url})"),
         OutputMode::Markdown => format!("[{}]({public_url})", markdown_escaped(filename)),
-        OutputMode::Html if is_image(filename) => format!("<img src=\"{public_url}\" alt=\"\">"),
-        OutputMode::Html => format!("<a href=\"{public_url}\">{}</a>", html_escaped(filename)),
+        // The link is escaped too: a short link comes from the shortener.
+        OutputMode::Html if is_image(filename) => format!("<img src=\"{}\" alt=\"\">", html_escaped(public_url)),
+        OutputMode::Html => format!("<a href=\"{}\">{}</a>", html_escaped(public_url), html_escaped(filename)),
         // The template is the user's own, so nothing is escaped in it.
         OutputMode::Custom => {
             let (name, ext) = split_extension(filename);
@@ -329,6 +330,10 @@ mod tests {
         let url = "https://x.dev/a";
         assert_eq!(format(url, None, OutputMode::Html, "<b>&'\".pdf", ""), "<a href=\"https://x.dev/a\">&lt;b&gt;&amp;&#39;&quot;.pdf</a>");
         assert_eq!(format(url, None, OutputMode::Markdown, "a](evil) \\[1].pdf", ""), "[a\\]\\(evil\\) \\\\\\[1\\].pdf](https://x.dev/a)");
+        assert_eq!(
+            format(url, Some("https://s.dev/x?a=1&b=\"2\""), OutputMode::Html, "a.png", ""),
+            "<img src=\"https://s.dev/x?a=1&amp;b=&quot;2&quot;\" alt=\"\">"
+        );
         // The custom template is the user's own.
         assert_eq!(format(url, None, OutputMode::Custom, "<a>.txt", "{filename}"), "<a>.txt");
     }
