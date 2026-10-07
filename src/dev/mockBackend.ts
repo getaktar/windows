@@ -309,6 +309,9 @@ function mockTransferPayload() {
       objectPathTemplate: "{uuid}.{ext}",
       forcePathStyle: true,
       isDefault: false,
+      // Shown in the import review, off until kept.
+      hooks: [{ id: "H1", kind: "webhook", target: "https://hooks.example.com/aktar", enabled: true }],
+      useFor: { kinds: ["image"], extensions: ["dmg"] },
     },
     credentials: { accessKeyId: "minioadmin", secretAccessKey: "minioadmin" },
     customTemplate: null,

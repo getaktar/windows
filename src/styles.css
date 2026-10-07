@@ -1320,6 +1320,18 @@ body {
   max-width: 460px;
 }
 
+.import-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.import-review dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .import-testing {
   justify-content: flex-start;
 }

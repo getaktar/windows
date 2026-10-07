@@ -9,6 +9,7 @@ import {
   Field,
   Input,
   Spinner,
+  Switch,
   Text,
 } from "@fluentui/react-components";
 import { CameraRegular, CopyRegular } from "@fluentui/react-icons";
@@ -22,11 +23,15 @@ import {
   type ConnectionResult,
   type DestinationConfig,
   type QrMatrix,
+  type ShortLinkDefinition,
+  type ShortLinkSettings,
   type TransferPayload,
   type TransferShare,
 } from "../lib/api";
+import { useShortLinkProviders } from "../lib/hooks";
 import { useI18n, type Translate } from "../lib/i18n";
 import { ConnectionTestResult } from "./ConnectionTestResult";
+import { fileKindLabel } from "./DestinationForm";
 import { ConfirmDialog } from "./Dialogs";
 import { QrSvg } from "./QrCodeDialog";
 
@@ -71,6 +76,30 @@ function endpointKey(endpoint: string) {
 /** Whether `imported` uploads somewhere else than `existing` does now. */
 function uploadsElsewhere(imported: DestinationConfig, existing: DestinationConfig) {
   return endpointKey(imported.endpoint) !== endpointKey(existing.endpoint) || imported.bucket.trim() !== existing.bucket.trim();
+}
+
+/** Where an address goes, as "host" ("http://host" when it isn't https),
+ * or the address itself when it can't be read. */
+function addressHost(address: string) {
+  const trimmed = address.trim();
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return url.protocol === "https:" ? url.host : `${url.protocol}//${url.host}`;
+  } catch {
+    return trimmed;
+  }
+}
+
+const unique = (values: string[]) => [...new Set(values.filter((value) => value))];
+
+/** Every host a destination's short link requests go to: the provider's or
+ * the destination's endpoint, and any request with an address of its own. */
+function shortLinkHosts(settings: ShortLinkSettings, providers: ShortLinkDefinition[] | null) {
+  const definition = settings.custom ?? providers?.find((provider) => provider.id === settings.providerId);
+  const requests = definition ? [definition.create, definition.delete, definition.update, definition.stats, definition.test] : [];
+  const absolute = requests.map((request) => request?.path ?? "").filter((path) => /^https?:\/\//i.test(path.trim()));
+  const hosts = unique([definition?.baseUrl ?? settings.endpoint ?? "", ...absolute].map(addressHost));
+  return hosts.length > 0 ? hosts : [definition?.name ?? settings.providerId];
 }
 
 /** The text for a `TransferError` from Rust, or the message of anything else. */
@@ -215,7 +244,8 @@ export function ShareDestinationDialog({ share, onClose }: { share: ShareRequest
 
 // MARK: - Import
 
-type Stage = "link" | "code" | "duplicate" | "result";
+type Stage = "link" | "code" | "duplicate" | "review" | "result";
+type SaveMode = "new" | "update" | "copy";
 
 /** The transfer code field: formats what's typed or pasted as
  * XXXX-XXXX-XXXX while keeping the caret after the same character, and
@@ -319,7 +349,15 @@ export function ImportDestinationDialog({
   const [codeError, setCodeError] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [payload, setPayload] = useState<TransferPayload | null>(null);
-  const [existingName, setExistingName] = useState("");
+  const [existing, setExisting] = useState<DestinationConfig | null>(null);
+  const existingName = existing?.name ?? "";
+  /** How the reviewed destination is saved. */
+  const [mode, setMode] = useState<SaveMode>("new");
+  /** The review's choices: webhooks and "Use For" rules come in only when
+   * they're turned on. */
+  const [keepWebhooks, setKeepWebhooks] = useState(false);
+  const [keepUseFor, setKeepUseFor] = useState(false);
+  const providers = useShortLinkProviders();
   /** Set when "Update Existing" would make it upload somewhere else. */
   const [movesUploads, setMovesUploads] = useState(false);
   /** The destination as saved, and whether it replaced one with its ID. */
@@ -361,6 +399,9 @@ export function ImportDestinationDialog({
     setCodeError(null);
     setIsWorking(false);
     setPayload(null);
+    setExisting(null);
+    setKeepWebhooks(false);
+    setKeepUseFor(false);
     setSaved(null);
     setIsTesting(false);
     setTestResult(null);
@@ -464,14 +505,17 @@ export function ImportDestinationDialog({
     try {
       const opened = await api.openTransfer(link, code);
       const destinations = await api.listDestinations();
-      const existing = destinations.find((destination) => destination.id.toUpperCase() === opened.destination.id.toUpperCase());
+      const match = destinations.find((destination) => destination.id.toUpperCase() === opened.destination.id.toUpperCase());
       setPayload(opened);
-      if (existing) {
-        setExistingName(existing.name);
-        setMovesUploads(uploadsElsewhere(opened.destination, existing));
+      setExisting(match ?? null);
+      setKeepWebhooks(false);
+      setKeepUseFor(false);
+      if (match) {
+        setMovesUploads(uploadsElsewhere(opened.destination, match));
         setStage("duplicate");
       } else {
-        await save(opened, "new");
+        setMode("new");
+        setStage("review");
       }
     } catch (error) {
       setCodeError(transferErrorMessage(error, t));
@@ -481,27 +525,40 @@ export function ImportDestinationDialog({
     }
   };
 
-  /** Saves the destination as it came (a copy under a new ID for "Add as
-   * Copy"), then tests its connection. */
-  const save = async (opened: TransferPayload, mode: "new" | "update" | "copy") => {
+  /** Saves the destination as it came, with only what the review kept (a
+   * copy under a new ID for "Add as Copy"), then tests its connection.
+   * Updating one keeps its own webhooks and rules where the imported ones
+   * weren't kept. */
+  const save = async (opened: TransferPayload, mode: SaveMode) => {
+    const kept = mode === "update" ? existing : null;
+    const webhooks = opened.destination.hooks?.filter((hook) => hook.kind === "webhook") ?? [];
+    const reviewed: DestinationConfig = {
+      ...opened.destination,
+      hooks: keepWebhooks && webhooks.length > 0 ? webhooks : (kept?.hooks ?? null),
+      useFor: keepUseFor ? (opened.destination.useFor ?? null) : (kept?.useFor ?? null),
+    };
     const config =
-      mode === "copy"
-        ? { ...opened.destination, id: crypto.randomUUID().toUpperCase(), name: t("{0} Copy", opened.destination.name) }
-        : opened.destination;
+      mode === "copy" ? { ...reviewed, id: crypto.randomUUID().toUpperCase(), name: t("{0} Copy", opened.destination.name) } : reviewed;
     const destination = await api.importDestination(config, opened.credentials, opened.customTemplate);
     setSaved({ destination, updated: mode === "update" });
     setStage("result");
     testConnection(destination);
   };
 
-  /** From the duplicate question: errors go back to the code step. */
-  const saveDuplicate = async (mode: "update" | "copy") => {
-    if (!payload) return;
-    setStage("code");
+  /** From the duplicate question: on to the review. */
+  const reviewDuplicate = (mode: "update" | "copy") => {
+    setMode(mode);
+    setStage("review");
+  };
+
+  /** "Import" in the review: errors go back to the code step. */
+  const saveReviewed = async () => {
+    if (!payload || isWorking) return;
     setIsWorking(true);
     try {
       await save(payload, mode);
     } catch (error) {
+      setStage("code");
       setCodeError(transferErrorMessage(error, t));
     } finally {
       setIsWorking(false);
@@ -538,6 +595,7 @@ export function ImportDestinationDialog({
               event.preventDefault();
               if (stage === "link" && link.trim()) submitLink(link);
               if (stage === "code") submitCode();
+              if (stage === "review") saveReviewed();
               if (stage === "result") close();
             }}
           >
@@ -596,6 +654,16 @@ export function ImportDestinationDialog({
                   </Field>
                 </DialogContent>
               )}
+              {stage === "review" && payload && (
+                <ImportReview
+                  payload={payload}
+                  providers={providers}
+                  keepWebhooks={keepWebhooks}
+                  onKeepWebhooks={setKeepWebhooks}
+                  keepUseFor={keepUseFor}
+                  onKeepUseFor={setKeepUseFor}
+                />
+              )}
               {stage === "result" && saved && (
                 <DialogContent className="dialog-stack">
                   <Text weight="semibold">
@@ -627,10 +695,10 @@ export function ImportDestinationDialog({
                   <Button
                     appearance="primary"
                     type="submit"
-                    disabled={isWorking || (stage === "link" ? !link.trim() : !normalizeCode(code))}
+                    disabled={isWorking || (stage === "link" ? !link.trim() : stage === "code" && !normalizeCode(code))}
                     icon={isWorking ? <Spinner size="tiny" /> : undefined}
                   >
-                    {t("Continue")}
+                    {stage === "review" ? t("Import") : t("Continue")}
                   </Button>
                 </DialogActions>
               )}
@@ -650,10 +718,79 @@ export function ImportDestinationDialog({
             : undefined
         }
         confirmLabel={t("Update Existing")}
-        alternative={{ label: t("Add as Copy"), onSelect: () => saveDuplicate("copy") }}
-        onConfirm={() => saveDuplicate("update")}
+        alternative={{ label: t("Add as Copy"), onSelect: () => reviewDuplicate("copy") }}
+        onConfirm={() => reviewDuplicate("update")}
         onCancel={close}
       />
     </>
+  );
+}
+
+/** Before an imported destination is saved: where it sends files, links
+ * and upload details, and whether its webhooks and "Use For" rules come
+ * along (off unless turned on here). */
+function ImportReview({
+  payload,
+  providers,
+  keepWebhooks,
+  onKeepWebhooks,
+  keepUseFor,
+  onKeepUseFor,
+}: {
+  payload: TransferPayload;
+  providers: ShortLinkDefinition[] | null;
+  keepWebhooks: boolean;
+  onKeepWebhooks: (keep: boolean) => void;
+  keepUseFor: boolean;
+  onKeepUseFor: (keep: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const destination = payload.destination;
+  const webhooks = (destination.hooks ?? []).filter((hook) => hook.kind === "webhook");
+  const useFor = [
+    ...(destination.useFor?.kinds ?? []).map((kind) => fileKindLabel(kind, t)),
+    ...(destination.useFor?.extensions ?? []).map((extension) => `.${extension}`),
+  ];
+  const template = destination.outputMode === "custom" ? payload.customTemplate?.trim() : null;
+  const rows: [string, string[]][] = [
+    [t("Endpoint"), [addressHost(destination.endpoint)]],
+    [t("Bucket"), [destination.bucket]],
+    [t("Public Base URL"), destination.publicBaseURL.trim() ? [addressHost(destination.publicBaseURL)] : []],
+    [t("Short Links"), destination.shortLinks ? shortLinkHosts(destination.shortLinks, providers) : []],
+    [t("After Upload"), unique(webhooks.map((hook) => addressHost(hook.target)))],
+    [t("Use For"), useFor],
+    [t("Template"), template ? [template] : []],
+  ];
+
+  return (
+    <DialogContent className="dialog-stack">
+      <Text size={200}>
+        {t("Check where this destination sends your files, links and upload details. Only import it if you trust where this link came from.")}
+      </Text>
+      <dl className="import-review">
+        {rows
+          .filter(([, values]) => values.length > 0)
+          .map(([label, values]) => (
+            <div key={label}>
+              <dt className="secondary">{label}</dt>
+              {values.map((value) => (
+                <dd key={value} className="selectable">
+                  {value}
+                </dd>
+              ))}
+            </div>
+          ))}
+      </dl>
+      {webhooks.length > 0 && (
+        <Switch
+          label={t("Keep webhooks ({0})", webhooks.length)}
+          checked={keepWebhooks}
+          onChange={(_, data) => onKeepWebhooks(data.checked)}
+        />
+      )}
+      {useFor.length > 0 && (
+        <Switch label={t("Keep Use For rules")} checked={keepUseFor} onChange={(_, data) => onKeepUseFor(data.checked)} />
+      )}
+    </DialogContent>
   );
 }

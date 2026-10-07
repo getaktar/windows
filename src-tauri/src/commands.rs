@@ -414,6 +414,10 @@ pub fn import_destination(
     if let Some(existing) = &existing {
         config.id = existing.id.clone();
     }
+    // A transfer never carries scripts (`transfer::hooks`), but this
+    // command takes the destination from the window: the same check as a
+    // save.
+    check_destination_hooks(&core, &config)?;
     let custom = config.output_mode == Some(crate::output::OutputMode::Custom);
     config.sanitize();
     // The tokens come along with the keys: a short link token only with the
