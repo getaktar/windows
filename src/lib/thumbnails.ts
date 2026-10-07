@@ -17,9 +17,9 @@ export function thumbnailPrefixProblem(raw: string, t: Translate): string | null
   const prefix = normalizedThumbnailPrefix(raw);
   if (!prefix) return t("Enter a folder for the thumbnails.");
   const segments = prefix.slice(0, -1).split("/");
-  if (/[\u0000-\u001f\u007f]/.test(prefix) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+  if (/[\u0000-\u001f\u007f\\:]/.test(prefix) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
     return t(
-      "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.",
+      "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.",
       prefix,
     );
   }

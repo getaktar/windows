@@ -199,7 +199,10 @@ async fn make(
     if std::fs::create_dir_all(&folder).is_err() {
         return Outcome::Failed;
     }
-    let file = folder.join(&name);
+    let Some(file) = staged_file(&folder, &name) else {
+        let _ = std::fs::remove_dir_all(&folder);
+        return Outcome::Unavailable;
+    };
     let downloaded = storage.download(object_key, &file, MAX_SOURCE_BYTES).await;
     let outcome = match downloaded {
         Ok(false) => Outcome::Unavailable,
@@ -216,6 +219,15 @@ async fn make(
     };
     let _ = std::fs::remove_dir_all(&folder);
     outcome
+}
+
+/// Where an object is downloaded to make its thumbnail: a fixed name in
+/// `folder`, with only the extension of the key's name (letters and digits).
+/// The name itself comes from whoever wrote the object, and on Windows a
+/// "\\", ".." or "C:" in it would lead the download out of the folder.
+fn staged_file(folder: &Path, name: &str) -> Option<PathBuf> {
+    let file = folder.join(crate::local_api::staged_name("source", name));
+    (file.parent() == Some(folder)).then_some(file)
 }
 
 /// Whether what's at a thumbnail's key really is one: a WebP image of
@@ -293,5 +305,34 @@ pub fn prune(folder: &Path) {
             }
             Err(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn downloads_under_a_fixed_name_in_the_temp_folder() {
+        let folder = std::env::temp_dir().join("Aktar").join("thumbnail-test");
+        let staged = |key: &str| staged_file(&folder, crate::bucket::split_key(key).1).unwrap();
+        assert_eq!(staged("shots/photo.PNG"), folder.join("source.PNG"));
+        assert_eq!(staged("clip.mov"), folder.join("source.mov"));
+        // Keys written by other clients, which Windows reads as paths.
+        for key in [
+            "shots/..\\..\\..\\..\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\a.vbs",
+            "shots/C:\\Users\\me\\Documents\\report.pdf\\x",
+            "shots/C:evil.dll:stream",
+            "shots/\\\\host\\share\\x",
+            "../../x",
+            "shots/..",
+        ] {
+            let file = staged(key);
+            assert_eq!(file.parent(), Some(folder.as_path()), "{key}");
+            let name = file.file_name().unwrap().to_str().unwrap();
+            assert!(name == "source" || name.starts_with("source."), "{key}: {name}");
+            assert!(!name.contains(['\\', ':', '/']), "{key}: {name}");
+        }
+        assert_eq!(staged("shots/..\\..\\Startup\\a.png"), folder.join("source.png"));
     }
 }

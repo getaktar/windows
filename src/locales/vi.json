@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "“Xóa sau” sẽ không được cung cấp cho đích này. Các tệp đã nằm trong tmp/ vẫn bị xóa theo lịch miễn là bucket còn giữ quy tắc của Aktar; nếu xóa các quy tắc, những tệp đó sẽ được giữ vĩnh viễn.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "“{0}” và các tệp trong đó vẫn ở nguyên chỗ cũ, và các tệp đã tải lên vẫn ở trong bucket.",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "Không thể dùng “{0}” làm tên trong bucket. Hãy bỏ dấu “/” ở đầu, “.” và “..” làm tên thư mục, tên thư mục trống (“//”) và ký tự điều khiển.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "Không thể dùng “{0}” làm tên trong bucket. Hãy bỏ dấu “/” ở đầu, “.” và “..” làm tên thư mục, tên thư mục trống (“//”), “\\” và “:”, cùng ký tự điều khiển.",
   "“{0}” is already on this device.": "“{0}” đã có trên thiết bị này.",
   "“{0}” isn't in Aktar's scripts folder.": "“{0}” không nằm trong thư mục tập lệnh của Aktar.",
   "“{0}” was added.": "Đã thêm “{0}”.",

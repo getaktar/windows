@@ -17,13 +17,14 @@ pub fn normalized_folder(raw: &str) -> String {
 
 /// Checks a key, prefix, or folder name the user typed (the bucket
 /// browser, the local API): no "/" at the start, no "." or ".." folders,
-/// no empty folder names ("a//b"), and no control characters. A trailing
-/// "/" (a folder) is fine.
+/// no empty folder names ("a//b"), no "\" or ":" (which Windows reads as
+/// path separators and drives, wherever a key's name becomes a file), and no
+/// control characters. A trailing "/" (a folder) is fine.
 pub fn check_key(key: &str) -> Result<(), String> {
     let segments: Vec<&str> = key.split('/').collect();
     let last = segments.len() - 1;
     let valid = !key.starts_with('/')
-        && !key.chars().any(char::is_control)
+        && !key.chars().any(|c| c.is_control() || c == '\\' || c == ':')
         && segments
             .iter()
             .enumerate()
@@ -31,7 +32,7 @@ pub fn check_key(key: &str) -> Result<(), String> {
     if valid {
         Ok(())
     } else {
-        Err(t!("“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.", key))
+        Err(t!("“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.", key))
     }
 }
 
@@ -176,7 +177,9 @@ mod tests {
         for good in ["a", "a/b.png", "a/b/", "a b/.env", "a/...", "ü/x"] {
             assert!(check_key(good).is_ok(), "{good}");
         }
-        for bad in ["/a", "a//b", "../a", "a/./b", "a/..", "a\u{0}b", "a\nb", "./"] {
+        for bad in [
+            "/a", "a//b", "../a", "a/./b", "a/..", "a\u{0}b", "a\nb", "./", "a\\b.png", "a/..\\..\\x.vbs", "C:\\x", "a/C:x", "a:b.png",
+        ] {
             assert!(check_key(bad).is_err(), "{bad:?}");
         }
         assert_eq!(checked_folder(" ").unwrap(), "");

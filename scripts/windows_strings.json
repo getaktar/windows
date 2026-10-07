@@ -5367,5 +5367,24 @@
     "ru": "Токен хранится в диспетчере учетных данных вместе с ключами этого места назначения, а не в его настройках.",
     "uk": "Токен зберігається в диспетчері облікових даних разом із ключами цього місця призначення, а не в його налаштуваннях.",
     "pl": "Token jest przechowywany w Menedżerze poświadczeń razem z kluczami tego miejsca docelowego, a nie w jego ustawieniach."
+  },
+  "// Security fixes (2026-10)": "Strings added with the security review fixes. Some extend a catalog string (the bucket name rule) until the Mac catalog has the same text.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": {
+    "tr": "“{0}” bucket'ta ad olarak kullanılamaz. Başta “/”, klasör adı olarak “.” ve “..”, boş klasör adları (“//”), “\\” ve “:” ile kontrol karakterleri olmamalı.",
+    "de": "„{0}“ kann im Bucket nicht als Name verwendet werden. Lass ein „/“ am Anfang, „.“ und „..“ als Ordnernamen, leere Ordnernamen („//“), „\\“ und „:“ sowie Steuerzeichen weg.",
+    "fr": "« {0} » ne peut pas servir de nom dans le bucket. Évitez un « / » au début, « . » et « .. » comme noms de dossier, les noms de dossier vides (« // »), « \\ » et « : », et les caractères de contrôle.",
+    "es": "«{0}» no se puede usar como nombre en el bucket. Quita la «/» del principio, «.» y «..» como nombres de carpeta, los nombres de carpeta vacíos («//»), «\\» y «:», y los caracteres de control.",
+    "pt-BR": "“{0}” não pode ser usado como nome no bucket. Tire a “/” do início, “.” e “..” como nomes de pasta, nomes de pasta vazios (“//”), “\\” e “:”, e caracteres de controle.",
+    "ja": "「{0}」はバケット内の名前として使えません。先頭の「/」、フォルダ名としての「.」と「..」、空のフォルダ名（「//」）、「\\」と「:」、制御文字を含めないでください。",
+    "zh-Hans": "“{0}”不能用作存储桶中的名称。请去掉开头的“/”、作为文件夹名的“.”和“..”、空文件夹名（“//”）、“\\”和“:”以及控制字符。",
+    "zh-Hant": "「{0}」無法當作儲存貯體中的名稱。請移除開頭的「/」、當作資料夾名稱的「.」和「..」、空白的資料夾名稱（「//」）、「\\」和「:」以及控制字元。",
+    "ko": "‘{0}’은(는) 버킷에서 이름으로 사용할 수 없습니다. 맨 앞의 ‘/’, 폴더 이름으로 쓰인 ‘.’ 및 ‘..’, 빈 폴더 이름(‘//’), ‘\\’와 ‘:’, 제어 문자는 빼세요.",
+    "it": "“{0}” non può essere usato come nome nel bucket. Evita una “/” all’inizio, “.” e “..” come nomi di cartella, nomi di cartella vuoti (“//”), “\\” e “:”, e caratteri di controllo.",
+    "nl": "‘{0}’ kan niet als naam in de bucket worden gebruikt. Laat een ‘/’ aan het begin, ‘.’ en ‘..’ als mapnamen, lege mapnamen (‘//’), ‘\\’ en ‘:’, en stuurtekens weg.",
+    "pl": "„{0}” nie może być nazwą w buckecie. Usuń „/” z początku, „.” i „..” jako nazwy folderów, puste nazwy folderów („//”), „\\” i „:” oraz znaki sterujące.",
+    "ru": "«{0}» нельзя использовать как имя в бакете. Уберите «/» в начале, «.» и «..» в качестве имен папок, пустые имена папок («//»), «\\» и «:», а также управляющие символы.",
+    "uk": "«{0}» не можна використати як назву в бакеті. Приберіть «/» на початку, «.» і «..» як назви папок, порожні назви папок («//»), «\\» і «:», а також керівні символи.",
+    "id": "“{0}” tidak dapat digunakan sebagai nama di bucket. Hindari “/” di awal, “.” dan “..” sebagai nama folder, nama folder kosong (“//”), “\\” dan “:”, serta karakter kontrol.",
+    "vi": "Không thể dùng “{0}” làm tên trong bucket. Hãy bỏ dấu “/” ở đầu, “.” và “..” làm tên thư mục, tên thư mục trống (“//”), “\\” và “:”, cùng ký tự điều khiển."
   }
 }

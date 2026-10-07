@@ -22,18 +22,28 @@ const SHELL_TIMEOUT: Duration = Duration::from_secs(15);
 /// shell.
 const MAX_DECODED_BYTES: u64 = 80 * 1024 * 1024;
 
-/// Kinds of files that only ever have an icon.
-const ICON_ONLY: [&str; 28] = [
-    "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz", "zst", "cab", "dmg", "iso", "img", "vhd", "vhdx", "exe", "msi", "msix",
-    "appx", "dll", "sys", "bat", "cmd", "ps1", "apk", "ipa", "jar", "pkg",
+/// Kinds of files the `image` crate or the shell's thumbnailers make a
+/// picture of. An allow-list, so a file that only ever has an icon (an
+/// archive, a program, a script) is never written to disk to try.
+const THUMBNAILED: &[&str] = &[
+    // Photos and pictures
+    "png", "jpg", "jpeg", "jpe", "jfif", "gif", "bmp", "dib", "webp", "tif", "tiff", "ico", "heic", "heif", "avif", "jxl", "jxr", "wdp",
+    "hdp", "tga", "qoi", "exr", "hdr", "pnm", "pbm", "pgm", "ppm", "psd", "svg",
+    // Camera RAW
+    "arw", "cr2", "cr3", "crw", "dng", "erf", "kdc", "mrw", "nef", "nrw", "orf", "pef", "raf", "raw", "rw2", "rwl", "sr2", "srf", "srw", "x3f",
+    // Video
+    "mp4", "m4v", "mov", "qt", "avi", "wmv", "asf", "mkv", "webm", "mpg", "mpeg", "m2v", "ts", "mts", "m2ts", "3gp", "3g2", "flv", "ogv",
+    // Documents
+    "pdf", "txt", "md", "rtf", "doc", "docx", "docm", "dot", "dotx", "xls", "xlsx", "xlsm", "ppt", "pptx", "pptm", "pps", "ppsx", "odt",
+    "ods", "odp", "vsd", "vsdx", "pub", "xps", "oxps", "epub",
+    // Audio with cover art
+    "mp3", "m4a", "flac", "wma",
 ];
 
 /// Whether a file of this name could have a thumbnail at all.
 pub fn can_have_thumbnail(filename: &str) -> bool {
-    match crate::util::split_extension(filename) {
-        (_, "") => false,
-        (_, extension) => !ICON_ONLY.contains(&extension.to_ascii_lowercase().as_str()),
-    }
+    let extension = crate::util::split_extension(filename).1.to_ascii_lowercase();
+    THUMBNAILED.contains(&extension.as_str())
 }
 
 /// "RIFF", a length, then "WEBP".
@@ -214,7 +224,9 @@ mod tests {
         for name in ["a.png", "a.mov", "a.mp4", "a.pdf", "a.heic", "a.docx", "a.txt", "a.CR2"] {
             assert!(can_have_thumbnail(name), "{name}");
         }
-        for name in ["a.zip", "a.exe", "a.MSI", "noextension"] {
+        for name in [
+            "a.zip", "a.exe", "a.MSI", "noextension", "a.vbs", "a.js", "a.hta", "a.scr", "a.com", "a.lnk", "a.url", "a.wsf", "a.ps1", "a.bat", "a.dll",
+        ] {
             assert!(!can_have_thumbnail(name), "{name}");
         }
         assert!(!is_webp(b"RIFF0000WAVEdata"));

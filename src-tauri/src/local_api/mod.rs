@@ -7,6 +7,8 @@
 mod router;
 mod server;
 
+pub(crate) use router::staged_name;
+
 use std::sync::Mutex;
 
 use rand::RngCore;

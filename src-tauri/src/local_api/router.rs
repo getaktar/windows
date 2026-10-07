@@ -348,7 +348,7 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     // can't store (CON, "a?b") would fail. Only its extension is kept, for
     // what goes by it (thumbnails, image processing).
     let directory = std::env::temp_dir().join("AktarLocalAPI").join(format!("upload-{}", crate::util::new_id()));
-    let path = directory.join(staged_name(&filename));
+    let path = directory.join(staged_name("upload", &filename));
     let staged = async {
         tokio::fs::create_dir_all(&directory).await?;
         match &request.body_file {
@@ -387,13 +387,15 @@ async fn upload_body(core: &SharedCore, request: &Request) -> Response {
     response
 }
 
-/// "upload", with the caller's extension when it's plain letters and digits.
-fn staged_name(filename: &str) -> String {
+/// `base` ("upload"), with the extension of `filename` when it's plain
+/// letters and digits. Also used for thumbnail downloads, whose names come
+/// from object keys.
+pub(crate) fn staged_name(base: &str, filename: &str) -> String {
     match crate::util::split_extension(filename).1 {
         extension if !extension.is_empty() && extension.len() <= 16 && extension.chars().all(|c| c.is_ascii_alphanumeric()) => {
-            format!("upload.{extension}")
+            format!("{base}.{extension}")
         }
-        _ => "upload".to_string(),
+        _ => base.to_string(),
     }
 }
 
@@ -456,7 +458,7 @@ fn routed(core: &SharedCore, filename: &str) -> Option<DestinationConfig> {
 /// extension of `filename` (see `staged_name`), so it gets a thumbnail.
 async fn staged_body(request: &Request, filename: &str) -> Result<(PathBuf, PathBuf), Response> {
     let directory = std::env::temp_dir().join("AktarLocalAPI").join(format!("upload-{}", crate::util::new_id()));
-    let path = directory.join(staged_name(filename));
+    let path = directory.join(staged_name("upload", filename));
     let staged = async {
         tokio::fs::create_dir_all(&directory).await?;
         match &request.body_file {
@@ -1050,10 +1052,10 @@ mod tests {
 
     #[test]
     fn stages_bodies_under_a_fixed_name_with_their_extension() {
-        assert_eq!(staged_name("Ekran görüntüsü 2026-10-03 180756.png"), "upload.png");
-        assert_eq!(staged_name("clip.MOV"), "upload.MOV");
-        for name in ["noextension", ".env", "a.", "C:evil.dll:stream", "a.p n g", "a.ünï"] {
-            assert_eq!(staged_name(name), "upload", "{name}");
+        assert_eq!(staged_name("upload", "Ekran görüntüsü 2026-10-03 180756.png"), "upload.png");
+        assert_eq!(staged_name("upload", "clip.MOV"), "upload.MOV");
+        for name in ["noextension", ".env", "a.", "C:evil.dll:stream", "a.p n g", "a.ünï", "..\\..\\x", "C:\\a.png\\b"] {
+            assert_eq!(staged_name("upload", name), "upload", "{name}");
         }
     }
 

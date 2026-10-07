@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "Bu hedef için “Silinme” artık sunulmaz. Bucket Aktar'ın kurallarını tuttuğu sürece tmp/ altındaki mevcut dosyalar zamanı gelince yine silinir; kuralları kaldırırsan bu dosyalar kalıcı olarak kalır.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "“{0}” ve dosyaları oldukları yerde kalır, yüklemeler de bucket'ta kalır.",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "“{0}” bucket'ta ad olarak kullanılamaz. Başta “/”, klasör adı olarak “.” ve “..”, boş klasör adları (“//”) ve kontrol karakterleri olmamalı.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "“{0}” bucket'ta ad olarak kullanılamaz. Başta “/”, klasör adı olarak “.” ve “..”, boş klasör adları (“//”), “\\” ve “:” ile kontrol karakterleri olmamalı.",
   "“{0}” is already on this device.": "“{0}” bu cihazda zaten var.",
   "“{0}” isn't in Aktar's scripts folder.": "“{0}”, Aktar'ın betikler klasöründe değil.",
   "“{0}” was added.": "“{0}” eklendi.",

@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "この保存先では「削除まで」が表示されなくなります。バケットに Aktar のルールが残っている間は、tmp/ 内の既存ファイルは予定どおり削除されます。ルールを削除すると、それらのファイルは残り続けます。",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "「{0}」とそのファイルはそのまま残り、アップロード済みのファイルもバケットに残ります。",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "「{0}」はバケット内の名前として使えません。先頭の「/」、フォルダ名としての「.」と「..」、空のフォルダ名（「//」）、制御文字を含めないでください。",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "「{0}」はバケット内の名前として使えません。先頭の「/」、フォルダ名としての「.」と「..」、空のフォルダ名（「//」）、「\\」と「:」、制御文字を含めないでください。",
   "“{0}” is already on this device.": "「{0}」はすでにこのデバイスにあります。",
   "“{0}” isn't in Aktar's scripts folder.": "「{0}」はAktarのスクリプトフォルダにありません。",
   "“{0}” was added.": "「{0}」を追加しました。",

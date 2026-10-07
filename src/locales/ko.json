@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "이 대상에서는 ‘보관 기간’이 제공되지 않습니다. 버킷에 Aktar의 규칙이 남아 있는 동안 tmp/ 아래에 이미 있는 파일은 예정대로 삭제됩니다. 규칙을 제거하면 해당 파일은 영구적으로 보관됩니다.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "‘{0}’ 및 해당 파일은 그대로 유지되며, 업로드된 파일도 버킷에 남아 있습니다.",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "‘{0}’은(는) 버킷에서 이름으로 사용할 수 없습니다. 맨 앞의 ‘/’, 폴더 이름으로 쓰인 ‘.’ 및 ‘..’, 빈 폴더 이름(‘//’), 제어 문자는 빼세요.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "‘{0}’은(는) 버킷에서 이름으로 사용할 수 없습니다. 맨 앞의 ‘/’, 폴더 이름으로 쓰인 ‘.’ 및 ‘..’, 빈 폴더 이름(‘//’), ‘\\’와 ‘:’, 제어 문자는 빼세요.",
   "“{0}” is already on this device.": "‘{0}’이(가) 이미 이 기기에 있습니다.",
   "“{0}” isn't in Aktar's scripts folder.": "‘{0}’이(가) Aktar의 스크립트 폴더에 없습니다.",
   "“{0}” was added.": "‘{0}’이(가) 추가되었습니다.",

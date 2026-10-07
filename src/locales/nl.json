@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "‘Verwijder na’ wordt niet meer aangeboden voor deze bestemming. Bestanden die al in tmp/ staan, worden nog steeds volgens schema verwijderd zolang de bucket de regels van Aktar behoudt. Als je de regels verwijdert, blijven die bestanden voorgoed bewaard.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "‘{0}’ en de bestanden erin blijven waar ze zijn, en uploads blijven in de bucket.",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "‘{0}’ kan niet als naam in de bucket worden gebruikt. Laat een ‘/’ aan het begin, ‘.’ en ‘..’ als mapnamen, lege mapnamen (‘//’) en stuurtekens weg.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "‘{0}’ kan niet als naam in de bucket worden gebruikt. Laat een ‘/’ aan het begin, ‘.’ en ‘..’ als mapnamen, lege mapnamen (‘//’), ‘\\’ en ‘:’, en stuurtekens weg.",
   "“{0}” is already on this device.": "‘{0}’ staat al op dit apparaat.",
   "“{0}” isn't in Aktar's scripts folder.": "‘{0}’ staat niet in de scriptsmap van Aktar.",
   "“{0}” was added.": "‘{0}’ is toegevoegd.",

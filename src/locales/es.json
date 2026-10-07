@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "“Eliminar tras” dejará de ofrecerse para este destino. Los archivos que ya están en tmp/ se siguen eliminando a su hora mientras el bucket conserve las reglas de Aktar; si eliminas las reglas, esos archivos se quedan para siempre.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "«{0}» y sus archivos se quedan donde están, y las subidas siguen en el bucket.",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "«{0}» no se puede usar como nombre en el bucket. Quita la «/» del principio, «.» y «..» como nombres de carpeta, los nombres de carpeta vacíos («//») y los caracteres de control.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "«{0}» no se puede usar como nombre en el bucket. Quita la «/» del principio, «.» y «..» como nombres de carpeta, los nombres de carpeta vacíos («//»), «\\» y «:», y los caracteres de control.",
   "“{0}” is already on this device.": "“{0}” ya está en este dispositivo.",
   "“{0}” isn't in Aktar's scripts folder.": "«{0}» no está en la carpeta de scripts de Aktar.",
   "“{0}” was added.": "Se añadió “{0}”.",

@@ -874,6 +874,7 @@
   "“Delete after” won't be offered for this destination. Files already under tmp/ are still deleted on schedule while the bucket keeps Aktar's rules; removing the rules keeps those files for good.": "«Видалити через» не пропонуватиметься для цієї цілі. Файли, які вже є в tmp/, і далі видалятимуться за розкладом, поки в бакеті є правила Aktar. Якщо вилучити правила, ці файли залишаться назавжди.",
   "“{0}” and its files stay where they are, and uploads stay in the bucket.": "Папка «{0}» і її файли залишаться на місці, а вивантажені файли залишаться в бакеті.",
   "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), and control characters.": "«{0}» не можна використати як назву в бакеті. Приберіть «/» на початку, «.» і «..» як назви папок, порожні назви папок («//») і керівні символи.",
+  "“{0}” can’t be used as a name in the bucket. Leave out a “/” at the start, “.” and “..” as folder names, empty folder names (“//”), “\\” and “:”, and control characters.": "«{0}» не можна використати як назву в бакеті. Приберіть «/» на початку, «.» і «..» як назви папок, порожні назви папок («//»), «\\» і «:», а також керівні символи.",
   "“{0}” is already on this device.": "Ціль «{0}» уже є на цьому пристрої.",
   "“{0}” isn't in Aktar's scripts folder.": "Файлу «{0}» немає в папці скриптів Aktar.",
   "“{0}” was added.": "Ціль «{0}» додано.",
