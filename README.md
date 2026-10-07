@@ -82,9 +82,15 @@ token, and install the CLI (`npm install -g @getaktar/cli`, then
 | `POST /v1/uploads/{id}/replace?filename=` | Replaces an upload's file in place; the link stays |
 | `PUT /v1/destinations/{id}/objects?key=&filename=` | Replaces the file at a key in the bucket |
 | `GET /v1/uploads`, `GET /v1/destinations` | History and destinations (with `useFor`, `shortCache`, `hasCloudflarePurge`, `hooks`) |
+| `GET /v1/hello?nonce=` | The one request without the token: `{"app":"Aktar","proof":...}`, where `proof` is the lowercase hex HMAC-SHA256 of `aktar-hello-v1:<nonce>` keyed with the token. `nonce` is 16 to 128 of `A-Z a-z 0-9 _ -` |
 
 Every upload reply has the links in all copy formats (`formats.url`,
 `formats.markdown`...).
+
+A client should call `/v1/hello` with a fresh random nonce and compare the
+proof before it sends the token to the port for the first time, so another
+program that took the port can't collect the token. The CLI and the Raycast
+extension do this, and need Aktar for Windows 0.11.0 or later.
 
 **Power Automate Desktop**: add a *Run PowerShell script* action, for
 example to upload every PDF in a folder and collect the links:

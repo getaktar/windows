@@ -78,6 +78,7 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "chrono",
+ "hmac",
  "http-body",
  "image",
  "kamadak-exif",

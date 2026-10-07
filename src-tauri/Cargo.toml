@@ -66,6 +66,9 @@ sha2 = "0.11"
 # from PBKDF2-HMAC-SHA256 of the transfer code (see `transfer`).
 aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
 pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
+# The local API's /v1/hello proof, which lets a client check it's talking to
+# Aktar before it sends the token. Already built for `pbkdf2`.
+hmac = "0.13"
 base64 = "0.22"
 rusqlite = { version = "0.32", features = ["bundled"] }
 mime_guess = "2"

@@ -1,6 +1,8 @@
 //! A deliberately tiny HTTP/1.1 server for the local API: loopback only,
 //! one request per connection, `Content-Length` bodies only (no chunked
-//! encoding), and every request must carry the bearer token. Callers are
+//! encoding), and every request must carry the bearer token (except
+//! `GET /v1/hello`, which proves to a client that it's talking to the
+//! Aktar holding the token without sending it). Callers are
 //! local tools like the Raycast extension, never browsers, so any request
 //! with an `Origin` header is refused outright.
 
@@ -125,8 +127,8 @@ async fn read_request(
     let head = parse_head(&buffer[..header_end]).ok_or_else(|| Response::error(400, "Malformed request."))?;
     // Checked as soon as the headers arrive, before any body is read, so an
     // unauthorized upload is refused without buffering it first.
-    if let Some(rejection) = rejection(&head, port, token) {
-        return Err(rejection);
+    if let Some(response) = early_response(&head, port, token) {
+        return Err(response);
     }
     let content_length = head.content_length.ok_or_else(|| Response::error(400, "Malformed request."))?;
     if content_length as u64 > MAX_BODY {
@@ -193,7 +195,10 @@ async fn read_some(stream: &mut TcpStream, buffer: &mut [u8]) -> std::io::Result
         .unwrap_or_else(|_| Err(std::io::ErrorKind::TimedOut.into()))
 }
 
-fn rejection(head: &Head, port: u16, token: &str) -> Option<Response> {
+/// The answer to a request that's settled by its headers alone: refused
+/// (a browser, a foreign Host, no valid token), or `GET /v1/hello`. None
+/// lets it through to the router.
+fn early_response(head: &Head, port: u16, token: &str) -> Option<Response> {
     if head.headers.contains_key("origin") {
         return Some(Response::error(403, "Browser requests are not allowed."));
     }
@@ -201,6 +206,9 @@ fn rejection(head: &Head, port: u16, token: &str) -> Option<Response> {
     let host = head.headers.get("host").map(|host| host.to_ascii_lowercase());
     if !host.is_some_and(|host| allowed_hosts.contains(&host)) {
         return Some(Response::error(403, "Unexpected Host header."));
+    }
+    if head.method == "GET" && head.path == "/v1/hello" {
+        return Some(hello(head.query.get("nonce").map(String::as_str), token));
     }
     let authorized = head
         .headers
@@ -214,6 +222,26 @@ fn rejection(head: &Head, port: u16, token: &str) -> Option<Response> {
         return Some(Response::error(411, "Send a Content-Length instead of a chunked body."));
     }
     None
+}
+
+/// `GET /v1/hello?nonce=`, the one request without the token: the
+/// HMAC-SHA256 of "aktar-hello-v1:<nonce>" keyed with the token, as
+/// lowercase hex. A client checks it before it sends the token to this
+/// port, so another program listening there can't collect it. Says
+/// nothing else about the app.
+fn hello(nonce: Option<&str>, token: &str) -> Response {
+    use hmac::{KeyInit, Mac};
+    let Some(nonce) = nonce.filter(|nonce| {
+        (16..=128).contains(&nonce.len()) && nonce.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    }) else {
+        return Response::error(400, "nonce must be 16 to 128 letters, digits, \"-\" or \"_\".");
+    };
+    let Ok(mut mac) = hmac::Hmac::<sha2::Sha256>::new_from_slice(token.as_bytes()) else {
+        return Response::error(500, "Could not answer.");
+    };
+    mac.update(format!("aktar-hello-v1:{nonce}").as_bytes());
+    let proof = crate::util::hex(&mac.finalize().into_bytes());
+    Response::json(200, serde_json::json!({ "app": "Aktar", "proof": proof }))
 }
 
 fn constant_time_equals(lhs: &[u8], rhs: &[u8]) -> bool {
@@ -308,12 +336,36 @@ mod tests {
     #[test]
     fn rejects_browsers_foreign_hosts_and_bad_tokens() {
         let ok = head("GET /v1/status HTTP/1.1\r\nHost: localhost:47913\r\nAuthorization: Bearer secret");
-        assert!(rejection(&ok, 47913, "secret").is_none());
+        assert!(early_response(&ok, 47913, "secret").is_none());
         let origin = head("GET / HTTP/1.1\r\nHost: localhost:47913\r\nOrigin: https://evil.example\r\nAuthorization: Bearer secret");
-        assert_eq!(rejection(&origin, 47913, "secret").unwrap().status, 403);
+        assert_eq!(early_response(&origin, 47913, "secret").unwrap().status, 403);
         let rebinding = head("GET / HTTP/1.1\r\nHost: evil.example:47913\r\nAuthorization: Bearer secret");
-        assert_eq!(rejection(&rebinding, 47913, "secret").unwrap().status, 403);
+        assert_eq!(early_response(&rebinding, 47913, "secret").unwrap().status, 403);
         let wrong = head("GET / HTTP/1.1\r\nHost: localhost:47913\r\nAuthorization: Bearer nope");
-        assert_eq!(rejection(&wrong, 47913, "secret").unwrap().status, 401);
+        assert_eq!(early_response(&wrong, 47913, "secret").unwrap().status, 401);
+    }
+
+    #[test]
+    fn says_hello_without_the_token() {
+        let body = |response: Response| serde_json::from_slice::<serde_json::Value>(&response.body).unwrap();
+        let hello = head("GET /v1/hello?nonce=abcdefghijklmnop_- HTTP/1.1\r\nHost: 127.0.0.1:47913");
+        let response = early_response(&hello, 47913, "secret").unwrap();
+        assert_eq!(response.status, 200);
+        assert_eq!(
+            body(response),
+            serde_json::json!({ "app": "Aktar", "proof": "0196a98ac049d2601a52a155072b5aa781ea8c83993ed250b18daf2d522ffd26" })
+        );
+        for target in ["/v1/hello", "/v1/hello?nonce=short", "/v1/hello?nonce=abcdefghijklmnop%2F", &format!("/v1/hello?nonce={}", "a".repeat(129))] {
+            let request = head(&format!("GET {target} HTTP/1.1\r\nHost: localhost:47913"));
+            assert_eq!(early_response(&request, 47913, "secret").unwrap().status, 400, "{target}");
+        }
+        // The browser and Host checks still come first.
+        let origin = head("GET /v1/hello?nonce=abcdefghijklmnop HTTP/1.1\r\nHost: localhost:47913\r\nOrigin: https://evil.example");
+        assert_eq!(early_response(&origin, 47913, "secret").unwrap().status, 403);
+        let rebinding = head("GET /v1/hello?nonce=abcdefghijklmnop HTTP/1.1\r\nHost: evil.example:47913");
+        assert_eq!(early_response(&rebinding, 47913, "secret").unwrap().status, 403);
+        // Anything else still needs the token.
+        let other = head("POST /v1/hello?nonce=abcdefghijklmnop HTTP/1.1\r\nHost: localhost:47913");
+        assert_eq!(early_response(&other, 47913, "secret").unwrap().status, 401);
     }
 }
