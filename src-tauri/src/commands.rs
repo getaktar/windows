@@ -554,6 +554,11 @@ pub fn set_destination_link(core: Core, id: String, seconds: Option<u64>) {
 
 #[tauri::command]
 pub fn remove_destination(core: Core, id: String) {
+    // Only a saved destination, by the ID it was saved with: the ID names
+    // folders that are deleted below.
+    let Some(id) = core.destinations.all().into_iter().map(|destination| destination.id).find(|saved| *saved == id) else {
+        return;
+    };
     let _ = crate::hotkey::set_destination(&core.app, &id, None);
     core.destinations.remove(&id);
     thumbnails::remote::forget_destination(&core, &id);
@@ -1130,12 +1135,16 @@ pub async fn bucket_upload(core: Core<'_>, destination_id: String, paths: Vec<St
 /// through Rust avoids the CORS rules a fetch from the webview would hit.
 /// Kept in memory only, and never more than 25 MB: a bigger file (by its
 /// Content-Length, or as it arrives) is "Preview unavailable". Redirects
-/// are only followed on the same host.
+/// are only followed on the same host. Only from where files are uploaded
+/// to (see `is_preview_source`).
 #[tauri::command]
-pub async fn fetch_remote(url: String) -> Result<tauri::ipc::Response, String> {
+pub async fn fetch_remote(core: Core<'_>, url: String) -> Result<tauri::ipc::Response, String> {
     const MAX_BYTES: usize = 25 * 1024 * 1024;
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
+    let Some(parsed) = url::Url::parse(&url).ok().filter(|parsed| matches!(parsed.scheme(), "https" | "http")) else {
         return Err("Unsupported URL".into());
+    };
+    if !is_preview_source(&core, &parsed) {
+        return Err(t!("Preview unavailable"));
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -1164,6 +1173,30 @@ pub async fn fetch_remote(url: String) -> Result<tauri::ipc::Response, String> {
         bytes.extend_from_slice(&chunk);
     }
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Whether a preview may be downloaded from `url`: a destination's public
+/// URL, endpoint or bucket (presigned links), or the host of a link in
+/// History (a destination since changed or removed). Never a link-local
+/// address, such as a cloud metadata service.
+fn is_preview_source(core: &SharedCore, url: &url::Url) -> bool {
+    let link_local = match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_link_local() || ip.is_unspecified() || ip.is_broadcast(),
+        Some(url::Host::Ipv6(ip)) => ip.is_unspecified() || (ip.segments()[0] & 0xffc0) == 0xfe80,
+        Some(url::Host::Domain(_)) => false,
+        None => true,
+    };
+    let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) else { return false };
+    let origin = (host.to_ascii_lowercase(), port);
+    if link_local {
+        return false;
+    }
+    core.destinations.all().iter().any(|destination| crate::storage::file_origins(destination).contains(&origin))
+        || core.history.all().iter().any(|record| {
+            url::Url::parse(&record.public_url).ok().is_some_and(|link| {
+                link.host_str().is_some_and(|other| other.eq_ignore_ascii_case(host)) && link.port_or_known_default() == Some(port)
+            })
+        })
 }
 
 // MARK: - QR codes

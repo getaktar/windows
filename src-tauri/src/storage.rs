@@ -1150,6 +1150,28 @@ fn bucket_url(config: &DestinationConfig, query: &str) -> Result<url::Url, Stora
     Ok(url)
 }
 
+/// Where a destination's files can be read from, as host and port: its
+/// public URL, and its endpoint (path style) or the bucket's name on it
+/// (virtual hosted), where presigned links go.
+pub fn file_origins(config: &DestinationConfig) -> Vec<(String, u16)> {
+    let origin = |address: &str| {
+        let url = url::Url::parse(&normalized_endpoint(address)).ok()?;
+        Some((url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
+    };
+    let mut origins = Vec::new();
+    if let Some((host, port)) = origin(&config.endpoint) {
+        let bucket = config.bucket.trim().to_ascii_lowercase();
+        if !bucket.is_empty() {
+            origins.push((format!("{bucket}.{host}"), port));
+        }
+        origins.push((host, port));
+    }
+    if !config.public_base_url.trim().is_empty() {
+        origins.extend(origin(&config.public_base_url));
+    }
+    origins
+}
+
 /// What a failed lifecycle request says. Keys that can upload but not
 /// change bucket settings (an R2 "Object Read & Write" token) get "access
 /// denied"; a provider without lifecycle rules answers "not implemented"
@@ -1226,6 +1248,23 @@ mod tests {
         assert_eq!(url("https://minio.example.com/s3/", true).unwrap(), "https://minio.example.com/s3/files?lifecycle");
         assert!(url("", false).is_err());
         assert!(bucket_url(&config("https://example.com", " ", true), "lifecycle").is_err());
+    }
+
+    #[test]
+    fn knows_where_files_are_read_from() {
+        let mut r2 = config("https://acc.r2.cloudflarestorage.com", "Files", false);
+        r2.public_base_url = "https://cdn.example.com/".into();
+        assert_eq!(
+            file_origins(&r2),
+            [
+                ("files.acc.r2.cloudflarestorage.com".to_string(), 443),
+                ("acc.r2.cloudflarestorage.com".to_string(), 443),
+                ("cdn.example.com".to_string(), 443),
+            ]
+        );
+        let minio = config("http://192.168.1.10:9000", "uploads", true);
+        assert!(file_origins(&minio).contains(&("192.168.1.10".to_string(), 9000)));
+        assert!(file_origins(&config("", "files", false)).is_empty());
     }
 
     fn failure(status: u16, code: &str) -> StorageError {

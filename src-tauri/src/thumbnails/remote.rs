@@ -279,7 +279,15 @@ pub fn forget(core: &SharedCore, destination_id: &str, key: &str) {
 /// Everything made for a destination's bucket, when its thumbnails are
 /// turned off or it points at another bucket.
 pub fn forget_destination(core: &SharedCore, destination_id: &str) {
-    let _ = std::fs::remove_dir_all(core.bucket_thumbnails.join(destination_id));
+    if is_folder_name(destination_id) {
+        let _ = std::fs::remove_dir_all(core.bucket_thumbnails.join(destination_id));
+    }
+}
+
+/// Whether a destination ID can only ever name one folder inside the cache:
+/// letters, digits and "-" (IDs are UUIDs), never a path of its own.
+fn is_folder_name(destination_id: &str) -> bool {
+    !destination_id.is_empty() && destination_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 /// Settings > General > Clear: every bucket's.
@@ -334,5 +342,13 @@ mod tests {
             assert!(!name.contains(['\\', ':', '/']), "{key}: {name}");
         }
         assert_eq!(staged("shots/..\\..\\Startup\\a.png"), folder.join("source.png"));
+    }
+
+    #[test]
+    fn only_plain_destination_ids_name_a_folder() {
+        assert!(is_folder_name("0E984725-C51C-4BF4-9960-E1C80E27ABA0"));
+        for id in ["", "..", "..\\..", "C:\\Users\\me\\Documents", "/etc", "a/b", "C:x", "\\\\host\\share"] {
+            assert!(!is_folder_name(id), "{id}");
+        }
     }
 }
