@@ -132,6 +132,18 @@ async fn webhook(core: &SharedCore, url: &str, payload: &serde_json::Value) -> R
 /// (its sandboxed scripts can't get environment variables), so one script
 /// works on both. A destination's hooks (manual uploads, which have no
 /// folder) get the destination's name as the fourth.
+/// The script's arguments. PowerShell's `-File` reads an argument that
+/// starts with "-" (a key like "-Force.png") as the name of one of the
+/// script's parameters, so for a `.ps1` script such a value is passed as ""
+/// instead; it's still in the `AKTAR_*` variables and the JSON input.
+fn script_arguments<'a>(extension: &str, values: [&'a str; 4]) -> [&'a str; 4] {
+    if extension == "ps1" {
+        values.map(|value| if value.starts_with('-') { "" } else { value })
+    } else {
+        values
+    }
+}
+
 async fn script(path: &str, payload: &serde_json::Value) -> Result<(), String> {
     let extension = crate::util::split_extension(crate::util::last_component(path)).1.to_ascii_lowercase();
     let mut command = match extension.as_str() {
@@ -149,7 +161,7 @@ async fn script(path: &str, payload: &serde_json::Value) -> Result<(), String> {
     let folder = payload["folder"]["path"].as_str();
     let destination = payload["destination"]["name"].as_str().unwrap_or_default();
     command
-        .args([url, key, file, folder.unwrap_or(destination)])
+        .args(script_arguments(&extension, [url, key, file, folder.unwrap_or(destination)]))
         .env("AKTAR_URL", url)
         .env("AKTAR_KEY", key)
         .env("AKTAR_FILE", file)
@@ -180,6 +192,13 @@ async fn script(path: &str, payload: &serde_json::Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn powershell_never_gets_a_value_as_a_parameter_name() {
+        let values = ["https://x.dev/-a.png", "-Force.png", "C:\\Users\\me\\-Force.png", "-Shots"];
+        assert_eq!(script_arguments("ps1", values), ["https://x.dev/-a.png", "", "C:\\Users\\me\\-Force.png", ""]);
+        assert_eq!(script_arguments("bat", values), values);
+    }
 
     #[test]
     fn only_sends_plain_http_nearby() {
