@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Thumbnails of files in a bucket no longer use the file's name on disk:
+  a name with `\`, `..` or a drive letter, which someone else with access
+  to the bucket could give a file, could make Aktar write that file
+  anywhere in your user folder. It's now downloaded under a fixed name in
+  Aktar's temp folder, and only pictures, videos, documents and audio
+  files are downloaded for a thumbnail at all
+- Names in the bucket (the Library, the local API, the thumbnail folder)
+  can no longer contain `\` or `:`
+- Import from Another Device now shows where the destination sends things
+  before it's saved (endpoint, bucket, public URL, short link, webhook
+  hosts, "Use For" rules, custom template), also when updating one that's
+  already here. Webhooks and "Use For" rules are only imported when you
+  turn them on there
+- Watched folders check again that a file is still inside the folder right
+  before it goes to the Recycle Bin or the Uploaded folder, refuse an
+  Uploaded folder that's a link to somewhere else, and never replace a
+  file that appears in Uploaded at the same moment. A folder that's a
+  link into Aktar's own or temp folders can't be watched
+- `aktar://watch/resume` links now ask before resuming watched folders you
+  paused
+- Short links from a shortener must be http:// or https:// links, and
+  links in HTML output are escaped
+- Previews only download from your destinations' addresses and links in
+  History
+- The local API has a new `GET /v1/hello` that lets the CLI and the
+  Raycast extension check they're talking to Aktar before they send your
+  token
+
+### Changed
+
+- A PowerShell (`.ps1`) After Upload script gets an empty argument in
+  place of a value that starts with `-`, which PowerShell would read as one
+  of the script's parameters. The value is still in the `AKTAR_*`
+  environment variables and the JSON input
+
 ## [0.10.0] - 2026-10-07
 
 ### Added
