@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-08
+
 ### Security
 
 - Thumbnails of files in a bucket no longer use the file's name on disk:
