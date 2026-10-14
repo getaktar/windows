@@ -12,15 +12,17 @@
 //!                            minutes), once the user says so
 //! aktar://watch/resume       resume them
 //! aktar://connect?callback=raycast://extensions/<author>/<extension>/<command>
+//! aktar://connect?callback=obsidian://aktar-connect
 //! aktar://import#<data>      open "Import from Another Device" with this
 //!                            transfer link (see `transfer`)
 //! ```
 //!
-//! `connect` is how the Raycast extension pairs: after the user approves,
-//! the local API is turned on and its port and token are handed back to the
-//! callback as Raycast launch context. Only callbacks into the official
-//! extension (`merttopuz/aktar`) are accepted, so a link from a web page or
-//! another extension can't collect the token.
+//! `connect` is how the Raycast extension and the Obsidian plugin pair:
+//! after the user approves, the local API is turned on and its port and
+//! token are handed back to the callback as launch context. Only callbacks
+//! into the official Raycast extension (`merttopuz/aktar`) and
+//! `obsidian://aktar-connect` are accepted, so a link from a web page can't
+//! send the token anywhere else.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -177,26 +179,44 @@ pub fn is_allowed_extension_path(path: &str) -> bool {
     !command.is_empty() && command.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
+/// The Obsidian plugin's fixed callback. Nothing else a link carries is passed on to it.
+const OBSIDIAN_CALLBACK: &str = "obsidian://aktar-connect";
+
 fn allowed_callback(url: &Url) -> Option<Url> {
     let raw = url.query_pairs().find(|(name, _)| name == "callback")?.1.into_owned();
     let callback = Url::parse(&raw).ok()?;
+    if is_obsidian(&callback) {
+        return Url::parse(OBSIDIAN_CALLBACK).ok();
+    }
     let valid = callback.scheme().eq_ignore_ascii_case("raycast")
         && callback.host_str().is_some_and(|host| host.eq_ignore_ascii_case("extensions"))
         && is_allowed_extension_path(callback.path());
     valid.then_some(callback)
 }
 
+fn is_obsidian(callback: &Url) -> bool {
+    callback.scheme().eq_ignore_ascii_case("obsidian")
+        && callback.host_str().is_some_and(|host| host.eq_ignore_ascii_case("aktar-connect"))
+        && matches!(callback.path(), "" | "/")
+}
+
 async fn connect(core: &SharedCore, url: &Url) {
     let Some(mut callback) = allowed_callback(url) else { return };
 
+    let obsidian = is_obsidian(&callback);
     let extension = callback.path().trim_matches('/').to_string();
-    let approved = ask(
-        &core.app,
-        t!("Connect Raycast to Aktar?"),
-        t!("The Raycast extension “{0}” wants to upload files, browse your buckets, and manage your upload history through Aktar. This turns on Aktar’s local API, which you can turn off any time in Settings > Integrations.", extension),
-        t!("Connect"),
-    )
-    .await;
+    let (title, message) = if obsidian {
+        (
+            t!("Connect Obsidian to Aktar?"),
+            t!("The Aktar plugin in Obsidian wants to upload files and browse your buckets through Aktar. This turns on Aktar’s local API, which you can turn off any time in Settings > Integrations."),
+        )
+    } else {
+        (
+            t!("Connect Raycast to Aktar?"),
+            t!("The Raycast extension “{0}” wants to upload files, browse your buckets, and manage your upload history through Aktar. This turns on Aktar’s local API, which you can turn off any time in Settings > Integrations.", extension),
+        )
+    };
+    let approved = ask(&core.app, title, message, t!("Connect")).await;
     if !approved {
         return;
     }
@@ -242,7 +262,7 @@ async fn connect(core: &SharedCore, url: &Url) {
         .join("&");
     callback.set_query(Some(&query));
     if let Err(error) = core.app.opener().open_url(callback.as_str(), None::<&str>) {
-        log::warn!("Could not open the Raycast callback: {error}");
+        log::warn!("Could not open the pairing callback: {error}");
     }
 }
 
@@ -289,6 +309,17 @@ mod tests {
         assert_eq!(callback.query_pairs().next().unwrap().1, "abc");
         let bad = Url::parse("aktar://connect?callback=https%3A%2F%2Fevil.example%2Fmerttopuz%2Faktar%2Fconnect").unwrap();
         assert!(allowed_callback(&bad).is_none());
+    }
+
+    #[test]
+    fn accepts_only_the_obsidian_plugins_callback() {
+        let good = Url::parse("aktar://connect?callback=obsidian%3A%2F%2Faktar-connect%3Fx%3D1").unwrap();
+        // Rebuilt from scratch: whatever the link added doesn't go along.
+        assert_eq!(allowed_callback(&good).unwrap().as_str(), "obsidian://aktar-connect");
+        for bad in ["obsidian%3A%2F%2Fopen%3Fvault%3Dx", "obsidian%3A%2F%2Faktar-connect%2Fother", "obsidianx%3A%2F%2Faktar-connect"] {
+            let url = Url::parse(&format!("aktar://connect?callback={bad}")).unwrap();
+            assert!(allowed_callback(&url).is_none(), "{bad}");
+        }
     }
 
     #[test]
