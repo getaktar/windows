@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-26
+
+### Security
+
+- Updated the app's dependencies for the security fixes published since
+  0.11.0: Tauri 2.12.5 and its plugins, rustls, hyper and the AWS SDK on
+  the Rust side, React 19.3.1 and Vite 8.3.5 for the interface
+
 ### Added
 
 - The Aktar plugin for Obsidian can pair with Aktar in one click, the way
