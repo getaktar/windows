@@ -18,6 +18,8 @@ use crate::quick_share::{Origin, PasteTarget, PASTE_WINDOW_MS};
 use crate::win32;
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
+/// Asked for again while one waits: the snipping bar opens again.
+static AGAIN: AtomicBool = AtomicBool::new(false);
 
 /// How long after the snipping bar closed a snip may still turn up on the
 /// clipboard.
@@ -28,12 +30,14 @@ const PANEL_SETTLE: Duration = Duration::from_millis(250);
 const MAX_WAIT: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(150);
 
-/// Starts a capture, unless one is going. With `paste`, the link is pasted
-/// into the window that was in front.
+/// Starts a capture; one that's waiting opens the snipping bar again. With
+/// `paste`, the link is pasted into the window that was in front.
 pub fn start(core: &SharedCore, paste: bool) {
     if RUNNING.swap(true, Ordering::SeqCst) {
+        AGAIN.store(true, Ordering::SeqCst);
         return;
     }
+    AGAIN.store(false, Ordering::SeqCst);
     let target = if paste { win32::foreground_window() } else { None };
     crate::panel::hide(&core.app);
     let core = core.clone();
@@ -47,33 +51,20 @@ async fn capture(core: &SharedCore, target: Option<isize>) {
     // What's on the clipboard now is what Undo puts back: the snip itself
     // (with the password in it) never is.
     let snapshot = tauri::async_runtime::spawn_blocking(win32::take_snapshot).await.unwrap_or(win32::Snapshot::Unavailable);
-    // The keys of the shortcut that started it would turn Windows+Shift+S
-    // into something else; the panel needs a moment to hand the foreground
-    // back to the window behind it.
-    tokio::time::sleep(PANEL_SETTLE).await;
-    for _ in 0..30 {
-        if !win32::modifiers_down() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let before = win32::foreground_handle();
     let mut sequence = win32::clipboard_sequence();
-    if !win32::send_screen_snip() {
-        crate::uploads::show_notification(
-            core,
-            &crate::t!("Capture couldn’t start"),
-            &crate::t!("Windows’ snipping tool didn’t open. Try again, or take the screenshot with Windows+Shift+S and paste it into Aktar."),
-        );
-        return;
-    }
-    let started = Instant::now();
+    let Some(mut before) = open_snipping_bar(core).await else { return };
+    let mut started = Instant::now();
     // The snipping bar takes the foreground while it's up, and hands it back
     // to the window that had it once it closes, with a snip or without.
     let mut bar_seen = false;
     let mut back_since: Option<Instant> = None;
     while started.elapsed() < MAX_WAIT {
         tokio::time::sleep(POLL).await;
+        if AGAIN.swap(false, Ordering::SeqCst) {
+            let Some(front) = open_snipping_bar(core).await else { return };
+            (before, started, bar_seen, back_since) = (front, Instant::now(), false, None);
+            continue;
+        }
         let current = win32::clipboard_sequence();
         if current != sequence {
             sequence = current;
@@ -96,4 +87,28 @@ async fn capture(core: &SharedCore, target: Option<isize>) {
             }
         }
     }
+}
+
+/// Presses Windows+Shift+S once the shortcut's own keys are up (they would
+/// make it another shortcut), after the panel had a moment to hand the
+/// foreground back to the window behind it. Returns the window in front
+/// before the bar opened, or None when the keys couldn't be pressed.
+async fn open_snipping_bar(core: &SharedCore) -> Option<isize> {
+    tokio::time::sleep(PANEL_SETTLE).await;
+    for _ in 0..30 {
+        if !win32::modifiers_down() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let before = win32::foreground_handle();
+    if !win32::send_screen_snip() {
+        crate::uploads::show_notification(
+            core,
+            &crate::t!("Capture couldn’t start"),
+            &crate::t!("Windows’ snipping tool didn’t open. Try again, or take the screenshot with Windows+Shift+S and paste it into Aktar."),
+        );
+        return None;
+    }
+    Some(before)
 }
