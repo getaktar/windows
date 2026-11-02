@@ -12,6 +12,7 @@ use crate::destinations::DestinationStore;
 use crate::history::History;
 use crate::local_api::LocalApiService;
 use crate::multipart::SessionStore;
+use crate::outbox::Outbox;
 use crate::settings::SettingsStore;
 use crate::thumbnails::LocalStore;
 use crate::updater::UpdateService;
@@ -39,6 +40,9 @@ pub mod events {
     /// Settings should switch tabs or add a watched folder (see
     /// `watched::take_request`).
     pub const SETTINGS_REQUEST: &str = "settings-request";
+    /// Undo is offered for other uploads now, or no longer (see
+    /// `quick_share::undoable_records`).
+    pub const UNDO_CHANGED: &str = "undo-changed";
 }
 
 #[derive(Clone, Serialize)]
@@ -57,6 +61,8 @@ pub struct Core {
     pub uploads: UploadManager,
     /// Multipart uploads left unfinished, to continue.
     pub upload_sessions: SessionStore,
+    /// Uploads whose link was copied, kept until their bytes are there.
+    pub outbox: Outbox,
     pub local_api: LocalApiService,
     pub updater: UpdateService,
     pub watched: WatchService,
@@ -97,6 +103,7 @@ impl Core {
             history,
             uploads: UploadManager::default(),
             upload_sessions: SessionStore::load(&local_data_dir),
+            outbox: Outbox::new(local_data_dir.join("outbox")),
             local_api: LocalApiService::default(),
             updater: UpdateService::default(),
             watched,

@@ -723,7 +723,34 @@ pub fn upload_files(core: Core, paths: Vec<String>, destination_id: Option<Strin
 
 #[tauri::command]
 pub async fn upload_clipboard(core: Core<'_>) -> Result<bool, String> {
-    Ok(uploads::upload_clipboard(&core, false).await)
+    Ok(uploads::upload_clipboard(&core, false, None).await)
+}
+
+/// The panel's Capture: Windows' snipping bar, then the upload.
+#[tauri::command]
+pub fn capture_screen(core: Core) {
+    crate::capture::start(&core, false);
+}
+
+/// The panel's Undo next to a recent upload.
+#[tauri::command]
+pub async fn undo_upload(core: Core<'_>, id: String) -> Result<(), String> {
+    crate::quick_share::undo_record(&core, &id).await;
+    Ok(())
+}
+
+/// The history entries Undo would take back right now.
+#[tauri::command]
+pub fn undoable_uploads(core: Core) -> Vec<String> {
+    crate::quick_share::undoable_records(&core)
+}
+
+/// Sets one of the app's shortcuts: "uploadAndPaste", "capture",
+/// "captureAndPaste" or "undo" (and "upload" or "rename", like
+/// `set_shortcut` and `set_rename_shortcut`).
+#[tauri::command]
+pub fn set_action_shortcut(app: AppHandle, action: crate::hotkey::AppShortcut, accelerator: Option<String>) -> Result<(), String> {
+    crate::hotkey::set_app_shortcut(&app, action, accelerator)
 }
 
 /// Files waiting for their name in the panel's "Name This Upload".
@@ -1257,48 +1284,14 @@ pub fn set_shortcut_paused(app: AppHandle, paused: bool) {
 }
 
 #[tauri::command]
-pub fn set_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
-    let previous = core.settings.get();
-    if let Err(message) = refuse_destination_shortcut(&previous, accelerator.as_deref()) {
-        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
-        return Err(message);
-    }
-    if let Err(message) = crate::hotkey::register(&app, accelerator.as_deref(), previous.rename_shortcut.as_deref()) {
-        // Put the old ones back so a failed change doesn't leave none.
-        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
-        return Err(message);
-    }
-    core.settings.update(|settings| settings.shortcut = accelerator);
-    core.notify(events::SETTINGS_CHANGED);
-    Ok(())
+pub fn set_shortcut(app: AppHandle, accelerator: Option<String>) -> Result<(), String> {
+    crate::hotkey::set_app_shortcut(&app, crate::hotkey::AppShortcut::Upload, accelerator)
 }
 
 /// "Rename and upload clipboard", which asks for the upload's name first.
 #[tauri::command]
-pub fn set_rename_shortcut(app: AppHandle, core: Core, accelerator: Option<String>) -> Result<(), String> {
-    let previous = core.settings.get();
-    if let Err(message) = refuse_destination_shortcut(&previous, accelerator.as_deref()) {
-        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
-        return Err(message);
-    }
-    if let Err(message) = crate::hotkey::register(&app, previous.shortcut.as_deref(), accelerator.as_deref()) {
-        let _ = crate::hotkey::register(&app, previous.shortcut.as_deref(), previous.rename_shortcut.as_deref());
-        return Err(message);
-    }
-    core.settings.update(|settings| settings.rename_shortcut = accelerator);
-    core.notify(events::SETTINGS_CHANGED);
-    Ok(())
-}
-
-/// An app shortcut can't be one a destination already has: pressing it
-/// would upload to that destination instead.
-fn refuse_destination_shortcut(settings: &Settings, accelerator: Option<&str>) -> Result<(), String> {
-    let Some(shortcut) = accelerator.and_then(|accelerator| crate::hotkey::parse(accelerator).ok()) else { return Ok(()) };
-    let taken = settings.destination_shortcuts.values().any(|other| crate::hotkey::parse(other).ok() == Some(shortcut));
-    if taken {
-        return Err(t!("This shortcut is already in use. Try a different one."));
-    }
-    Ok(())
+pub fn set_rename_shortcut(app: AppHandle, accelerator: Option<String>) -> Result<(), String> {
+    crate::hotkey::set_app_shortcut(&app, crate::hotkey::AppShortcut::Rename, accelerator)
 }
 
 /// Unlike the Mac app, the language switches right away, no restart needed.

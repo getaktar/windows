@@ -67,6 +67,7 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &MenuItem::with_id(app, "open-panel", t!("Upload"), true, None::<&str>)?,
             &MenuItem::with_id(app, "upload-clipboard", t!("Upload Clipboard"), true, None::<&str>)?,
+            &MenuItem::with_id(app, "capture", t!("Capture and Upload"), true, None::<&str>)?,
         ],
     )?;
     // Once there's a folder to watch: pausing it, or resuming. (A pause on
@@ -105,6 +106,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
     match id {
         "open-panel" => panel::show(app),
         "upload-clipboard" => crate::uploads::upload_clipboard_in_background(&crate::core::core(app), false),
+        "capture" => crate::capture::start(&crate::core::core(app), false),
         "library" => crate::windows::open(app, AppWindow::Library),
         "settings" => crate::windows::open(app, AppWindow::Settings),
         "check-updates" => crate::updater::check_now(app),

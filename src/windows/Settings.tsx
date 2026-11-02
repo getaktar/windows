@@ -49,7 +49,7 @@ import { ProviderIcon } from "../components/FileVisuals";
 import { Card, CardRow, SettingsPage, SettingsSection, ToggleRow } from "../components/SettingsLayout";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
 import { ImportDestinationDialog, ShareDestinationDialog, type ShareRequest } from "../components/TransferDialogs";
-import { api, errorMessage, events, type DestinationConfig, type OutputMode } from "../lib/api";
+import { api, errorMessage, events, type AppShortcut, type DestinationConfig, type OutputMode, type Settings } from "../lib/api";
 import { formatBytes, providerName } from "../lib/format";
 import { useDestinations, useFlag, useLocalApi, useSettings, useTauriEvent, useUpdateStatus } from "../lib/hooks";
 import { useI18n, websiteURL } from "../lib/i18n";
@@ -134,8 +134,7 @@ function GeneralSettings() {
   const [settings] = useSettings();
   const [updateStatus] = useUpdateStatus();
   const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
-  const [shortcutError, setShortcutError] = useState<string | null>(null);
-  const [renameShortcutError, setRenameShortcutError] = useState<string | null>(null);
+  const [shortcutErrors, setShortcutErrors] = useState<Partial<Record<AppShortcut, string | null>>>({});
   const [launchError, setLaunchError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -218,42 +217,24 @@ function GeneralSettings() {
         )}
       </SettingsSection>
 
-      <SettingsSection title={t("Keyboard shortcut")}>
+      <SettingsSection title={t("Keyboard shortcuts")}>
         <Card>
-          <CardRow
-            title={t("Paste & upload from anywhere")}
-            subtitle={t("Works even when the panel is closed. Click to record, or press Delete to clear it.")}
-          >
-            <ShortcutRecorder
-              value={settings.shortcut}
-              error={shortcutError}
-              onChange={async (accelerator) => {
-                try {
-                  await api.setShortcut(accelerator);
-                  setShortcutError(null);
-                } catch (error) {
-                  setShortcutError(errorMessage(error));
-                }
-              }}
-            />
-          </CardRow>
-          <CardRow
-            title={t("Rename and upload clipboard")}
-            subtitle={t("Asks for the upload’s name first. The extension stays.")}
-          >
-            <ShortcutRecorder
-              value={settings.renameShortcut}
-              error={renameShortcutError}
-              onChange={async (accelerator) => {
-                try {
-                  await api.setRenameShortcut(accelerator);
-                  setRenameShortcutError(null);
-                } catch (error) {
-                  setRenameShortcutError(errorMessage(error));
-                }
-              }}
-            />
-          </CardRow>
+          {appShortcuts(settings, t).map(({ action, title, subtitle, value }) => (
+            <CardRow key={action} title={title} subtitle={subtitle}>
+              <ShortcutRecorder
+                value={value}
+                error={shortcutErrors[action] ?? null}
+                onChange={async (accelerator) => {
+                  try {
+                    await api.setActionShortcut(action, accelerator);
+                    setShortcutErrors((errors) => ({ ...errors, [action]: null }));
+                  } catch (error) {
+                    setShortcutErrors((errors) => ({ ...errors, [action]: errorMessage(error) }));
+                  }
+                }}
+              />
+            </CardRow>
+          ))}
         </Card>
       </SettingsSection>
 
@@ -279,11 +260,66 @@ function GeneralSettings() {
             checked={settings.reuseDuplicateLinks}
             onChange={(value) => api.updateSettings({ reuseDuplicateLinks: value })}
           />
+          <ToggleRow
+            title={t("Copy the link right away")}
+            subtitle={t(
+              "Copies the link as soon as Aktar knows where the file goes, before the upload finishes, so even a large video doesn’t keep you waiting. The link works once the upload is done. Offline, it waits and uploads when you’re back online.",
+            )}
+            checked={settings.copyLinkRightAway}
+            onChange={(value) => api.updateSettings({ copyLinkRightAway: value })}
+          />
         </Card>
       </SettingsSection>
       <ThumbnailsSection />
     </SettingsPage>
   );
+}
+
+/** The app's shortcuts, in the order Settings shows them. All but the
+ * first are unset until the user records one. */
+function appShortcuts(settings: Settings, t: ReturnType<typeof useI18n>["t"]) {
+  return [
+    {
+      action: "upload" as const,
+      title: t("Paste & upload from anywhere"),
+      subtitle: t(
+        "Uploads what’s on the clipboard: a file, an image, text, or the file a copied link points to. Works even when the panel is closed. Click to record, or press Delete to clear it.",
+      ),
+      value: settings.shortcut,
+    },
+    {
+      action: "uploadAndPaste" as const,
+      title: t("Upload clipboard and paste the link"),
+      subtitle: t("The same, then pastes the link where you’re typing, ready for GitHub, Slack or Linear."),
+      value: settings.pasteShortcut,
+    },
+    {
+      action: "rename" as const,
+      title: t("Rename and upload clipboard"),
+      subtitle: t("Asks for the upload’s name first. The extension stays."),
+      value: settings.renameShortcut,
+    },
+    {
+      action: "capture" as const,
+      title: t("Capture and upload"),
+      subtitle: t("Opens Windows’ snipping bar: pick an area, a window or the whole screen. The screenshot is uploaded and its link copied."),
+      value: settings.captureShortcut,
+    },
+    {
+      action: "captureAndPaste" as const,
+      title: t("Capture, upload and paste the link"),
+      subtitle: t("The same, then pastes the link where you were typing."),
+      value: settings.capturePasteShortcut,
+    },
+    {
+      action: "undo" as const,
+      title: t("Undo the last upload"),
+      subtitle: t(
+        "For 10 seconds after an upload: deletes the file and its short link, and puts back what was on the clipboard. The upload’s notification has Undo too.",
+      ),
+      value: settings.undoShortcut,
+    },
+  ];
 }
 
 /** How much space thumbnails take on this PC, and Clear. */

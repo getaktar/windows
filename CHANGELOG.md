@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Capture: a shortcut, Capture in the panel or Capture and Upload in the
+  tray menu opens Windows' snipping bar; snip an area, a window or the whole
+  screen, and the screenshot is uploaded and its link copied. "Use for",
+  image processing and the path template apply as for any image
+- The link is copied right away: as soon as Aktar knows where a file goes,
+  before its bytes are sent, so even a large video doesn't keep you waiting.
+  The link works once the upload is done; a notification says so when it
+  takes a while. Turn it off in Settings > General > Uploads
+- Uploads made offline wait for the connection instead of failing, and go on
+  by themselves when it's back (Retry and Cancel in the panel). An upload
+  whose link was copied is kept until it's done, so it goes on after Aktar
+  quits or the PC restarts, to the same link
+- Upload and paste: "Upload clipboard and paste the link" and "Capture,
+  upload and paste the link" paste the link where you're typing, in GitHub,
+  Slack, Linear or anywhere else
+- Undo: for 10 seconds after an upload (in the panel, with a shortcut, and
+  from the upload's notification), Undo deletes the file and its short link
+  and puts back what was on the clipboard. An upload still going is stopped.
+  What a password manager copied is never put back; the clipboard is
+  emptied instead
+- Text and links on the clipboard upload too: text as a .txt, .md or .json
+  file, and a copied link's file is downloaded and uploaded to your bucket
+  (web pages are refused). The local API's `upload-clipboard` and
+  aktar://upload-clipboard take them as well
+
+### Changed
+
+- Text files that are UTF-8 are uploaded with `charset=utf-8`, so browsers
+  show accented and Turkish letters correctly
+- The new shortcuts are off until you set them in Settings > General >
+  Keyboard shortcuts
+
 ## [0.12.0] - 2026-10-26
 
 ### Security

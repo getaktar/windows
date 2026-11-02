@@ -116,11 +116,13 @@ fn minutes(url: &Url) -> Result<Option<u64>, ()> {
 async fn upload_clipboard(core: &SharedCore) {
     let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
     if inputs.is_empty() {
-        crate::uploads::show_notification(core, "Aktar", &t!("The clipboard has no file or image to upload."));
+        crate::uploads::show_notification(core, "Aktar", &t!("The clipboard has nothing to upload: no file, image, link or text."));
         return;
     }
     let what = match inputs.as_slice() {
-        [input] if input.temporary => t!("an image"),
+        // A copied link: what gets downloaded is named.
+        [input] if input.remote.is_some() => format!("“{}”", input.remote.as_ref().map(|remote| remote.url.as_str()).unwrap_or_default()),
+        [input] if input.temporary && crate::output::is_image(&input.original_filename) => t!("an image"),
         [input] => format!("“{}”", input.original_filename),
         _ => t!("{0} files", inputs.len()),
     };

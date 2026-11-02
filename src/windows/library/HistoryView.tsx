@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog, ContextMenu, MenuEntries, type ContextMenuState, type MenuEntry } from "../../components/Dialogs";
 import { ExpiryBadge, FileIcon, Thumbnail, useThumbnailURL } from "../../components/FileVisuals";
+import { JobStatusLine } from "../../components/JobStatus";
 import { Preview } from "../../components/Preview";
 import { QrCodeDialog } from "../../components/QrCodeDialog";
 import { shortLinkMenu } from "../../components/shortLinkMenu";
@@ -442,6 +443,7 @@ function RecordRow(props: {
 function ActiveUploadRow({ job }: { job: Job }) {
   const { t } = useI18n();
   const failed = job.state.kind === "failed";
+  const cancelLabel = failed ? t("Remove") : job.linkCopied ? t("Cancel and take back the copied link") : t("Cancel");
   return (
     <div className="row record-row">
       <div className="thumb thumb-icon" style={{ width: 44, height: 44, borderRadius: 8 }}>
@@ -457,16 +459,19 @@ function ActiveUploadRow({ job }: { job: Job }) {
         {job.state.kind === "uploading" ? (
           <>
             <ProgressBar value={job.state.progress > 0 ? job.state.progress : undefined} />
-            {job.state.resuming && (
-              <Text size={200} className="secondary">
-                {t("Resuming upload…")}
-              </Text>
-            )}
+            <JobStatusLine job={job} size={200} />
           </>
         ) : job.state.kind === "waiting" ? (
           <Text size={200} className="secondary">
             {t("Waiting…")}
           </Text>
+        ) : job.state.kind === "offline" ? (
+          <span className="inline-row">
+            <Text size={200} className="secondary ellipsis" title={job.state.message}>
+              {t("Waiting for a connection")}
+            </Text>
+            <Link onClick={() => api.retryJob(job.id)}>{t("Retry")}</Link>
+          </span>
         ) : job.state.kind === "failed" ? (
           <span className="inline-row">
             <Text size={200} className="text-error ellipsis" title={job.state.message}>
@@ -480,8 +485,8 @@ function ActiveUploadRow({ job }: { job: Job }) {
         size="small"
         appearance="subtle"
         icon={<DismissRegular />}
-        aria-label={failed ? t("Remove") : t("Cancel")}
-        title={failed ? t("Remove") : t("Cancel")}
+        aria-label={cancelLabel}
+        title={cancelLabel}
         onClick={() => (failed ? api.dismissJob(job.id) : api.cancelJob(job.id))}
       />
     </div>

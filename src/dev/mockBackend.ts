@@ -114,6 +114,30 @@ let jobs: Job[] = storeScene
         destinationName: "Screenshots",
         state: { kind: "failed", message: "Could not authenticate. Check your Access Key ID and Secret Access Key." },
       },
+      {
+        id: "J5",
+        filename: "demo-video.mp4",
+        destinationId: "D1",
+        destinationName: "Screenshots",
+        state: { kind: "uploading", progress: 0.18, resuming: false },
+        linkCopied: true,
+      },
+      {
+        id: "J6",
+        filename: "release-notes.pdf",
+        destinationId: "D1",
+        destinationName: "Screenshots",
+        state: { kind: "offline", message: "Waiting for a connection" },
+        linkCopied: true,
+      },
+      {
+        id: "J7",
+        filename: "logo.svg",
+        destinationId: "D1",
+        destinationName: "Screenshots",
+        state: { kind: "uploading", progress: 0.5, resuming: false },
+        downloading: true,
+      },
     ];
 
 let settings: Settings = {
@@ -124,7 +148,12 @@ let settings: Settings = {
   language: null,
   shortcut: "Ctrl+Shift+Alt+KeyU",
   renameShortcut: null,
+  pasteShortcut: "Ctrl+Shift+Alt+KeyV",
+  captureShortcut: null,
+  capturePasteShortcut: null,
+  undoShortcut: null,
   reuseDuplicateLinks: true,
+  copyLinkRightAway: true,
   localApiEnabled: true,
   localApiPort: 47913,
   autoCheckUpdates: true,
@@ -451,6 +480,26 @@ export function installMockBackend(route: string) {
           );
         case "upload_clipboard":
           return false;
+        case "capture_screen":
+          return null;
+        // The newest upload can be undone, as right after it's done.
+        case "undoable_uploads":
+          return storeScene ? [] : history.slice(0, 1).map((record) => record.id);
+        case "undo_upload":
+          history = history.filter((record) => record.id !== args.id);
+          return null;
+        case "set_action_shortcut": {
+          const keys: Record<string, keyof Settings> = {
+            upload: "shortcut",
+            uploadAndPaste: "pasteShortcut",
+            rename: "renameShortcut",
+            capture: "captureShortcut",
+            captureAndPaste: "capturePasteShortcut",
+            undo: "undoShortcut",
+          };
+          settings = { ...settings, [keys[args.action as string]]: (args.accelerator as string | null) ?? null };
+          return null;
+        }
         case "upload_files":
           if (args.rename || new URLSearchParams(window.location.search).has("alt")) {
             for (const path of args.paths as string[]) {

@@ -20,6 +20,8 @@ export const events = {
   thumbnailsCleared: "thumbnails-cleared",
   /** Settings should switch tabs or add a watched folder (`takeSettingsRequest`). */
   settingsRequest: "settings-request",
+  /** Undo is offered for other uploads now, or no longer (`undoableUploads`). */
+  undoChanged: "undo-changed",
 } as const;
 
 export type ProviderPreset =
@@ -276,6 +278,9 @@ export type JobState =
    * link copied instead. */
   | { kind: "succeeded"; publicUrl: string; recordId: string; reused: boolean; shortLinkError?: string | null }
   | { kind: "failed"; message: string }
+  /** Failed for want of a connection: tried again when the network is
+   * back, and while it looks up after a growing wait. */
+  | { kind: "offline"; message: string }
   | { kind: "cancelled" };
 
 export interface Job {
@@ -286,7 +291,14 @@ export interface Job {
   state: JobState;
   /** The watched folder it came from, by name. */
   source?: string | null;
+  /** Its link is copied already, before the upload finished. */
+  linkCopied?: boolean;
+  /** A copied link's file is being downloaded. */
+  downloading?: boolean;
 }
+
+/** The app's own shortcuts, for `setActionShortcut`. */
+export type AppShortcut = "upload" | "uploadAndPaste" | "rename" | "capture" | "captureAndPaste" | "undo";
 
 export interface UploadRecord {
   id: string;
@@ -442,12 +454,24 @@ export interface Settings {
   shortcut: string | null;
   /** "Rename and upload clipboard"; null when it isn't set. */
   renameShortcut: string | null;
+  /** "Upload clipboard and paste the link"; null when it isn't set, like
+   * the three below. */
+  pasteShortcut: string | null;
+  /** "Capture and upload". */
+  captureShortcut: string | null;
+  /** "Capture, upload and paste the link". */
+  capturePasteShortcut: string | null;
+  /** "Undo the last upload". */
+  undoShortcut: string | null;
   /** Each destination's own "Upload clipboard to this destination"
    * shortcut, by destination ID; left out when there are none. */
   destinationShortcuts?: Record<string, string>;
   /** Copy the link of an earlier upload of the same file to the same
    * destination instead of uploading it again. */
   reuseDuplicateLinks: boolean;
+  /** Copy the link as soon as Aktar knows where the file goes, before the
+   * upload finishes; offline, the upload waits for the network. */
+  copyLinkRightAway: boolean;
   localApiEnabled: boolean;
   localApiPort: number;
   autoCheckUpdates: boolean;
@@ -468,6 +492,7 @@ export type SettingsPatch = Partial<
     | "showNotification"
     | "closePanelAfterUpload"
     | "reuseDuplicateLinks"
+    | "copyLinkRightAway"
     | "autoCheckUpdates"
     | "autoInstallUpdates"
     | "deleteAfterDays"
@@ -733,6 +758,13 @@ export const api = {
   uploadFiles: (paths: string[], destinationId?: string, rename = false) =>
     invoke<number>("upload_files", { paths, destinationId: destinationId ?? null, rename }),
   uploadClipboard: () => invoke<boolean>("upload_clipboard"),
+  /** Windows' snipping bar, then the upload of the snip. */
+  captureScreen: () => invoke<void>("capture_screen"),
+  /** Takes back the upload (and the rest of its drop or paste): deleted
+   * from the bucket, and the clipboard put back. */
+  undoUpload: (id: string) => invoke<void>("undo_upload", { id }),
+  /** The history entries Undo would take back right now. */
+  undoableUploads: () => invoke<string[]>("undoable_uploads"),
   pendingNames: () => invoke<NameRequest[]>("pending_names"),
   /** Uploads a file waiting for its name, or drops it (Cancel) for null. */
   resolveName: (id: string, name: string | null) => invoke<void>("resolve_name", { id, name }),
@@ -780,6 +812,8 @@ export const api = {
   updateSettings: (patch: SettingsPatch) => invoke<Settings>("update_settings", { patch }),
   setShortcut: (accelerator: string | null) => invoke<void>("set_shortcut", { accelerator }),
   setRenameShortcut: (accelerator: string | null) => invoke<void>("set_rename_shortcut", { accelerator }),
+  setActionShortcut: (action: AppShortcut, accelerator: string | null) =>
+    invoke<void>("set_action_shortcut", { action, accelerator }),
   /** While recording a new shortcut, so pressing the current one records it
    * instead of uploading the clipboard. */
   setShortcutPaused: (paused: boolean) => invoke<void>("set_shortcut_paused", { paused }),

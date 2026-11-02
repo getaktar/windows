@@ -162,11 +162,13 @@ async fn install_when_idle(core: &SharedCore) {
 }
 
 fn is_idle(core: &SharedCore) -> bool {
+    // An upload waiting for the network counts: one whose link wasn't copied
+    // isn't kept in the outbox, so the restart would drop it.
     let uploading = core
         .uploads
         .snapshot()
         .iter()
-        .any(|job| matches!(job.state, JobState::Waiting | JobState::Uploading { .. }));
+        .any(|job| matches!(job.state, JobState::Waiting | JobState::Uploading { .. } | JobState::Offline { .. }));
     // The panel always exists (hidden); every other window only while open.
     let window_open = core
         .app

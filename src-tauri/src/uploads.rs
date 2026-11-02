@@ -20,7 +20,10 @@ use crate::destinations::{DestinationConfig, FolderUploadMode, ImageFormat, Imag
 use crate::folder_upload;
 use crate::history::{NewRecord, Replacement, UploadRecord};
 use crate::multipart::{self, Candidate, Session, SourceFile};
+use crate::outbox::EarlyLink;
 use crate::output::{self, ContentHashes};
+use crate::quick_share::{self, Origin, PasteTarget, Stopped};
+use crate::remote_download::{self, Downloaded, RemoteSource};
 use crate::short_keys::{self, ShortKeyTarget};
 use crate::storage::{BucketObject, Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
 use crate::{image_metadata, image_processing};
@@ -70,6 +73,15 @@ pub struct UploadInput {
     /// API's `short=1` / `short=0`): true makes one whatever the length,
     /// false makes none. None follows the destination.
     pub short_link: Option<bool>,
+    /// A copied link: its file is downloaded into `path`'s folder when the
+    /// upload starts, and then it's like any file.
+    pub remote: Option<RemoteSource>,
+    /// A folder Aktar made for this file (a copied text or link), deleted
+    /// with it.
+    pub temporary_folder: Option<PathBuf>,
+    /// Someone waits for the result (the local API): no early link, and a
+    /// failure is reported rather than waited out.
+    pub waited: bool,
 }
 
 /// A file written over an existing upload or bucket object, keeping its key
@@ -131,11 +143,14 @@ impl UploadInput {
             keep_existing: false,
             replacing: None,
             short_link: None,
+            remote: None,
+            temporary_folder: None,
+            waited: false,
         }
     }
 
     /// Days until the upload is deleted, once `enqueue` has settled it.
-    fn expire_after_days(&self) -> Option<u32> {
+    pub(crate) fn expire_after_days(&self) -> Option<u32> {
         match self.expiry {
             Expiry::Days(days) => Some(days),
             _ => None,
@@ -145,6 +160,9 @@ impl UploadInput {
     pub(crate) fn remove_if_temporary(&self) {
         if self.temporary {
             let _ = std::fs::remove_file(&self.path);
+        }
+        if let Some(folder) = &self.temporary_folder {
+            let _ = std::fs::remove_dir_all(folder);
         }
     }
 }
@@ -160,6 +178,9 @@ pub enum JobState {
     /// made, so the original link was copied.
     Succeeded { public_url: String, record_id: String, reused: bool, short_link_error: Option<String> },
     Failed { message: String },
+    /// Failed for want of a connection: tried again when the network is
+    /// back, and while it looks up after a growing wait.
+    Offline { message: String },
     Cancelled,
 }
 
@@ -169,13 +190,73 @@ impl JobState {
     }
 }
 
-struct Job {
-    id: String,
-    input: UploadInput,
-    destination: DestinationConfig,
-    state: JobState,
-    sender: watch::Sender<JobState>,
-    task: Option<JoinHandle<()>>,
+pub(crate) struct Job {
+    pub(crate) id: String,
+    pub(crate) input: UploadInput,
+    pub(crate) destination: DestinationConfig,
+    pub(crate) state: JobState,
+    pub(crate) sender: watch::Sender<JobState>,
+    pub(crate) task: Option<JoinHandle<()>>,
+    /// The upload the user started that this file is part of (see
+    /// `quick_share::UploadAction`); none for a watched folder's file.
+    pub(crate) action_id: Option<String>,
+    /// The link copied before the bytes went; from then on the key.
+    pub(crate) early_link: Option<EarlyLink>,
+    /// Kept in the outbox, so it goes on after a restart.
+    pub(crate) in_outbox: bool,
+    /// A copied link's file, once it's downloaded.
+    pub(crate) downloaded: Option<Downloaded>,
+    pub(crate) downloading: bool,
+    /// When the first try started: an object at the key written after this
+    /// is the job's own, from a try whose answer was lost.
+    pub(crate) first_attempt_at: Option<i64>,
+    /// Tries that failed for want of a connection, and when the next is.
+    pub(crate) offline_retries: u32,
+    pub(crate) next_retry_at: Option<i64>,
+    /// The key and size being written, to take it back after a cancel.
+    pub(crate) sending: Option<(String, u64)>,
+}
+
+impl Job {
+    fn new(id: String, input: UploadInput, destination: DestinationConfig, state: JobState, sender: watch::Sender<JobState>) -> Self {
+        Self {
+            id,
+            input,
+            destination,
+            state,
+            sender,
+            task: None,
+            action_id: None,
+            early_link: None,
+            in_outbox: false,
+            downloaded: None,
+            downloading: false,
+            first_attempt_at: None,
+            offline_retries: 0,
+            next_retry_at: None,
+            sending: None,
+        }
+    }
+
+    /// The name the file goes by: a downloaded link's own name, unless the
+    /// upload was renamed (then with the download's extension when the new
+    /// name has none).
+    pub(crate) fn display_name(&self) -> String {
+        let (Some(remote), Some(downloaded)) = (&self.input.remote, &self.downloaded) else { return self.input.original_filename.clone() };
+        display_name(&self.input.original_filename, remote, downloaded)
+    }
+}
+
+fn display_name(original_filename: &str, remote: &RemoteSource, downloaded: &Downloaded) -> String {
+    if original_filename == remote.suggested_name {
+        return downloaded.filename.clone();
+    }
+    let extension = crate::util::split_extension(&downloaded.filename).1;
+    if crate::util::split_extension(original_filename).1.is_empty() && !extension.is_empty() {
+        format!("{original_filename}.{extension}")
+    } else {
+        original_filename.to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -188,6 +269,10 @@ pub struct JobSnapshot {
     pub state: JobState,
     /// The watched folder it came from, by name.
     pub source: Option<String>,
+    /// Its link is copied already, before the upload finished.
+    pub link_copied: bool,
+    /// A copied link's file is being downloaded.
+    pub downloading: bool,
 }
 
 /// What the finished files of a folder (or of a drop spread over several
@@ -197,7 +282,7 @@ type GroupLinks = BTreeMap<usize, String>;
 
 #[derive(Default)]
 pub struct UploadManager {
-    jobs: Mutex<Vec<Job>>,
+    pub(crate) jobs: Mutex<Vec<Job>>,
     /// Folders uploaded with their structure, and drops spread over several
     /// destinations, that still have files going.
     open_groups: Mutex<HashMap<String, GroupLinks>>,
@@ -206,6 +291,13 @@ pub struct UploadManager {
     job_sessions: Mutex<HashMap<String, String>>,
     /// Files waiting for their name ("Rename and upload").
     pending_names: Mutex<Vec<PendingName>>,
+    /// The uploads the user started, by ID, for Undo and pasting.
+    pub(crate) actions: Mutex<HashMap<String, quick_share::UploadAction>>,
+    /// The action Undo would take back now; none once its time is up.
+    pub(crate) undoable: Mutex<Option<String>>,
+    pub(crate) undo_timer: Mutex<Option<JoinHandle<()>>>,
+    /// Wakes up for the next upload waiting for the network.
+    pub(crate) offline_timer: Mutex<Option<JoinHandle<()>>>,
 }
 
 /// A file to upload once it has a name.
@@ -236,11 +328,13 @@ impl UploadManager {
             .iter()
             .map(|job| JobSnapshot {
                 id: job.id.clone(),
-                filename: job.input.original_filename.clone(),
+                filename: job.display_name(),
                 destination_id: job.destination.id.clone(),
                 destination_name: job.destination.name.clone(),
                 state: job.state.clone(),
                 source: job.input.watched.as_ref().map(|source| source.folder_name.clone()),
+                link_copied: job.early_link.is_some(),
+                downloading: job.downloading,
             })
             .collect()
     }
@@ -256,13 +350,29 @@ pub struct Queued {
 /// destination. Each job keeps the destination it was started for, so a
 /// retry or a change of default later doesn't redirect it.
 pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>) -> Vec<Queued> {
+    enqueue_with(core, inputs, destination, Origin::default())
+}
+
+/// `enqueue`, for an upload with somewhere to paste its link or a clipboard
+/// kept from before (a capture). Everything but a watched folder's files is
+/// one `quick_share::UploadAction`, which Undo takes back as a whole.
+pub fn enqueue_with(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>, origin: Origin) -> Vec<Queued> {
+    let action = inputs.iter().any(|input| input.watched.is_none()).then(|| quick_share::new_action(core, origin));
+    let queued = route_and_enqueue(core, inputs, destination, action.as_deref());
+    if let Some(action) = &action {
+        quick_share::drop_if_empty(core, action);
+    }
+    queued
+}
+
+fn route_and_enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>, action: Option<&str>) -> Vec<Queued> {
     if destination.is_some() || inputs.is_empty() {
-        return enqueue_to(core, inputs, destination);
+        return enqueue_to(core, inputs, destination, action);
     }
     let destinations = core.destinations.all();
     let default = core.destinations.default_destination();
     let Some(default) = default.filter(|_| crate::routing::is_active(&destinations)) else {
-        return enqueue_to(core, inputs, None);
+        return enqueue_to(core, inputs, None, action);
     };
     let routed: Vec<(DestinationConfig, UploadInput)> = inputs
         .into_iter()
@@ -291,7 +401,7 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
             None => batches.push((target, vec![input])),
         }
     }
-    batches.into_iter().flat_map(|(destination, inputs)| enqueue_to(core, inputs, Some(destination))).collect()
+    batches.into_iter().flat_map(|(destination, inputs)| enqueue_to(core, inputs, Some(destination), action)).collect()
 }
 
 /// Where `enqueue` would send `inputs` without a destination: the names of
@@ -326,7 +436,7 @@ fn routing_name(input: &UploadInput, default: &DestinationConfig) -> String {
 }
 
 /// `enqueue` without routing: everything to `destination`, or the default.
-fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>) -> Vec<Queued> {
+fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>, action: Option<&str>) -> Vec<Queued> {
     if inputs.is_empty() {
         return Vec::new();
     }
@@ -342,6 +452,7 @@ fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<D
     let rules_active = crate::expiry::is_active(core, &destination.id);
     let inputs = expanding_folders(core, inputs, &destination);
     let mut queued = Vec::new();
+    let mut action_jobs = Vec::new();
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         for (offset, mut input) in inputs.into_iter().enumerate() {
@@ -349,7 +460,11 @@ fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<D
             let (sender, receiver) = watch::channel(JobState::Waiting);
             let id = crate::util::new_id();
             queued.push(Queued { job_id: id.clone(), receiver });
-            let job = Job { id, input, destination: destination.clone(), state: JobState::Waiting, sender, task: None };
+            let mut job = Job::new(id, input, destination.clone(), JobState::Waiting, sender);
+            if let Some(action) = action.filter(|_| job.input.watched.is_none()) {
+                job.action_id = Some(action.to_string());
+                action_jobs.push(job.id.clone());
+            }
             // A watched folder's files line up behind everything else, in
             // order; the user's own uploads go to the front.
             if job.input.watched.is_some() {
@@ -359,8 +474,60 @@ fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<D
             }
         }
     }
+    if let (Some(action), false) = (action, action_jobs.is_empty()) {
+        quick_share::attach_jobs(core, action, action_jobs);
+    }
     drain(core);
     queued
+}
+
+/// At launch: the uploads whose link was copied before Aktar quit go on, to
+/// the keys their links point at. One whose destination was removed has
+/// nowhere to go and is dropped; one that had failed waits for Retry or
+/// Cancel.
+pub fn restore_outbox(core: &SharedCore) {
+    let entries = core.outbox.load(crate::util::now_millis());
+    if entries.is_empty() {
+        return;
+    }
+    let destinations = core.destinations.all();
+    let mut restored = Vec::new();
+    for (entry, path) in entries {
+        let Some(destination) = destinations.iter().find(|destination| destination.id == entry.destination_id).cloned() else {
+            core.outbox.remove(&entry.id);
+            continue;
+        };
+        let input = UploadInput {
+            original_filename: entry.original_filename.clone(),
+            short_link: entry.short_link_override,
+            expiry: entry.expiry_days.map_or(Expiry::Never, Expiry::Days),
+            ..UploadInput::from_path(path)
+        };
+        let state = match &entry.failure {
+            Some(message) => JobState::Failed { message: message.clone() },
+            None => JobState::Waiting,
+        };
+        let (sender, _) = watch::channel(state.clone());
+        let mut job = Job::new(entry.id.clone(), input, destination, state, sender);
+        let action_id = quick_share::new_action(core, Origin::default());
+        job.action_id = Some(action_id.clone());
+        job.early_link = Some(entry.early_link);
+        job.first_attempt_at = Some(entry.first_attempt_at);
+        job.in_outbox = true;
+        restored.push((job, action_id));
+    }
+    let mut attached = Vec::new();
+    {
+        let mut jobs = core.uploads.jobs.lock().unwrap();
+        for (offset, (job, action_id)) in restored.into_iter().enumerate() {
+            attached.push((action_id, job.id.clone()));
+            jobs.insert(offset, job);
+        }
+    }
+    for (action_id, job_id) in attached {
+        quick_share::attach_jobs(core, &action_id, vec![job_id]);
+    }
+    drain(core);
 }
 
 /// Folders become one ZIP input (zipped when its turn comes, so a big
@@ -421,7 +588,7 @@ fn settled_expiry(expiry: Expiry, exact_key: Option<&str>, rules_active: bool, d
 /// `rename` is set. Returns false when there's nothing uploadable on it.
 /// Reading and PNG-encoding a large screenshot takes a moment, so it's done
 /// off the async runtime's workers.
-pub async fn upload_clipboard(core: &SharedCore, rename: bool) -> bool {
+pub async fn upload_clipboard(core: &SharedCore, rename: bool, paste: Option<PasteTarget>) -> bool {
     let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
     if inputs.is_empty() {
         return false;
@@ -429,7 +596,7 @@ pub async fn upload_clipboard(core: &SharedCore, rename: bool) -> bool {
     if rename {
         ask_for_names(core, inputs, None);
     } else {
-        enqueue(core, inputs, None);
+        enqueue_with(core, inputs, None, Origin { paste, snapshot: None });
     }
     true
 }
@@ -441,7 +608,7 @@ pub fn upload_clipboard_to_in_background(core: &SharedCore, destination: Destina
     tauri::async_runtime::spawn(async move {
         let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
         if inputs.is_empty() {
-            show_notification(&core, "Aktar", &t!("The clipboard has no file or image to upload."));
+            show_notification(&core, "Aktar", &t!("The clipboard has nothing to upload: no file, image, link or text."));
         } else {
             enqueue(&core, inputs, Some(destination));
         }
@@ -487,18 +654,30 @@ fn replace(
     let mut input = UploadInput { object_key: Some(key), replacing: Some(Replacing { record_id }), ..UploadInput::from_path(path) };
     if let Some(filename) = filename {
         input.original_filename = filename;
+        // Only the local API names its staged copy, and it waits for the
+        // result: a failure is answered rather than waited out.
+        input.waited = true;
     }
-    enqueue_to(core, vec![input], Some(destination)).into_iter().next().ok_or_else(|| t!("The upload could not be queued."))
+    enqueue_to(core, vec![input], Some(destination), None).into_iter().next().ok_or_else(|| t!("The upload could not be queued."))
 }
 
 /// For the shortcuts, the tray menu, and aktar:// links, whose handlers run
 /// on the UI thread: uploads the clipboard in the background, and says so
 /// when there's nothing on it to upload.
 pub fn upload_clipboard_in_background(core: &SharedCore, rename: bool) {
+    upload_clipboard_and_paste(core, rename, None);
+}
+
+/// `upload_clipboard_in_background`, pasting the link into `paste`'s
+/// window once it's copied ("Upload clipboard and paste the link").
+pub fn upload_clipboard_and_paste(core: &SharedCore, rename: bool, paste: Option<PasteTarget>) {
     let core = core.clone();
     tauri::async_runtime::spawn(async move {
-        if !upload_clipboard(&core, rename).await {
-            show_notification(&core, "Aktar", &t!("The clipboard has no file or image to upload."));
+        if !upload_clipboard(&core, rename, paste).await {
+            if paste.is_some() {
+                crate::win32::beep();
+            }
+            show_notification(&core, "Aktar", &t!("The clipboard has nothing to upload: no file, image, link or text."));
         }
     });
 }
@@ -574,26 +753,41 @@ pub fn has_job(core: &SharedCore, job_id: &str) -> bool {
     core.uploads.jobs.lock().unwrap().iter().any(|job| job.id == job_id)
 }
 
+/// Tries a failed upload, or one waiting for the network, again.
 pub fn retry(core: &SharedCore, job_id: &str) {
+    let mut was_failed = false;
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         if let Some(job) = jobs.iter_mut().find(|job| job.id == job_id) {
-            if matches!(job.state, JobState::Failed { .. }) {
+            if matches!(job.state, JobState::Failed { .. } | JobState::Offline { .. }) {
+                was_failed = matches!(job.state, JobState::Failed { .. });
                 job.state = JobState::Waiting;
                 job.sender.send_replace(JobState::Waiting);
             }
         }
     }
+    // A kept upload that had failed for good goes on after a restart again.
+    if was_failed {
+        quick_share::note_outbox_failure(core, job_id, None);
+    }
     drain(core);
 }
 
+/// Stops the job: in-flight parts stop and its multipart upload is aborted.
+/// A job whose link was already copied takes it back: its short link is
+/// deleted, it leaves the outbox, and the clipboard gets back what was there
+/// before, if it still holds that link. Bytes it may have finished sending
+/// are deleted again.
 pub fn cancel(core: &SharedCore, job_id: &str) {
     let mut cancelled = None;
     let mut watched_cancelled = None;
+    let mut stopped = None;
+    let mut sent = None;
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         if let Some(index) = jobs.iter().position(|job| job.id == job_id) {
             let job = jobs.remove(index);
+            let running = job.task.is_some();
             if let Some(task) = job.task {
                 task.abort();
             }
@@ -603,7 +797,18 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
             if let Some(source) = &job.input.watched {
                 watched_cancelled = Some(source.clone());
             }
+            // A replace keeps what it wrote: there's nothing to go back to.
+            if let (true, Some((key, size)), None) = (running, job.sending.clone(), &job.input.replacing) {
+                sent = Some((job.destination.clone(), key, size, job.first_attempt_at.unwrap_or_default()));
+            }
+            stopped = Some(Stopped { job_id: job.id.clone(), action_id: job.action_id.clone(), early_link: job.early_link, in_outbox: job.in_outbox, destination: job.destination });
         }
+    }
+    if let Some(stopped) = &stopped {
+        quick_share::withdraw_early_link(core, stopped);
+    }
+    if let Some((destination, key, size, first_attempt_at)) = sent {
+        quick_share::take_back(destination, key, size, first_attempt_at);
     }
     if let Some(source) = watched_cancelled {
         crate::watched::upload_cancelled(core, &source);
@@ -614,7 +819,7 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
         multipart::abort_in_background(core, session);
     }
     if let Some(group) = cancelled {
-        finish_group_if_done(core, &group);
+        finish_group_if_done(core, &group, stopped.as_ref().and_then(|stopped| stopped.action_id.as_deref()));
     }
     drain(core);
 }
@@ -622,6 +827,7 @@ pub fn cancel(core: &SharedCore, job_id: &str) {
 /// Drops a job from the list, e.g. one started through the local API whose
 /// staged file is already gone, so it can't be retried.
 pub fn dismiss(core: &SharedCore, job_id: &str) {
+    let mut stopped = None;
     {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         if let Some(index) = jobs.iter().position(|job| job.id == job_id) {
@@ -630,7 +836,12 @@ pub fn dismiss(core: &SharedCore, job_id: &str) {
                 task.abort();
             }
             job.input.remove_if_temporary();
+            stopped = Some(Stopped { job_id: job.id.clone(), action_id: job.action_id.clone(), early_link: job.early_link, in_outbox: job.in_outbox, destination: job.destination });
         }
+    }
+    // A failed upload whose link was copied is given up: its link goes too.
+    if let Some(stopped) = &stopped {
+        quick_share::withdraw_early_link(core, stopped);
     }
     // An unfinished multipart upload stays, so the same file uploaded again
     // continues it.
@@ -658,13 +869,15 @@ fn drain(core: &SharedCore) {
             active += 1;
             job.state = JobState::Uploading { progress: 0.0, resuming: false };
             job.sender.send_replace(job.state.clone());
+            job.first_attempt_at.get_or_insert_with(crate::util::now_millis);
+            job.sending = None;
             let task_core = core.clone();
             let job_id = job.id.clone();
             let input = job.input.clone();
             let destination = job.destination.clone();
             job.task = Some(tauri::async_runtime::spawn(async move {
                 match run(&task_core, &job_id, &input, &destination).await {
-                    Ok(outcome) => finish(&task_core, &job_id, &input, &destination, outcome).await,
+                    Ok(outcome) => finish(&task_core, &job_id, &destination, outcome).await,
                     Err(failure) => fail(&task_core, &job_id, &input, failure),
                 }
             }));
@@ -694,6 +907,9 @@ impl Drop for Scratch {
 
 /// A finished upload.
 struct Outcome {
+    /// The input as it went up: a copied link's downloaded file, under the
+    /// name it goes by.
+    input: UploadInput,
     result: UploadResult,
     /// What's copied: the public URL, or a temporary link.
     link: String,
@@ -708,6 +924,10 @@ struct Outcome {
     reused: Option<UploadRecord>,
     /// The thumbnail made from the file that went up, if any.
     thumbnail: Option<Vec<u8>>,
+    /// The link copied before the bytes went, and (when the file did go to
+    /// its key) what became of its short link.
+    early: Option<EarlyLink>,
+    early_attempt: Option<crate::short_links::Attempt>,
     _scratch: Scratch,
 }
 
@@ -730,10 +950,90 @@ impl From<StorageError> for Failure {
     }
 }
 
+impl From<remote_download::DownloadError> for Failure {
+    fn from(error: remote_download::DownloadError) -> Self {
+        Self { transient: error.is_transient(), message: error.to_string() }
+    }
+}
+
+impl Failure {
+    /// Windows has no connection: the upload waits for one rather than
+    /// trying (and failing) first.
+    fn offline() -> Self {
+        Self { message: t!("Waiting for a connection"), transient: true }
+    }
+}
+
+/// What a job brings to its try: kept from earlier ones (a downloaded
+/// link, the copied link's key) and the action it's part of.
+struct JobContext {
+    action_id: Option<String>,
+    early_link: Option<EarlyLink>,
+    downloaded: Option<Downloaded>,
+    first_attempt_at: i64,
+}
+
+fn job_context(core: &SharedCore, job_id: &str) -> JobContext {
+    let jobs = core.uploads.jobs.lock().unwrap();
+    let job = jobs.iter().find(|job| job.id == job_id);
+    JobContext {
+        action_id: job.and_then(|job| job.action_id.clone()),
+        early_link: job.and_then(|job| job.early_link.clone()),
+        downloaded: job.and_then(|job| job.downloaded.clone()),
+        first_attempt_at: job.and_then(|job| job.first_attempt_at).unwrap_or_else(crate::util::now_millis),
+    }
+}
+
+fn update_job(core: &SharedCore, job_id: &str, change: impl FnOnce(&mut Job)) {
+    if let Some(job) = core.uploads.jobs.lock().unwrap().iter_mut().find(|job| job.id == job_id) {
+        change(job);
+    }
+}
+
+/// Downloads a copied link's file into the folder its placeholder is in.
+async fn download_link(core: &SharedCore, job_id: &str, input: &UploadInput, remote: &RemoteSource) -> Result<Downloaded, Failure> {
+    if !crate::win32::is_online() {
+        return Err(Failure::offline());
+    }
+    let folder = input.path.parent().map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+    update_job(core, job_id, |job| job.downloading = true);
+    core.notify(events::JOBS_CHANGED);
+    let result = remote_download::download(remote, &folder, |fraction| report_progress(core, job_id, fraction)).await;
+    update_job(core, job_id, |job| {
+        job.downloading = false;
+        if let JobState::Uploading { resuming, .. } = job.state {
+            job.state = JobState::Uploading { progress: 0.0, resuming };
+            job.sender.send_replace(job.state.clone());
+        }
+        if let Ok(downloaded) = &result {
+            job.downloaded = Some(downloaded.clone());
+        }
+    });
+    core.notify(events::JOBS_CHANGED);
+    Ok(result?)
+}
+
 /// Uploads the file, or finds it already uploaded.
 async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig) -> Result<Outcome, Failure> {
     let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
     let provider = S3Provider::new(destination.clone(), credentials);
+    let context = job_context(core, job_id);
+
+    // A copied link: its file is downloaded first (once, kept for retries),
+    // and then it's like any file.
+    let mut input = input.clone();
+    if let Some(remote) = input.remote.clone() {
+        let downloaded = match context.downloaded.clone() {
+            Some(downloaded) => downloaded,
+            None => download_link(core, job_id, &input, &remote).await?,
+        };
+        input.original_filename = display_name(&input.original_filename, &remote, &downloaded);
+        input.path = downloaded.path;
+    }
+    let input = &input;
+    // A link already handed out names its key: that's where this upload
+    // goes, whatever else is in the bucket.
+    let pinned_key = context.early_link.as_ref().map(|early| early.object_key.clone());
 
     // A folder goes up as a ZIP made on the spot, and a photo converted,
     // or without the metadata the destination removes; all made off the
@@ -798,7 +1098,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     // for the {md5} and {sha256} tokens and for finding an earlier upload
     // of the same file. A ZIP made on the spot is never quite the same.
     let generated_key = input.object_key.is_none() && input.folder_key.is_none();
-    let reuse_links = core.settings.get().reuse_duplicate_links && !zipped;
+    let reuse_links = core.settings.get().reuse_duplicate_links && !zipped && pinned_key.is_none();
     // A watched folder's file may be hashed already; it's used as long as
     // the bytes going up are the file's own (and {md5} isn't wanted).
     let original_bytes = !zipped && scratch.cleaned.is_none();
@@ -809,7 +1109,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         .filter(|_| original_bytes && !destination.object_path_template.contains("{md5}"));
     let hashes = if let Some(sha256) = known {
         Some(ContentHashes { md5: String::new(), sha256 })
-    } else if reuse_links || (generated_key && output::uses_hashes(&destination.object_path_template)) {
+    } else if reuse_links || (generated_key && pinned_key.is_none() && output::uses_hashes(&destination.object_path_template)) {
         let hashed = path.clone();
         let hashes = tauri::async_runtime::spawn_blocking(move || crate::util::content_hashes(&hashed))
             .await
@@ -828,6 +1128,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         if let Some(record) = earlier_upload(core, &provider, destination, input, sha256).await {
             let link = link_for(&provider, destination, &record.object_key, &record.public_url).await;
             return Ok(Outcome {
+                input: input.clone(),
                 result: UploadResult {
                     object_key: record.object_key.clone(),
                     public_url: record.public_url.clone(),
@@ -839,6 +1140,8 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 original_hash,
                 reused: Some(record),
                 thumbnail: None,
+                early: None,
+                early_attempt: None,
                 _scratch: scratch,
             });
         }
@@ -869,7 +1172,8 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
             source: source.as_ref(),
             sha256: hashes.as_ref().map(|hashes| hashes.sha256.as_str()),
         };
-        let exact_key = (!generated_key).then(|| object_key_for(input, destination, &filename, hashes.as_ref(), new_extension));
+        // An exact key, or the one a copied link points at.
+        let exact_key = pinned_key.clone().or_else(|| (!generated_key).then(|| object_key_for(input, destination, &filename, hashes.as_ref(), new_extension)));
         for session in core.upload_sessions.matching(&candidate, &busy) {
             match &exact_key {
                 Some(key) => {
@@ -905,9 +1209,10 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         }
     }
 
-    let mut object_key = match &resumed {
-        Some(session) => session.object_key.clone(),
-        None => object_key_for(input, destination, &filename, hashes.as_ref(), new_extension),
+    let mut object_key = match (&pinned_key, &resumed) {
+        (Some(key), _) => key.clone(),
+        (None, Some(session)) => session.object_key.clone(),
+        (None, None) => object_key_for(input, destination, &filename, hashes.as_ref(), new_extension),
     };
     // A converted photo going to a name picked in the bucket browser must
     // not land on another file that has its new name.
@@ -918,7 +1223,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
             object_key = crate::bucket::available_key(&provider, name, &folder, &[]).await.map_err(|error| error.to_string())?;
         }
     }
-    let content_type = output::content_type(&filename);
+    let content_type = upload_content_type(&path, &filename);
     let progress = Arc::new(Progress::default());
     // Only S3 and R2 are known to honor If-None-Match on uploads.
     let only_if_new = input.keep_existing && input.object_key.is_some() && destination.preset.supports_conditional_writes();
@@ -935,13 +1240,27 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         key_basis: key_basis.clone(),
         progress: progress.clone(),
     };
+    // Instant link: the link is copied now, before the bytes go, and the
+    // upload is kept until they're there (docs/capture-and-instant-links.md).
+    let mut early = context.early_link.clone();
+    if early.is_none() && core.settings.get().copy_link_right_away && quick_share::can_copy_early(input, context.action_id.is_some()) {
+        early = Some(quick_share::copy_early_link(core, job_id, input, destination, &provider, &object_key, &filename).await);
+    }
+    // Offline, the upload waits for the network right away rather than
+    // after the SDK's retries.
+    if !crate::win32::is_online() {
+        return Err(Failure::offline());
+    }
+    update_job(core, job_id, |job| job.sending = Some((object_key.clone(), file_size)));
+
     // A key with {short} never replaces a file that has it already: a
     // taken one is made again with a new code (see `short_keys`).
     let short_key = generated_key && output::uses_short_code(&destination.object_path_template);
     let key_filename = filename.clone();
+    let short_pinned = early.as_ref().map(|early| early.object_key.clone());
     let upload = async {
         if short_key {
-            let mut target = ShortUpload { sending: &sending, resumed };
+            let mut target = ShortUpload { sending: &sending, resumed, pinned: short_pinned, first_attempt_at: context.first_attempt_at };
             let new_key = || object_key_for(input, destination, &key_filename, hashes.as_ref(), new_extension);
             return short_keys::write_short_key(&mut target, object_key.clone(), destination.preset.supports_conditional_writes(), new_key).await;
         }
@@ -972,12 +1291,24 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
             result = &mut upload => {
                 let object_key: String = result?;
                 let public_url = output::resolve_public_url(&destination.public_base_url, &object_key);
-                let link = link_for(&provider, destination, &object_key, &public_url).await;
+                let (link, early_attempt) = match &early {
+                    // Made when the link was copied.
+                    Some(early) if early.object_key == object_key => (early.link.clone(), Some(quick_share::early_attempt(early))),
+                    // The key was taken after all (a {short} clash), so the
+                    // copied link points elsewhere: its short link goes, and
+                    // the new link is copied in its place.
+                    Some(early) => {
+                        quick_share::delete_unstored_short_link(early, destination);
+                        (link_for(&provider, destination, &object_key, &public_url).await, None)
+                    }
+                    None => (link_for(&provider, destination, &object_key, &public_url).await, None),
+                };
                 let thumbnail = match thumbnail.take() {
                     Some(task) => task.await.ok().flatten(),
                     None => None,
                 };
                 return Ok(Outcome {
+                    input: input.clone(),
                     result: UploadResult { object_key: object_key.clone(), public_url, byte_size: file_size as i64 },
                     link,
                     filename,
@@ -985,6 +1316,8 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     original_hash,
                     reused: None,
                     thumbnail,
+                    early,
+                    early_attempt,
                     _scratch: scratch,
                 });
             }
@@ -1073,27 +1406,82 @@ struct ShortUpload<'a> {
     sending: &'a Sending<'a>,
     /// The unfinished upload being continued, until a key is tried.
     resumed: Option<Session>,
+    /// The key a copied link points at, if one was copied.
+    pinned: Option<String>,
+    first_attempt_at: i64,
 }
+
+impl ShortUpload<'_> {
+    /// A try whose answer was lost may have written the key already: an
+    /// object there, as big as this file and written since the first try
+    /// (two minutes of slack for clocks), is this upload's own.
+    async fn is_own_earlier_write(&self, key: &str) -> bool {
+        if self.pinned.as_deref() != Some(key) {
+            return false;
+        }
+        match self.sending.provider.object_info(key).await {
+            Ok(Some(object)) => {
+                object.size == self.sending.file_size as i64
+                    && object.last_modified.is_some_and(|modified| modified >= self.first_attempt_at - OWN_WRITE_LEEWAY_MILLIS)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// How much earlier than the first try an object may be dated and still be
+/// the upload's own write.
+const OWN_WRITE_LEEWAY_MILLIS: i64 = 120_000;
 
 impl ShortKeyTarget for ShortUpload<'_> {
     async fn exists(&mut self, key: &str) -> Result<bool, StorageError> {
-        self.sending.provider.object_exists(key).await
+        if !self.sending.provider.object_exists(key).await? {
+            return Ok(false);
+        }
+        Ok(!self.is_own_earlier_write(key).await)
     }
 
     async fn write(&mut self, key: &str, only_if_new: bool) -> Result<(), StorageError> {
         let sending = self.sending;
-        if sending.file_size <= SINGLE_UPLOAD_LIMIT {
-            return sending.provider.upload(sending.path, key, sending.content_type, sending.progress.clone(), only_if_new).await.map(drop);
+        update_job(sending.core, sending.job_id, |job| job.sending = Some((key.to_string(), sending.file_size)));
+        let result = if sending.file_size <= SINGLE_UPLOAD_LIMIT {
+            sending.provider.upload(sending.path, key, sending.content_type, sending.progress.clone(), only_if_new).await.map(drop)
+        } else {
+            // A continued upload keeps its key unless that one is taken;
+            // then its parts can't move, so it's thrown away and the file
+            // starts over under the new key.
+            let mut resumed = self.resumed.take();
+            if let Some(session) = resumed.take_if(|session| session.object_key != key) {
+                sending.core.uploads.job_sessions.lock().unwrap().remove(sending.job_id);
+                multipart::abort(sending.provider, &sending.core.upload_sessions, &session).await;
+            }
+            sending.multipart(key, resumed, only_if_new).await
+        };
+        match result {
+            Err(StorageError::AlreadyExists) if self.is_own_earlier_write(key).await => Ok(()),
+            other => other,
         }
-        // A continued upload keeps its key unless that one is taken; then
-        // its parts can't move, so it's thrown away and the file starts
-        // over under the new key.
-        let mut resumed = self.resumed.take();
-        if let Some(session) = resumed.take_if(|session| session.object_key != key) {
-            sending.core.uploads.job_sessions.lock().unwrap().remove(sending.job_id);
-            multipart::abort(sending.provider, &sending.core.upload_sessions, &session).await;
-        }
-        sending.multipart(key, resumed, only_if_new).await
+    }
+}
+
+/// The Content-Type a file is sent with: its type, plus `; charset=utf-8`
+/// for plain text, Markdown and CSV whose bytes are UTF-8 (all text Aktar
+/// saves from the clipboard is), so a browser doesn't guess another charset
+/// and garble "ğ" or "é". History keeps the bare type.
+fn upload_content_type(path: &Path, filename: &str) -> String {
+    const CHARSET_TYPES: [&str; 4] = ["text/plain", "text/markdown", "text/x-markdown", "text/csv"];
+    const MAX_CHARSET_CHECK_BYTES: u64 = 16 * 1024 * 1024;
+    let content_type = output::content_type(filename);
+    if !CHARSET_TYPES.contains(&content_type.as_str()) {
+        return content_type;
+    }
+    let size = std::fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0);
+    if size == 0 || size > MAX_CHARSET_CHECK_BYTES {
+        return content_type;
+    }
+    match std::fs::read(path) {
+        Ok(data) if std::str::from_utf8(&data).is_ok() => format!("{content_type}; charset=utf-8"),
+        _ => content_type,
     }
 }
 
@@ -1254,11 +1642,15 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
 
 /// History keeps the public URL; `outcome.link` is what's copied. An
 /// earlier upload whose link is reused stays the one history entry.
-async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destination: &DestinationConfig, outcome: Outcome) {
-    let Outcome { result, link, filename, content_hash, original_hash, reused, thumbnail, _scratch } = outcome;
+async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig, outcome: Outcome) {
+    let Outcome { input, result, link, filename, content_hash, original_hash, reused, thumbnail, early, early_attempt, _scratch } = outcome;
+    let input = &input;
     let was_reused = reused.is_some();
     let replaced = input.replacing.is_some();
-    let shortening = shorten(core, input, destination, &result, &link, reused.as_ref()).await;
+    let shortening = match early_attempt {
+        Some(attempt) => attempt,
+        None => shorten(core, input, destination, &result, &link, reused.as_ref()).await,
+    };
     let record = match reused {
         Some(record) => Some(record),
         None if replaced => {
@@ -1302,6 +1694,27 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         }
     };
     let record_id = record.map(|record| record.id).unwrap_or_default();
+    // For Undo: the history entry this upload made (not a reused or
+    // replaced one). It's done, so it leaves the outbox.
+    let (action_id, in_outbox) = core
+        .uploads
+        .jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|job| job.id == job_id)
+        .map(|job| (job.action_id.clone(), job.in_outbox))
+        .unwrap_or_default();
+    if let Some(action_id) = &action_id {
+        if was_reused {
+            quick_share::note_reused(core, action_id, &filename);
+        } else if !replaced && !record_id.is_empty() {
+            quick_share::note_record(core, action_id, &record_id);
+        }
+    }
+    if in_outbox || early.is_some() {
+        core.outbox.remove(job_id);
+    }
     let (short_url, short_failure) = short_link_for(core, shortening, &record_id, &link, &result.public_url);
     if let Some(reason) = &short_failure {
         crate::short_links::notify_failed(core, &filename, reason, &record_id);
@@ -1331,7 +1744,7 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         job_id,
         JobState::Succeeded {
             public_url: result.public_url.clone(),
-            record_id,
+            record_id: record_id.clone(),
             reused: was_reused,
             short_link_error: short_failure.clone(),
         },
@@ -1384,24 +1797,42 @@ async fn finish(core: &SharedCore, job_id: &str, input: &UploadInput, destinatio
         open
     });
     if let (true, Some(group)) = (grouped, &input.group) {
-        finish_group_if_done(core, group);
+        finish_group_if_done(core, group, action_id.as_deref());
     } else {
         let settings = core.settings.get();
-        crate::clipboard::copy(&format_link(core, destination, &link, short_url.as_deref(), &filename));
+        let text = format_link(core, destination, &link, short_url.as_deref(), &filename);
+        match &early {
+            // The key changed after the link was copied: the new one takes
+            // its place, if the clipboard still holds it.
+            Some(early) if early.object_key != result.object_key => {
+                if quick_share::clipboard_still_holds(core, action_id.as_deref(), &early.copied_text) {
+                    quick_share::copy_link(core, action_id.as_deref(), &text);
+                }
+                show_notification(core, &filename, &t!("The link changed while uploading. The new link is copied; the one copied before doesn’t work."));
+            }
+            // Copied before the bytes went.
+            Some(_) => {}
+            None => quick_share::copy_link(core, action_id.as_deref(), &text),
+        }
         if settings.show_notification && short_failure.is_none() {
             if replaced {
                 show_notification(core, &t!("Replaced"), &t!("{0} keeps its link.", filename));
             } else if was_reused {
-                show_notification(core, &filename, &t!("Already uploaded - copied the existing link"));
+                quick_share::notify(core, job_id, action_id.as_deref(), None, &filename, &[&t!("Already uploaded - copied the existing link")]);
             } else {
-                let body = match input.expire_after_days() {
-                    Some(days) => format!("{filename}\n{}", deletes_in(days)),
-                    None => filename.clone(),
-                };
-                show_notification(core, &t!("Uploaded"), &body);
+                let expiry = input.expire_after_days().map(deletes_in).unwrap_or_default();
+                quick_share::notify(core, job_id, action_id.as_deref(), Some(&record_id), &t!("Uploaded"), &[&filename, &expiry]);
             }
+        } else {
+            // A "still uploading" notice would be out of date now.
+            quick_share::remove_notification(core, job_id);
         }
-        close_panel_if_wanted(core);
+        if early.is_none() {
+            close_panel_if_wanted(core);
+        }
+        if let Some(action_id) = &action_id {
+            quick_share::extend_undo(core, action_id);
+        }
     }
     drain(core);
 }
@@ -1533,7 +1964,7 @@ fn short_link_for(
     }
 }
 
-fn close_panel_if_wanted(core: &SharedCore) {
+pub(crate) fn close_panel_if_wanted(core: &SharedCore) {
     if core.settings.get().close_panel_after_upload {
         crate::panel::hide(&core.app);
     }
@@ -1543,7 +1974,7 @@ fn close_panel_if_wanted(core: &SharedCore) {
 /// of the ones that made it, one per line and in folder order. Failed
 /// files have their own notifications and can still be retried; a retry
 /// then copies just its own link.
-fn finish_group_if_done(core: &SharedCore, group: &UploadGroup) {
+fn finish_group_if_done(core: &SharedCore, group: &UploadGroup, action_id: Option<&str>) {
     let still_going = core.uploads.jobs.lock().unwrap().iter().any(|job| {
         job.input.group.as_ref().is_some_and(|other| other.id == group.id)
             && matches!(job.state, JobState::Waiting | JobState::Uploading { .. })
@@ -1552,11 +1983,12 @@ fn finish_group_if_done(core: &SharedCore, group: &UploadGroup) {
         return;
     }
     let Some(links) = core.uploads.open_groups.lock().unwrap().remove(&group.id) else { return };
-    if links.is_empty() {
+    // Undo is taking the files back: nothing to copy or announce.
+    if links.is_empty() || action_id.is_some_and(|action_id| quick_share::is_undoing(core, action_id)) {
         return;
     }
     let copied: Vec<String> = links.into_values().collect();
-    crate::clipboard::copy(&copied.join("\n"));
+    quick_share::copy_link(core, action_id, &copied.join("\n"));
     if core.settings.get().show_notification {
         // A drop spread over several destinations has no folder name.
         let summary = if group.name.is_empty() {
@@ -1566,22 +1998,53 @@ fn finish_group_if_done(core: &SharedCore, group: &UploadGroup) {
         } else {
             t!("{0} ({1} of {2} files)", group.name, copied.len(), group.count)
         };
-        show_notification(core, &t!("Uploaded"), &summary);
+        quick_share::notify(core, &group.id, action_id, None, &t!("Uploaded"), &[&summary]);
+    }
+    if let Some(action_id) = action_id {
+        quick_share::extend_undo(core, action_id);
     }
     close_panel_if_wanted(core);
 }
 
+/// A failure for want of a connection (or while Windows says it's offline)
+/// waits for the network, also for a job whose link wasn't copied yet; a
+/// watched folder's files have their own retries, and an upload someone
+/// waits for reports the failure. Anything else fails and waits for Retry.
 fn fail(core: &SharedCore, job_id: &str, input: &UploadInput, failure: Failure) {
     let Failure { message, transient } = failure;
+    let (name, action_id, link_copied) = core
+        .uploads
+        .jobs
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|job| job.id == job_id)
+        .map(|job| (job.display_name(), job.action_id.clone(), job.early_link.is_some()))
+        .unwrap_or_else(|| (input.original_filename.clone(), None, false));
+    if input.watched.is_none() && !input.waited && (transient || !crate::win32::is_online()) {
+        quick_share::wait_for_network(core, job_id, message);
+        if let Some(group) = &input.group {
+            finish_group_if_done(core, group, action_id.as_deref());
+        }
+        drain(core);
+        return;
+    }
     set_state(core, job_id, JobState::Failed { message: message.clone() });
+    quick_share::note_outbox_failure(core, job_id, Some(message.clone()));
     // A watched folder says so itself, a batch at a time, and tries again
     // when it may work.
     match &input.watched {
         Some(source) => crate::watched::upload_failed(core, source, message, transient),
-        None => show_notification(core, &t!("Upload failed"), &format!("{}: {message}", input.original_filename)),
+        None => {
+            let detail = format!("{name}: {message}");
+            let copied = t!("The copied link won’t work until the file is uploaded.");
+            let lines: Vec<&str> = if link_copied { vec![&detail, &copied] } else { vec![&detail] };
+            // In place of its "Link copied" notice, if it had one.
+            quick_share::notify(core, job_id, None, None, &t!("Upload failed"), &lines);
+        }
     }
     if let Some(group) = &input.group {
-        finish_group_if_done(core, group);
+        finish_group_if_done(core, group, action_id.as_deref());
     }
     drain(core);
 }

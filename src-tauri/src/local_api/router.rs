@@ -410,7 +410,7 @@ async fn upload_clipboard(core: &SharedCore, request: &Request) -> Response {
     }
     let inputs = tauri::async_runtime::spawn_blocking(crate::clipboard::read_inputs).await.unwrap_or_default();
     let Some(mut input) = inputs.into_iter().next() else {
-        return Response::error(422, "The clipboard has no file or image to upload.");
+        return Response::error(422, "The clipboard has nothing to upload: no file, image, link or text.");
     };
     // Without destinationId, where the file's kind says (a folder as a ZIP).
     let destination = match named {
@@ -510,7 +510,7 @@ async fn wait_for_replace(core: &SharedCore, mut queued: uploads::Queued) -> Res
                     None => Response::json(200, serde_json::json!({ "upload": { "url": public_url, "replacedAt": iso8601(crate::util::now_millis()) }, "reused": false })),
                 };
             }
-            JobState::Failed { message } => {
+            JobState::Failed { message } | JobState::Offline { message } => {
                 uploads::dismiss(core, &queued.job_id);
                 return Response::error(502, message);
             }
@@ -547,7 +547,9 @@ fn expiry_from(request: &Request, rules_active: bool) -> Result<Expiry, Response
 
 /// Queues the upload and waits for it to settle, so the caller gets the
 /// finished history entry (and its links) back in the response.
-async fn run(core: &SharedCore, input: UploadInput, destination: DestinationConfig) -> Response {
+async fn run(core: &SharedCore, mut input: UploadInput, destination: DestinationConfig) -> Response {
+    // Waited for: no early link, and a failure is answered, not waited out.
+    input.waited = true;
     let Some(mut queued) = uploads::enqueue(core, vec![input], Some(destination)).into_iter().next() else {
         return Response::error(500, "The upload could not be queued.");
     };
@@ -577,7 +579,7 @@ async fn run(core: &SharedCore, input: UploadInput, destination: DestinationConf
             // The staged copy of the file is deleted once this returns, so
             // a failed job can't be retried from the panel; remove it and
             // let the caller (Raycast) show the error instead.
-            JobState::Failed { message } => {
+            JobState::Failed { message } | JobState::Offline { message } => {
                 uploads::dismiss(core, &queued.job_id);
                 return Response::error(502, message);
             }

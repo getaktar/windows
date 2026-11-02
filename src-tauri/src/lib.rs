@@ -2,7 +2,9 @@
 //! the notification area and get a link on your clipboard.
 
 mod bucket;
+mod capture;
 mod clipboard;
+mod clipboard_text;
 mod cloudflare;
 mod cloudflare_setup;
 mod commands;
@@ -22,10 +24,13 @@ mod image_metadata;
 mod image_processing;
 mod local_api;
 mod multipart;
+mod outbox;
 mod output;
 mod package;
 mod panel;
 mod qr;
+mod quick_share;
+mod remote_download;
 mod routing;
 mod settings;
 mod shell;
@@ -40,6 +45,7 @@ mod updater;
 mod uploads;
 mod util;
 mod watched;
+mod win32;
 mod windows;
 
 use tauri::{App, AppHandle, Manager, RunEvent};
@@ -136,6 +142,10 @@ pub fn run() {
             commands::remove_expiry_rules,
             commands::upload_files,
             commands::upload_clipboard,
+            commands::capture_screen,
+            commands::undo_upload,
+            commands::undoable_uploads,
+            commands::set_action_shortcut,
             commands::pending_names,
             commands::resolve_name,
             commands::alt_key_down,
@@ -258,16 +268,20 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     panel::create(&handle)?;
     tray::create(&handle)?;
     tray::follow_taskbar_theme(&handle);
-    if let Err(message) = hotkey::register(&handle, settings.shortcut.as_deref(), settings.rename_shortcut.as_deref()) {
+    for (shortcut, message) in hotkey::register(&handle, &settings) {
         // Taken by another app since it was set: without this, the shortcut
         // would just seem broken.
-        uploads::show_notification(&core, &t!("Paste & upload from anywhere"), &message);
+        uploads::show_notification(&core, &shortcut.title(), &message);
     }
     local_api::start(&core);
     updater::schedule(&core);
     expiry::schedule_sweep(&core);
     multipart::clean_up(&core);
     watched::start(&core);
+    // Uploads whose link was copied before Aktar last quit go on, and
+    // uploads waiting for the network go when it's back.
+    uploads::restore_outbox(&core);
+    quick_share::watch_network(&core);
 
     // The installer registers aktar:// for installed builds; a dev build
     // registers itself so links can be tested.

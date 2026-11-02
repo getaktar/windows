@@ -15,9 +15,17 @@ clipboard. This is the Windows version of [Aktar for Mac](https://github.com/get
 
 - Lives in the notification area: click the icon for the upload panel,
   right-click for the menu
-- Drag & drop, clipboard paste (files copied in File Explorer, or images
-  like screenshots), or file picker to upload
-- Global "paste & upload" shortcut (default `Ctrl+Shift+Alt+U`), customizable
+- Drag & drop, clipboard paste (files copied in File Explorer, images like
+  screenshots, text saved as a .txt, .md or .json file, or the file a copied
+  link points to), or file picker to upload
+- Global "paste & upload" shortcut (default `Ctrl+Shift+Alt+U`), customizable,
+  plus optional ones to upload and paste the link where you're typing, to
+  capture the screen with Windows' snipping bar, and to undo the last upload
+- The link is copied as soon as Aktar knows where the file goes, before the
+  upload finishes; uploads made offline wait for the connection, and go on
+  after a restart to the same link
+- Undo for 10 seconds after an upload: the file and its short link are
+  deleted and the clipboard is put back
 - Bring your own storage: Amazon S3, Cloudflare R2, Backblaze B2,
   DigitalOcean Spaces, MinIO, or any other S3-compatible endpoint
 - Multiple destinations, switchable per upload; each can claim kinds of
@@ -51,7 +59,10 @@ clipboard. This is the Windows version of [Aktar for Mac](https://github.com/get
 
 Your storage credentials are kept in Windows Credential Manager and never
 leave your PC except in direct requests to the S3-compatible endpoint you
-configure. Aktar has no backend, no telemetry, and no account system. The
+configure. Aktar has no backend, no telemetry, and no account system. A
+link you copy and upload is downloaded straight from where it points (no
+cookies are sent). Uploads whose link was copied before they finished keep
+a copy of the file in Aktar's Local AppData folder until they're done. The
 only other request it makes is the update check, which downloads
 `latest.json` from this repository's latest GitHub release and sends no
 information about you or your PC; you can turn it off in Settings. Every

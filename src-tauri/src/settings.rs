@@ -29,6 +29,16 @@ pub struct Settings {
     /// Global "rename and upload clipboard" shortcut, which asks for the
     /// upload's name first. None (the default) when it isn't set.
     pub rename_shortcut: Option<String>,
+    /// "Upload clipboard and paste the link": uploads the clipboard and
+    /// pastes the link where the user is typing. Unset by default, like the
+    /// three below (docs/capture-and-instant-links.md in the Mac app).
+    pub paste_shortcut: Option<String>,
+    /// "Capture and upload": Windows' snipping bar, then the upload.
+    pub capture_shortcut: Option<String>,
+    /// "Capture, upload and paste the link".
+    pub capture_paste_shortcut: Option<String>,
+    /// "Undo the last upload", for 10 seconds after it.
+    pub undo_shortcut: Option<String>,
     /// Each destination's own "Upload clipboard to this destination"
     /// shortcut, by destination ID. Kept here rather than with the
     /// destination, so it never goes along to another device.
@@ -37,6 +47,9 @@ pub struct Settings {
     /// Copies the link of an earlier upload of the same bytes to the same
     /// destination instead of uploading them again.
     pub reuse_duplicate_links: bool,
+    /// Copies the link as soon as Aktar knows where the file goes, before
+    /// its bytes are sent; offline, the upload waits for the network.
+    pub copy_link_right_away: bool,
     pub local_api_enabled: bool,
     pub local_api_port: u16,
     pub auto_check_updates: bool,
@@ -66,8 +79,13 @@ impl Default for Settings {
             language: None,
             shortcut: Some(DEFAULT_SHORTCUT.into()),
             rename_shortcut: None,
+            paste_shortcut: None,
+            capture_shortcut: None,
+            capture_paste_shortcut: None,
+            undo_shortcut: None,
             destination_shortcuts: BTreeMap::new(),
             reuse_duplicate_links: true,
+            copy_link_right_away: true,
             local_api_enabled: false,
             local_api_port: DEFAULT_LOCAL_API_PORT,
             auto_check_updates: true,
@@ -90,6 +108,7 @@ pub struct SettingsPatch {
     pub show_notification: Option<bool>,
     pub close_panel_after_upload: Option<bool>,
     pub reuse_duplicate_links: Option<bool>,
+    pub copy_link_right_away: Option<bool>,
     pub auto_check_updates: Option<bool>,
     pub auto_install_updates: Option<bool>,
     pub delete_after_days: Option<u32>,
@@ -146,6 +165,9 @@ impl SettingsStore {
             if let Some(value) = patch.reuse_duplicate_links {
                 settings.reuse_duplicate_links = value;
             }
+            if let Some(value) = patch.copy_link_right_away {
+                settings.copy_link_right_away = value;
+            }
             if let Some(value) = patch.auto_check_updates {
                 settings.auto_check_updates = value;
             }
@@ -169,5 +191,11 @@ mod tests {
         assert!(settings.reuse_duplicate_links);
         assert_eq!(settings.rename_shortcut, None);
         assert_eq!(settings.shortcut.as_deref(), Some(DEFAULT_SHORTCUT));
+        // Settings from before instant links copy them right away, and
+        // have none of the newer shortcuts.
+        assert!(settings.copy_link_right_away);
+        assert_eq!(settings.paste_shortcut, None);
+        assert_eq!(settings.capture_shortcut, None);
+        assert_eq!(settings.undo_shortcut, None);
     }
 }

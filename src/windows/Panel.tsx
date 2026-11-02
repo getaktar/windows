@@ -27,9 +27,11 @@ import {
   EyeRegular,
   FolderOpenRegular,
   MoreHorizontalRegular,
+  ScreenshotRegular,
   SettingsRegular,
   TimerRegular,
   TrayItemRemoveRegular,
+  WifiOffRegular,
 } from "@fluentui/react-icons";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -41,6 +43,7 @@ import { QrCodeDialog } from "../components/QrCodeDialog";
 import { shortLinkMenu } from "../components/shortLinkMenu";
 import { temporaryLinkMenu } from "../components/temporaryLinkMenu";
 import { ExpiryBadge, FileIcon, Thumbnail } from "../components/FileVisuals";
+import { JobStatusLine } from "../components/JobStatus";
 import {
   api,
   effectiveDeleteAfterDays,
@@ -74,6 +77,8 @@ export default function Panel() {
   const [records] = useHistory();
   const [settings] = useSettings();
   const [names, refreshNames] = useLive<NameRequest[]>(api.pendingNames, [events.namesChanged], []);
+  // Uploads Undo would take back right now (the last one, for 10 seconds).
+  const [undoable] = useLive<string[]>(api.undoableUploads, [events.undoChanged, events.historyChanged], []);
   const [isSettingUpExpiry, setIsSettingUpExpiry] = useState(false);
   const [isTargeted, setIsTargeted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -123,7 +128,7 @@ export default function Panel() {
 
   const uploadClipboard = async () => {
     const uploaded = await api.uploadClipboard().catch(() => false);
-    setNotice(uploaded ? null : t("The clipboard has no file or image to upload."));
+    setNotice(uploaded ? null : t("The clipboard has nothing to upload: no file, image, link or text."));
   };
 
   /** With `rename` (Alt held on Browse), each file is named first. */
@@ -281,6 +286,14 @@ export default function Panel() {
                   <Button size="small" icon={<FolderOpenRegular />} onClick={(event) => browse(event.altKey)}>
                     {t("Browse")}
                   </Button>
+                  <Button
+                    size="small"
+                    icon={<ScreenshotRegular />}
+                    title={t("Snip an area, a window or the whole screen with Windows’ snipping tool and upload it")}
+                    onClick={() => api.captureScreen()}
+                  >
+                    {t("Capture")}
+                  </Button>
                 </div>
               </>
             )}
@@ -325,7 +338,13 @@ export default function Panel() {
                   <JobRow key={job.id} job={job} />
                 ))}
                 {recent.map((record) => (
-                  <RecentRow key={record.id} record={record} destinations={destinations} onError={setNotice} />
+                  <RecentRow
+                    key={record.id}
+                    record={record}
+                    destinations={destinations}
+                    undoable={undoable.includes(record.id)}
+                    onError={setNotice}
+                  />
                 ))}
               </div>
             )}
@@ -618,6 +637,7 @@ function LinkPicker({ destination }: { destination: DestinationConfig | undefine
 function JobRow({ job }: { job: Job }) {
   const { t } = useI18n();
   const failed = job.state.kind === "failed";
+  const cancelLabel = failed ? t("Remove") : job.linkCopied ? t("Cancel and take back the copied link") : t("Cancel");
   return (
     <div className="recent-row">
       <div className="thumb thumb-icon" style={{ width: 32, height: 32, borderRadius: 6 }}>
@@ -635,12 +655,18 @@ function JobRow({ job }: { job: Job }) {
         {job.state.kind === "uploading" || job.state.kind === "waiting" ? (
           <>
             <ProgressBar thickness="medium" value={job.state.kind === "uploading" && job.state.progress > 0 ? job.state.progress : undefined} />
-            {job.state.kind === "uploading" && job.state.resuming && (
-              <Text size={100} className="secondary">
-                {t("Resuming upload…")}
-              </Text>
-            )}
+            <JobStatusLine job={job} />
           </>
+        ) : job.state.kind === "offline" ? (
+          <div className="inline-row">
+            <WifiOffRegular fontSize={12} className="secondary" />
+            <Text size={100} className="secondary ellipsis" title={job.state.message}>
+              {t("Waiting for a connection")}
+            </Text>
+            <Link className="small-link" onClick={() => api.retryJob(job.id)}>
+              {t("Retry")}
+            </Link>
+          </div>
         ) : job.state.kind === "failed" ? (
           <div className="inline-row">
             <Text size={100} className="text-error ellipsis" title={job.state.message}>
@@ -656,21 +682,25 @@ function JobRow({ job }: { job: Job }) {
         size="small"
         appearance="subtle"
         icon={<DismissRegular />}
-        aria-label={failed ? t("Remove") : t("Cancel")}
-        title={failed ? t("Remove") : t("Cancel")}
+        aria-label={cancelLabel}
+        title={cancelLabel}
         onClick={() => (failed ? api.dismissJob(job.id) : api.cancelJob(job.id))}
       />
     </div>
   );
 }
 
+
 function RecentRow({
   record,
   destinations,
+  undoable,
   onError,
 }: {
   record: UploadRecord;
   destinations: DestinationConfig[];
+  /** Undo is offered for it (right after it's uploaded). */
+  undoable: boolean;
   onError: (message: string) => void;
 }) {
   const { t } = useI18n();
@@ -721,6 +751,18 @@ function RecentRow({
       <Button size="small" onClick={() => copy("url")}>
         {t("Copy")}
       </Button>
+      {/* Next to Copy, never in its place: a click meant for Copy mustn't
+          delete the upload. */}
+      {undoable && (
+        <Button
+          size="small"
+          appearance="subtle"
+          title={t("Delete this upload and its short link, and put back what was on the clipboard")}
+          onClick={() => api.undoUpload(record.id).catch((error) => onError(errorMessage(error)))}
+        >
+          {t("Undo")}
+        </Button>
+      )}
       <Menu>
         <MenuTrigger disableButtonEnhancement>
           <Button size="small" appearance="subtle" icon={<MoreHorizontalRegular />} aria-label={t("More")} />
