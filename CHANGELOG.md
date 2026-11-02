@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-02
+
 ### Added
 
 - Capture: a shortcut, Capture in the panel or Capture and Upload in the
