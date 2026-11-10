@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-10
+
+### Added
+
+- Share pages: turn on Share Page for a destination and every upload's link
+  opens a small page next to the file in your bucket, with a preview and a
+  download button. Slack, Discord, iMessage and X show a card for it. Copy
+  as Markdown or HTML still embeds images, videos and audio from the file
+  itself, a custom template has a new {file} variable for the file's own
+  link, and the Library has Copy File Link. The page goes with its file on
+  Delete, Undo and Delete after, and is written again on Replace File
+- Galleries: several files dropped or pasted together (or a folder uploaded
+  with its structure) on a destination with share pages get one page and
+  one link, with Download all
+- Text pages: text, code and JSON up to 256 KB are shown on the page itself,
+  highlighted, with Copy Text, Download and Wrap
+- Request Files, in the panel and Library > Requests: a link where anyone
+  can send files straight into your bucket until it expires (1 hour, 1 day
+  or 7 days, up to 20 files). Aktar collects what arrives every 2 minutes
+  (or on Check Now), uploads it like any file of that destination, and
+  sets up the bucket's CORS rule when the page needs one
+- Encrypted links: a destination can encrypt files on this PC before they
+  go up (AES-256-GCM), with the key in the link or a password asked for each
+  upload. The page decrypts them in the browser; the storage provider only
+  sees noise, and a link shortener never sees the key
+- Import from ShareX: Settings > Destinations finds ShareX's settings on this
+  PC (or reads a picked UploadersConfig.json or .sxb backup) and turns its
+  Amazon S3 and Backblaze B2 uploaders into destinations, with secret keys
+  read through DPAPI straight into Credential Manager. Its URL-shortener
+  custom uploaders become short link settings, and its upload history comes
+  along. A review shows what's imported and what's skipped, and each new
+  destination's connection is tested right away. On first run without
+  destinations, the panel offers the import once
+
 ## [0.13.0] - 2026-11-02
 
 ### Added

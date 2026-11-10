@@ -1,4 +1,5 @@
 import { api, errorMessage, type DestinationConfig, type UploadRecord } from "../lib/api";
+import { recordLink } from "../lib/format";
 import type { Translate } from "../lib/i18n";
 import { canCreateShortLink } from "../lib/shortLinks";
 import type { MenuEntry } from "./Dialogs";
@@ -12,13 +13,20 @@ export function shortLinkMenu(
   t: Translate,
   onError: (message: string) => void,
 ): MenuEntry[] {
+  // With a share page, the short link is the page's (an encrypted one's
+  // key goes after it), and the file has its own entry.
+  const page = record.shareUrl ?? null;
   const items: MenuEntry[] = record.shortUrl
     ? [
-        { label: t("Copy Short Link"), onClick: () => api.copyText(record.shortUrl ?? record.publicUrl) },
-        { label: t("Copy Original Link"), onClick: () => api.copyText(record.publicUrl) },
+        { label: t("Copy Short Link"), onClick: () => api.copyText(recordLink(record)) },
+        { label: t("Copy Original Link"), onClick: () => api.copyText(page ?? record.publicUrl) },
       ]
-    : [{ label: t("Copy URL"), onClick: () => api.copyText(record.publicUrl) }];
-  if (canCreateShortLink(record, destinations)) {
+    : [{ label: t("Copy URL"), onClick: () => api.copyText(recordLink(record)) }];
+  if (page) {
+    items.push({ label: t("Copy File Link"), onClick: () => api.copyText(record.publicUrl) });
+  }
+  // Made for the file's link, so not for an upload with a page.
+  if (!page && canCreateShortLink(record, destinations)) {
     items.push({ label: t("Create Short Link"), onClick: () => api.retryShortLink(record.id) });
   }
   const linkId = record.shortLinkId;

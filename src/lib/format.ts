@@ -1,4 +1,4 @@
-import type { OutputMode, ProviderPreset } from "./api";
+import type { OutputMode, ProviderPreset, UploadRecord } from "./api";
 import type { Translate } from "./i18n";
 
 /** Splits like NSString.pathExtension: ".env" has no extension. */
@@ -79,6 +79,9 @@ export function formatOutput(
   customTemplate = "![{filename}]({url})",
   mimeType?: string,
   shortURL?: string | null,
+  /** A custom template's {file}: the file's own link when `longURL` is its
+   * share page's. */
+  fileURL?: string,
 ) {
   const url = shortURL || longURL;
   switch (mode) {
@@ -91,6 +94,7 @@ export function formatOutput(
     case "custom": {
       const [name, ext] = splitExtension(filename);
       return customTemplate
+        .split("{file}").join(fileURL ?? longURL)
         .split("{url}").join(url)
         .split("{shortUrl}").join(url)
         .split("{longUrl}").join(longURL)
@@ -338,4 +342,29 @@ export function resolvePublicUrl(baseURL: string, key: string) {
   if (!base.includes("://")) base = `https://${base}`;
   base = base.replace(/\/+$/, "");
   return `${base}/${encodeKeyPath(key)}`;
+}
+
+/** The `#k=...` key of an encrypted upload's page link, if it has one. */
+function linkFragment(url: string) {
+  const at = url.indexOf("#");
+  return at >= 0 ? url.slice(at) : "";
+}
+
+/** An upload's main link: its share page (docs/share-pages.md) when it has
+ * one, with an encrypted upload's key after its short link, else the file. */
+export function recordLink(record: UploadRecord) {
+  if (!record.shareUrl) return record.publicUrl;
+  return record.shortUrl ? `${record.shortUrl}${linkFragment(record.shareUrl)}` : record.shareUrl;
+}
+
+/** "Copy as" for an upload. With a share page: images, videos and audio
+ * are embedded from the file, everything else links to the page, a custom
+ * template's {file} is the file; an encrypted upload's link is never
+ * formatted. */
+export function formatRecord(record: UploadRecord, mode: OutputMode, customTemplate?: string) {
+  if (!record.shareUrl) return formatOutput(record.publicUrl, mode, record.localFilename, customTemplate, record.mimeType, record.shortUrl);
+  if (record.encrypted) return recordLink(record);
+  const media = /^(image|video|audio)\//.test(record.mimeType);
+  if (media && (mode === "markdown" || mode === "html")) return formatOutput(record.publicUrl, mode, record.localFilename, customTemplate, record.mimeType);
+  return formatOutput(record.shareUrl, mode, record.localFilename, customTemplate, record.mimeType, record.shortUrl, record.publicUrl);
 }

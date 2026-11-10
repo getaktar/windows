@@ -1,6 +1,6 @@
 [package]
 name = "aktar"
-version = "0.13.0"
+version = "0.14.0"
 description = "Upload files to your own S3-compatible storage from the Windows tray"
 authors = ["Mert Topuz"]
 license = "MIT"
@@ -69,6 +69,9 @@ pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 # The local API's /v1/hello proof, which lets a client check it's talking to
 # Aktar before it sends the token. Already built for `pbkdf2`.
 hmac = "0.13"
+# Encrypted links' passwords are NFC-normalized before PBKDF2, as the page
+# does. Already built for `url` (idna).
+icu_normalizer = "2"
 base64 = "0.22"
 rusqlite = { version = "0.32", features = ["bundled"] }
 mime_guess = "2"
@@ -93,8 +96,9 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 [target.'cfg(windows)'.dependencies]
 # The clipboard as it is (for Undo), key presses (upload and paste,
 # capture) and who's in front come from DataExchange, Memory, Threading
-# and Diagnostics_Debug (see src/win32.rs).
-windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry", "Win32_Globalization", "Win32_Networking_WinSock", "Win32_Storage_Packaging_Appx", "Win32_System_Power", "Win32_Storage_FileSystem", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Threading", "Win32_System_Diagnostics_Debug"] }
+# and Diagnostics_Debug (see src/win32.rs). ShareX's secret keys are read
+# with DPAPI (Security_Cryptography, see src/sharex/platform.rs).
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry", "Win32_Globalization", "Win32_Networking_WinSock", "Win32_Storage_Packaging_Appx", "Win32_System_Power", "Win32_Storage_FileSystem", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_Security_Cryptography"] }
 # WinRT, for the Microsoft Store (MSIX) build: its startup task, how it was
 # launched, and notifications under the package's own identity. The same
 # version Tauri already builds, so nothing extra is compiled.

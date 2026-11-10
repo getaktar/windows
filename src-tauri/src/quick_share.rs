@@ -272,7 +272,9 @@ pub fn can_copy_early(input: &UploadInput, has_action: bool) -> bool {
 }
 
 /// Copies the link to `object_key` (shortened, as "Copy as" says) before the
-/// bytes go, and keeps the upload in the outbox until they're there.
+/// bytes go, and keeps the upload in the outbox until they're there. With
+/// `page`, the link is its share page's, written right after the file.
+#[allow(clippy::too_many_arguments)]
 pub async fn copy_early_link(
     core: &SharedCore,
     job_id: &str,
@@ -281,17 +283,23 @@ pub async fn copy_early_link(
     provider: &S3Provider,
     object_key: &str,
     filename: &str,
+    page: bool,
 ) -> EarlyLink {
     use crate::short_links::{rules::Shortening, Attempt};
-    let public_url = crate::output::resolve_public_url(&destination.public_base_url, object_key);
+    let linked_key = if page { crate::share_page::page_key(object_key) } else { object_key.to_string() };
+    let public_url = crate::output::resolve_public_url(&destination.public_base_url, &linked_key);
     let now = crate::util::now_millis();
     // Signing happens on this PC, so it works offline too.
     let mut link = public_url.clone();
+    let mut file_link = crate::output::resolve_public_url(&destination.public_base_url, object_key);
     let mut temporary_expires_at = None;
     if let Some(seconds) = destination.temporary_link {
-        if let Ok(signed) = provider.temporary_url(object_key, seconds).await {
+        if let Ok(signed) = provider.temporary_url(&linked_key, seconds).await {
             link = signed;
             temporary_expires_at = Some(now + seconds as i64 * 1000);
+        }
+        if let Ok(signed) = provider.temporary_url(object_key, seconds).await {
+            file_link = signed;
         }
     }
     let shortening = if input.short_link == Some(false) {
@@ -323,7 +331,13 @@ pub async fn copy_early_link(
         Attempt::Failed(message) => early.short_link_error = Some(message),
         Attempt::Skipped => {}
     }
-    early.copied_text = uploads::format_link(core, destination, &link, short_url.as_deref(), filename);
+    early.copied_text = match page {
+        true => {
+            let shared = uploads::SharedPage { key: linked_key.clone(), public_url: public_url.clone(), link: link.clone(), file_link, fragment: None, encryption: None };
+            uploads::copy_text(core, destination, &link, Some(&shared), short_url.as_deref(), filename)
+        }
+        false => uploads::format_link(core, destination, &link, short_url.as_deref(), filename),
+    };
     let action_id = {
         let mut jobs = core.uploads.jobs.lock().unwrap();
         match jobs.iter_mut().find(|job| job.id == job_id) {

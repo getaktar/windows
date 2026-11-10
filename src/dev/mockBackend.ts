@@ -272,6 +272,8 @@ function setWatched(change: Partial<WatchOverview>) {
   return null;
 }
 
+let mockRequests: Array<Record<string, unknown>> = [];
+
 /** Files dropped with Alt held (?alt in the URL), waiting for a name;
  * ?rename starts with one, to see the dialog. */
 let pendingNames: NameRequest[] = new URLSearchParams(window.location.search).has("rename")
@@ -517,6 +519,39 @@ export function installMockBackend(route: string) {
           return (args.paths as string[]).length;
         case "pending_names":
           return pendingNames;
+        case "pending_passwords":
+          return [];
+        case "resolve_password":
+          return null;
+        case "list_requests":
+          return mockRequests;
+        case "create_request": {
+          const request = args.request as { title: string; note: string; seconds: number; slotCount: number; maxBytes: number; destinationId: string | null };
+          const now = Date.now();
+          const made = {
+            id: `R${now}`,
+            destinationID: request.destinationId ?? "",
+            title: request.title,
+            note: request.note,
+            createdAt: new Date(now).toISOString(),
+            expiresAt: new Date(now + request.seconds * 1000).toISOString(),
+            slotCount: request.slotCount,
+            maxBytes: request.maxBytes,
+            link: `https://img.example.com/.aktar/requests/R${now}/index.html`,
+            received: 0,
+            closedAt: null,
+          };
+          mockRequests = [made, ...mockRequests];
+          return made;
+        }
+        case "check_requests":
+          return null;
+        case "close_request":
+          mockRequests = mockRequests.map((request) => (request.id === args.id ? { ...request, closedAt: new Date().toISOString() } : request));
+          return null;
+        case "forget_request":
+          mockRequests = mockRequests.filter((request) => request.id !== args.id);
+          return null;
         case "resolve_name":
           pendingNames = pendingNames.filter((request) => request.id !== args.id);
           return null;

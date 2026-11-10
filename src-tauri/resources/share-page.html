@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: http: data: blob:; media-src https: http: blob:; frame-src https: http: blob:; connect-src https: http:; base-uri 'none'; form-action 'none'">
+<title>{{TITLE}}</title>
+{{META}}
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#16181d;--muted:#5d6472;--line:#e3e6eb;--accent:#1f6feb;--accent-text:#fff;--ok:#1a7f37;--bad:#cf222e;--code:#f3f4f6;--k:#8250df;--s:#0a7a3b;--n:#b35900;--c:#6e7781}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--text:#e8eaee;--muted:#9aa3b2;--line:#2a2f38;--accent:#4c8dff;--accent-text:#fff;--ok:#3fb950;--bad:#f85149;--code:#11141a;--k:#c297ff;--s:#56d364;--n:#f0a35e;--c:#8b949e}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
+main{max-width:960px;margin:0 auto;padding:24px 16px 48px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;overflow:hidden}
+h1{font-size:20px;line-height:1.3;margin:0 0 4px;word-break:break-word}
+.meta{color:var(--muted);font-size:13px;margin:0 0 16px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:9px;padding:8px 14px;font:inherit;font-size:14px;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.btn[disabled]{opacity:.55;cursor:default}
+.preview{margin-top:4px;border-radius:10px;overflow:hidden;background:var(--code);display:flex;justify-content:center}
+.preview img,.preview video{display:block;max-width:100%;max-height:75vh;height:auto}
+.preview audio{width:100%;margin:16px}
+.preview iframe{width:100%;height:75vh;border:0;background:#fff}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.icon{font-size:44px;line-height:1;margin-bottom:8px}
+pre{margin:0;padding:16px;background:var(--code);border-radius:10px;overflow:auto;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;tab-size:4;max-height:75vh}
+pre.wrap{white-space:pre-wrap;word-break:break-word}
+.tk-k{color:var(--k)}.tk-s{color:var(--s)}.tk-n{color:var(--n)}.tk-c{color:var(--c);font-style:italic}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.tile{display:block;border:1px solid var(--line);border-radius:10px;overflow:hidden;color:inherit;text-decoration:none;background:var(--card)}
+.tile .thumb{aspect-ratio:4/3;background:var(--code);display:flex;align-items:center;justify-content:center;font-size:34px;overflow:hidden}
+.tile .thumb img{width:100%;height:100%;object-fit:cover}
+.tile .cap{padding:8px 10px;font-size:13px}
+.tile .cap b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .cap span{color:var(--muted)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:32px 16px;text-align:center;margin-top:16px}
+.drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.drop p{margin:8px 0 0;color:var(--muted);font-size:14px}
+.list{list-style:none;margin:16px 0 0;padding:0}
+.list li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.list li .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list li .state{color:var(--muted);white-space:nowrap}
+.list li .state.ok{color:var(--ok)}.list li .state.bad{color:var(--bad)}
+progress{width:110px;height:6px}
+.note{white-space:pre-wrap;margin:0 0 8px}
+.hint{color:var(--muted);font-size:13px;margin-top:12px}
+.error{color:var(--bad);margin-top:12px}
+form.pw{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+form.pw input{flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--text);font:inherit}
+footer{margin-top:20px;text-align:center;font-size:12px}
+footer a{color:var(--muted);text-decoration:none}
+footer a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<main id="app"><noscript>This page needs JavaScript.</noscript></main>
+<script id="aktar-data" type="application/json">{{DATA}}</script>
+<script>
+/* AKTAR-CRYPTO-BEGIN */
+// The encrypted file format of docs/share-pages.md ("Encrypted links"):
+// a 42-byte header, then AES-256-GCM records. Kept free of the DOM so
+// scripts/share-page tests can run it in Node.
+var AKTAR_HEADER_LENGTH = 42;
+var AKTAR_TAG_LENGTH = 16;
+
+function aktarError(code) { var e = new Error(code); e.aktar = code; return e; }
+
+function aktarParseHeader(h) {
+  if (h.length !== AKTAR_HEADER_LENGTH || h[0] !== 0x41 || h[1] !== 0x4b || h[2] !== 0x45 || h[3] !== 0x31) throw aktarError('damaged');
+  var view = new DataView(h.buffer, h.byteOffset, h.byteLength);
+  var header = {
+    bytes: h,
+    version: h[4],
+    kdf: h[5],
+    iterations: view.getUint32(6),
+    salt: h.slice(10, 26),
+    noncePrefix: h.slice(26, 34),
+    recordSize: view.getUint32(34),
+    metaLength: view.getUint32(38)
+  };
+  if (header.version !== 1) throw aktarError('damaged');
+  if (header.kdf === 0) {
+    if (header.iterations !== 0) throw aktarError('damaged');
+  } else if (header.kdf === 1) {
+    if (header.iterations < 100000 || header.iterations > 10000000) throw aktarError('damaged');
+  } else {
+    throw aktarError('damaged');
+  }
+  if (header.recordSize < 1024 || header.recordSize > 16777216) throw aktarError('damaged');
+  if (header.metaLength < AKTAR_TAG_LENGTH + 2 || header.metaLength > 65536 + AKTAR_TAG_LENGTH) throw aktarError('damaged');
+  return header;
+}
+
+function aktarBase64urlDecode(text) {
+  if (!/^[A-Za-z0-9_-]*$/.test(text)) return null;
+  var b64 = text.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  try {
+    var bin = atob(b64), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch (e) { return null; }
+}
+
+// The key of a link: "#k=<base64url of 32 bytes>".
+function aktarKeyFromFragment(fragment) {
+  var params = new URLSearchParams((fragment || '').replace(/^#/, ''));
+  var raw = params.get('k');
+  if (!raw) return null;
+  var bytes = aktarBase64urlDecode(raw);
+  return bytes && bytes.length === 32 ? bytes : null;
+}
+
+function aktarImportKey(raw) {
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
+}
+
+function aktarDeriveKey(password, header) {
+  var bytes = new TextEncoder().encode(String(password).normalize('NFC'));
+  return crypto.subtle.importKey('raw', bytes, 'PBKDF2', false, ['deriveKey']).then(function (base) {
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: header.salt, iterations: header.iterations, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  });
+}
+
+function aktarOpenRecord(key, header, index, final, sealed) {
+  var nonce = new Uint8Array(12);
+  nonce.set(header.noncePrefix, 0);
+  new DataView(nonce.buffer).setUint32(8, index);
+  var aad = new Uint8Array(AKTAR_HEADER_LENGTH + 1);
+  aad.set(header.bytes, 0);
+  aad[AKTAR_HEADER_LENGTH] = final ? 1 : 0;
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 }, key, sealed)
+    .then(function (plain) { return new Uint8Array(plain); });
+}
+
+function AktarQueue() { this.parts = []; this.length = 0; }
+AktarQueue.prototype.push = function (bytes) { if (bytes.length) { this.parts.push(bytes); this.length += bytes.length; } };
+AktarQueue.prototype.take = function (n) {
+  var out = new Uint8Array(n), at = 0;
+  while (at < n) {
+    var first = this.parts[0], need = n - at;
+    if (first.length <= need) { out.set(first, at); at += first.length; this.parts.shift(); }
+    else { out.set(first.subarray(0, need), at); this.parts[0] = first.subarray(need); at += need; }
+  }
+  this.length -= n;
+  return out;
+};
+
+// read(): resolves to the next chunk of the encrypted file (Uint8Array) or
+// null at its end. keyFor(header): resolves to the AES key. onProgress(bytes)
+// is told how much was read. Resolves to { meta, parts } (parts are the
+// decrypted content records, in order).
+function aktarDecrypt(read, keyFor, onProgress) {
+  var queue = new AktarQueue(), done = false, total = 0;
+  function fill(n) {
+    if (done || queue.length >= n) return Promise.resolve(queue.length >= n);
+    return read().then(function (chunk) {
+      if (chunk === null || chunk === undefined) { done = true; } else { queue.push(chunk); total += chunk.length; if (onProgress) onProgress(total); }
+      return fill(n);
+    });
+  }
+  var header, key, meta, parts = [];
+  return fill(AKTAR_HEADER_LENGTH).then(function (ok) {
+    if (!ok) throw aktarError('damaged');
+    header = aktarParseHeader(queue.take(AKTAR_HEADER_LENGTH));
+    return keyFor(header);
+  }).then(function (k) {
+    key = k;
+    return fill(header.metaLength);
+  }).then(function (ok) {
+    if (!ok) throw aktarError('damaged');
+    return aktarOpenRecord(key, header, 0, false, queue.take(header.metaLength)).catch(function () { throw aktarError('wrongKey'); });
+  }).then(function (plain) {
+    try { meta = JSON.parse(new TextDecoder().decode(plain)); } catch (e) { throw aktarError('damaged'); }
+    if (!meta || typeof meta.name !== 'string' || typeof meta.type !== 'string' || typeof meta.size !== 'number') throw aktarError('damaged');
+    var full = header.recordSize + AKTAR_TAG_LENGTH, index = 1;
+    function next() {
+      return fill(full + 1).then(function () {
+        if (queue.length > full) {
+          return aktarOpenRecord(key, header, index++, false, queue.take(full)).then(function (p) { parts.push(p); return next(); });
+        }
+        if (queue.length < AKTAR_TAG_LENGTH) throw aktarError('damaged');
+        return aktarOpenRecord(key, header, index, true, queue.take(queue.length)).then(function (p) { parts.push(p); });
+      });
+    }
+    return next().catch(function (e) { throw e && e.aktar ? e : aktarError('damaged'); });
+  }).then(function () {
+    var size = 0;
+    for (var i = 0; i < parts.length; i++) size += parts[i].length;
+    if (size !== meta.size) throw aktarError('damaged');
+    return { meta: meta, parts: parts };
+  });
+}
+/* AKTAR-CRYPTO-END */
+
+(function () {
+  'use strict';
+
+  var STRINGS = {
+    'en': ['Download', 'Download all', 'Preparing ZIP…', 'Copy link', 'Copy text', 'Copied', 'Wrap lines', '{n} files', 'Available until {date}', 'This link has expired.', 'This file is no longer available.', 'Encrypted file', 'Decrypted in your browser. The storage provider can’t read it.', 'Decrypting…', 'Password', 'Unlock', 'Wrong password, or the file is damaged.', 'This link is missing its key. Ask the sender for the full link.', 'This file couldn’t be decrypted. It may be damaged.', 'Send files', 'Files go straight to the requester’s own storage.', 'Choose files', 'or drop them here', 'Sending…', 'Sent', 'Failed', 'Too large. The limit is {size}.', 'No more files can be sent with this link.', 'Retry', 'Shared with Aktar', 'No preview for this file type.'],
+    'tr': ['İndir', 'Tümünü indir', 'ZIP hazırlanıyor…', 'Linki kopyala', 'Metni kopyala', 'Kopyalandı', 'Satırları kaydır', '{n} dosya', '{date} tarihine kadar erişilebilir', 'Bu linkin süresi doldu.', 'Bu dosya artık mevcut değil.', 'Şifreli dosya', 'Tarayıcında çözüldü. Depolama sağlayıcısı içeriği okuyamaz.', 'Şifre çözülüyor…', 'Parola', 'Aç', 'Parola yanlış ya da dosya bozuk.', 'Bu linkte anahtar eksik. Gönderenden linkin tamamını iste.', 'Bu dosyanın şifresi çözülemedi. Dosya bozuk olabilir.', 'Dosya gönder', 'Dosyalar doğrudan isteyenin kendi depolama alanına gider.', 'Dosya seç', 'ya da buraya bırak', 'Gönderiliyor…', 'Gönderildi', 'Başarısız', 'Çok büyük. Sınır {size}.', 'Bu linkle daha fazla dosya gönderilemez.', 'Tekrar dene', 'Aktar ile paylaşıldı', 'Bu dosya türü için önizleme yok.'],
+    'de': ['Herunterladen', 'Alle herunterladen', 'ZIP wird erstellt…', 'Link kopieren', 'Text kopieren', 'Kopiert', 'Zeilen umbrechen', '{n} Dateien', 'Verfügbar bis {date}', 'Dieser Link ist abgelaufen.', 'Diese Datei ist nicht mehr verfügbar.', 'Verschlüsselte Datei', 'In deinem Browser entschlüsselt. Der Speicheranbieter kann sie nicht lesen.', 'Wird entschlüsselt…', 'Passwort', 'Entsperren', 'Falsches Passwort oder beschädigte Datei.', 'Diesem Link fehlt der Schlüssel. Bitte den Absender um den vollständigen Link.', 'Diese Datei konnte nicht entschlüsselt werden. Sie ist möglicherweise beschädigt.', 'Dateien senden', 'Dateien landen direkt im eigenen Speicher der anfragenden Person.', 'Dateien auswählen', 'oder hierher ziehen', 'Wird gesendet…', 'Gesendet', 'Fehlgeschlagen', 'Zu groß. Das Limit ist {size}.', 'Über diesen Link können keine weiteren Dateien gesendet werden.', 'Erneut versuchen', 'Geteilt mit Aktar', 'Keine Vorschau für diesen Dateityp.'],
+    'es': ['Descargar', 'Descargar todo', 'Preparando ZIP…', 'Copiar enlace', 'Copiar texto', 'Copiado', 'Ajustar líneas', '{n} archivos', 'Disponible hasta el {date}', 'Este enlace ha caducado.', 'Este archivo ya no está disponible.', 'Archivo cifrado', 'Descifrado en tu navegador. El proveedor de almacenamiento no puede leerlo.', 'Descifrando…', 'Contraseña', 'Desbloquear', 'Contraseña incorrecta o archivo dañado.', 'A este enlace le falta la clave. Pide al remitente el enlace completo.', 'No se pudo descifrar este archivo. Puede estar dañado.', 'Enviar archivos', 'Los archivos van directamente al almacenamiento propio de quien los solicita.', 'Elegir archivos', 'o suéltalos aquí', 'Enviando…', 'Enviado', 'Error', 'Demasiado grande. El límite es {size}.', 'No se pueden enviar más archivos con este enlace.', 'Reintentar', 'Compartido con Aktar', 'No hay vista previa para este tipo de archivo.'],
+    'fr': ['Télécharger', 'Tout télécharger', 'Préparation du ZIP…', 'Copier le lien', 'Copier le texte', 'Copié', 'Retour à la ligne', '{n} fichiers', 'Disponible jusqu’au {date}', 'Ce lien a expiré.', 'Ce fichier n’est plus disponible.', 'Fichier chiffré', 'Déchiffré dans votre navigateur. Le fournisseur de stockage ne peut pas le lire.', 'Déchiffrement…', 'Mot de passe', 'Déverrouiller', 'Mot de passe incorrect ou fichier endommagé.', 'Il manque la clé à ce lien. Demandez le lien complet à l’expéditeur.', 'Impossible de déchiffrer ce fichier. Il est peut-être endommagé.', 'Envoyer des fichiers', 'Les fichiers vont directement dans le stockage de la personne qui les demande.', 'Choisir des fichiers', 'ou déposez-les ici', 'Envoi…', 'Envoyé', 'Échec', 'Trop volumineux. La limite est de {size}.', 'Plus aucun fichier ne peut être envoyé avec ce lien.', 'Réessayer', 'Partagé avec Aktar', 'Pas d’aperçu pour ce type de fichier.'],
+    'id': ['Unduh', 'Unduh semua', 'Menyiapkan ZIP…', 'Salin tautan', 'Salin teks', 'Disalin', 'Bungkus baris', '{n} file', 'Tersedia hingga {date}', 'Tautan ini sudah kedaluwarsa.', 'File ini sudah tidak tersedia.', 'File terenkripsi', 'Didekripsi di browser Anda. Penyedia penyimpanan tidak dapat membacanya.', 'Mendekripsi…', 'Kata sandi', 'Buka', 'Kata sandi salah, atau file rusak.', 'Tautan ini tidak memiliki kuncinya. Minta tautan lengkap kepada pengirim.', 'File ini tidak dapat didekripsi. Mungkin file rusak.', 'Kirim file', 'File langsung masuk ke penyimpanan milik peminta.', 'Pilih file', 'atau letakkan di sini', 'Mengirim…', 'Terkirim', 'Gagal', 'Terlalu besar. Batasnya {size}.', 'Tidak ada lagi file yang dapat dikirim dengan tautan ini.', 'Coba lagi', 'Dibagikan dengan Aktar', 'Tidak ada pratinjau untuk jenis file ini.'],
+    'it': ['Scarica', 'Scarica tutto', 'Preparazione dello ZIP…', 'Copia link', 'Copia testo', 'Copiato', 'A capo automatico', '{n} file', 'Disponibile fino al {date}', 'Questo link è scaduto.', 'Questo file non è più disponibile.', 'File crittografato', 'Decrittografato nel tuo browser. Il provider di archiviazione non può leggerlo.', 'Decrittografia…', 'Password', 'Sblocca', 'Password errata o file danneggiato.', 'A questo link manca la chiave. Chiedi il link completo al mittente.', 'Impossibile decrittografare questo file. Potrebbe essere danneggiato.', 'Invia file', 'I file arrivano direttamente nello spazio di archiviazione di chi li richiede.', 'Scegli file', 'o trascinali qui', 'Invio…', 'Inviato', 'Non riuscito', 'Troppo grande. Il limite è {size}.', 'Non è possibile inviare altri file con questo link.', 'Riprova', 'Condiviso con Aktar', 'Nessuna anteprima per questo tipo di file.'],
+    'ja': ['ダウンロード', 'すべてダウンロード', 'ZIPを準備中…', 'リンクをコピー', 'テキストをコピー', 'コピーしました', '行を折り返す', '{n} 個のファイル', '{date} まで利用可能', 'このリンクは期限切れです。', 'このファイルは利用できなくなりました。', '暗号化されたファイル', 'ブラウザ内で復号されました。ストレージプロバイダは内容を読めません。', '復号中…', 'パスワード', '開く', 'パスワードが違うか、ファイルが破損しています。', 'このリンクには鍵がありません。送信者に完全なリンクを依頼してください。', 'このファイルを復号できませんでした。破損している可能性があります。', 'ファイルを送信', 'ファイルはリクエストした人のストレージに直接届きます。', 'ファイルを選択', 'またはここにドロップ', '送信中…', '送信済み', '失敗', '大きすぎます。上限は {size} です。', 'このリンクではこれ以上ファイルを送信できません。', '再試行', 'Aktar で共有', 'このファイル形式はプレビューできません。'],
+    'ko': ['다운로드', '모두 다운로드', 'ZIP 준비 중…', '링크 복사', '텍스트 복사', '복사됨', '줄 바꿈', '파일 {n}개', '{date}까지 이용 가능', '이 링크는 만료되었습니다.', '이 파일은 더 이상 사용할 수 없습니다.', '암호화된 파일', '브라우저에서 복호화되었습니다. 스토리지 제공업체는 내용을 읽을 수 없습니다.', '복호화 중…', '비밀번호', '열기', '비밀번호가 틀렸거나 파일이 손상되었습니다.', '이 링크에 키가 없습니다. 보낸 사람에게 전체 링크를 요청하세요.', '이 파일을 복호화할 수 없습니다. 손상되었을 수 있습니다.', '파일 보내기', '파일은 요청한 사람의 스토리지로 바로 전송됩니다.', '파일 선택', '또는 여기에 놓기', '보내는 중…', '보냄', '실패', '너무 큽니다. 한도는 {size}입니다.', '이 링크로는 더 이상 파일을 보낼 수 없습니다.', '다시 시도', 'Aktar로 공유됨', '이 파일 형식은 미리 볼 수 없습니다.'],
+    'nl': ['Downloaden', 'Alles downloaden', 'ZIP voorbereiden…', 'Link kopiëren', 'Tekst kopiëren', 'Gekopieerd', 'Regels omlopen', '{n} bestanden', 'Beschikbaar tot {date}', 'Deze link is verlopen.', 'Dit bestand is niet meer beschikbaar.', 'Versleuteld bestand', 'Ontsleuteld in je browser. De opslagprovider kan het niet lezen.', 'Ontsleutelen…', 'Wachtwoord', 'Ontgrendelen', 'Verkeerd wachtwoord, of het bestand is beschadigd.', 'Deze link mist de sleutel. Vraag de afzender om de volledige link.', 'Dit bestand kon niet worden ontsleuteld. Het is mogelijk beschadigd.', 'Bestanden versturen', 'Bestanden gaan rechtstreeks naar de eigen opslag van degene die erom vraagt.', 'Bestanden kiezen', 'of sleep ze hierheen', 'Versturen…', 'Verstuurd', 'Mislukt', 'Te groot. De limiet is {size}.', 'Met deze link kunnen geen bestanden meer worden verstuurd.', 'Opnieuw', 'Gedeeld met Aktar', 'Geen voorbeeld voor dit bestandstype.'],
+    'pl': ['Pobierz', 'Pobierz wszystko', 'Przygotowywanie ZIP…', 'Kopiuj link', 'Kopiuj tekst', 'Skopiowano', 'Zawijaj wiersze', 'Pliki: {n}', 'Dostępne do {date}', 'Ten link wygasł.', 'Ten plik nie jest już dostępny.', 'Zaszyfrowany plik', 'Odszyfrowano w przeglądarce. Dostawca magazynu nie może go odczytać.', 'Odszyfrowywanie…', 'Hasło', 'Odblokuj', 'Nieprawidłowe hasło lub uszkodzony plik.', 'W tym linku brakuje klucza. Poproś nadawcę o pełny link.', 'Nie udało się odszyfrować pliku. Może być uszkodzony.', 'Wyślij pliki', 'Pliki trafiają bezpośrednio do magazynu osoby, która o nie prosi.', 'Wybierz pliki', 'lub upuść je tutaj', 'Wysyłanie…', 'Wysłano', 'Niepowodzenie', 'Za duży. Limit to {size}.', 'Tym linkiem nie można wysłać więcej plików.', 'Spróbuj ponownie', 'Udostępniono przez Aktar', 'Brak podglądu dla tego typu pliku.'],
+    'pt-BR': ['Baixar', 'Baixar tudo', 'Preparando ZIP…', 'Copiar link', 'Copiar texto', 'Copiado', 'Quebrar linhas', '{n} arquivos', 'Disponível até {date}', 'Este link expirou.', 'Este arquivo não está mais disponível.', 'Arquivo criptografado', 'Descriptografado no seu navegador. O provedor de armazenamento não consegue lê-lo.', 'Descriptografando…', 'Senha', 'Desbloquear', 'Senha incorreta ou arquivo danificado.', 'Falta a chave neste link. Peça o link completo a quem enviou.', 'Não foi possível descriptografar este arquivo. Ele pode estar danificado.', 'Enviar arquivos', 'Os arquivos vão direto para o armazenamento próprio de quem os pediu.', 'Escolher arquivos', 'ou solte-os aqui', 'Enviando…', 'Enviado', 'Falhou', 'Grande demais. O limite é {size}.', 'Não é possível enviar mais arquivos com este link.', 'Tentar novamente', 'Compartilhado com o Aktar', 'Sem pré-visualização para este tipo de arquivo.'],
+    'ru': ['Скачать', 'Скачать все', 'Подготовка ZIP…', 'Копировать ссылку', 'Копировать текст', 'Скопировано', 'Переносить строки', 'Файлов: {n}', 'Доступно до {date}', 'Срок действия ссылки истёк.', 'Этот файл больше недоступен.', 'Зашифрованный файл', 'Расшифровано в вашем браузере. Хранилище не может его прочитать.', 'Расшифровка…', 'Пароль', 'Открыть', 'Неверный пароль или файл повреждён.', 'В ссылке нет ключа. Попросите отправителя прислать полную ссылку.', 'Не удалось расшифровать файл. Возможно, он повреждён.', 'Отправить файлы', 'Файлы попадают прямо в хранилище того, кто их запросил.', 'Выбрать файлы', 'или перетащите их сюда', 'Отправка…', 'Отправлено', 'Ошибка', 'Слишком большой. Лимит {size}.', 'По этой ссылке больше нельзя отправить файлы.', 'Повторить', 'Отправлено через Aktar', 'Предпросмотр для этого типа файлов недоступен.'],
+    'uk': ['Завантажити', 'Завантажити все', 'Підготовка ZIP…', 'Копіювати посилання', 'Копіювати текст', 'Скопійовано', 'Переносити рядки', 'Файлів: {n}', 'Доступно до {date}', 'Термін дії посилання минув.', 'Цей файл більше недоступний.', 'Зашифрований файл', 'Розшифровано у вашому браузері. Сховище не може його прочитати.', 'Розшифрування…', 'Пароль', 'Відкрити', 'Неправильний пароль або файл пошкоджено.', 'У посиланні немає ключа. Попросіть відправника надіслати повне посилання.', 'Не вдалося розшифрувати файл. Можливо, його пошкоджено.', 'Надіслати файли', 'Файли потрапляють прямо до сховища того, хто їх запросив.', 'Вибрати файли', 'або перетягніть їх сюди', 'Надсилання…', 'Надіслано', 'Помилка', 'Завеликий. Ліміт {size}.', 'Цим посиланням більше не можна надіслати файли.', 'Повторити', 'Надіслано через Aktar', 'Попередній перегляд для цього типу файлів недоступний.'],
+    'vi': ['Tải xuống', 'Tải xuống tất cả', 'Đang chuẩn bị ZIP…', 'Sao chép liên kết', 'Sao chép văn bản', 'Đã sao chép', 'Ngắt dòng', '{n} tệp', 'Có sẵn đến {date}', 'Liên kết này đã hết hạn.', 'Tệp này không còn nữa.', 'Tệp đã mã hóa', 'Được giải mã trong trình duyệt của bạn. Nhà cung cấp lưu trữ không thể đọc được.', 'Đang giải mã…', 'Mật khẩu', 'Mở khóa', 'Sai mật khẩu hoặc tệp bị hỏng.', 'Liên kết này thiếu khóa. Hãy xin người gửi liên kết đầy đủ.', 'Không thể giải mã tệp này. Tệp có thể bị hỏng.', 'Gửi tệp', 'Tệp được chuyển thẳng vào kho lưu trữ của người yêu cầu.', 'Chọn tệp', 'hoặc thả vào đây', 'Đang gửi…', 'Đã gửi', 'Thất bại', 'Quá lớn. Giới hạn là {size}.', 'Không thể gửi thêm tệp bằng liên kết này.', 'Thử lại', 'Được chia sẻ bằng Aktar', 'Không có bản xem trước cho loại tệp này.'],
+    'zh-Hans': ['下载', '全部下载', '正在准备 ZIP…', '复制链接', '复制文本', '已复制', '自动换行', '{n} 个文件', '可用至 {date}', '此链接已过期。', '此文件已不可用。', '加密文件', '已在你的浏览器中解密。存储服务商无法读取其内容。', '正在解密…', '密码', '解锁', '密码错误，或文件已损坏。', '此链接缺少密钥。请向发送者索取完整链接。', '无法解密此文件，文件可能已损坏。', '发送文件', '文件会直接存入请求者自己的存储空间。', '选择文件', '或拖放到这里', '正在发送…', '已发送', '失败', '文件过大，上限为 {size}。', '此链接无法再发送更多文件。', '重试', '通过 Aktar 分享', '此文件类型无法预览。'],
+    'zh-Hant': ['下載', '全部下載', '正在準備 ZIP…', '拷貝連結', '拷貝文字', '已拷貝', '自動換行', '{n} 個檔案', '可用至 {date}', '此連結已過期。', '此檔案已無法使用。', '加密檔案', '已在你的瀏覽器中解密。儲存服務供應商無法讀取其內容。', '正在解密…', '密碼', '解鎖', '密碼錯誤，或檔案已損毀。', '此連結缺少金鑰。請向傳送者索取完整連結。', '無法解密此檔案，檔案可能已損毀。', '傳送檔案', '檔案會直接存入請求者自己的儲存空間。', '選擇檔案', '或拖放到這裡', '正在傳送…', '已傳送', '失敗', '檔案過大，上限為 {size}。', '此連結無法再傳送更多檔案。', '重試', '透過 Aktar 分享', '此檔案類型無法預覽。']
+  };
+  var KEYS = ['download', 'downloadAll', 'zipping', 'copyLink', 'copyText', 'copied', 'wrap', 'nFiles', 'expires', 'expired', 'unavailable', 'encrypted', 'e2eNote', 'decrypting', 'password', 'unlock', 'wrongPassword', 'missingKey', 'damaged', 'sendFiles', 'requestHint', 'chooseFiles', 'orDrop', 'sending', 'sent', 'failed', 'tooLarge', 'full', 'retry', 'sharedWith', 'noPreview'];
+
+  var data;
+  try { data = JSON.parse(document.getElementById('aktar-data').textContent); } catch (e) { data = null; }
+  var app = document.getElementById('app');
+  if (!data || data.v !== 1) { app.textContent = 'This page could not be read.'; return; }
+
+  function pickLanguage() {
+    var wanted = [].concat(navigator.languages || [], navigator.language || [], data.lang || [], 'en');
+    for (var i = 0; i < wanted.length; i++) {
+      var tag = String(wanted[i]);
+      var lower = tag.toLowerCase();
+      if (lower.indexOf('zh') === 0) return /hant|tw|hk|mo/.test(lower) ? 'zh-Hant' : 'zh-Hans';
+      if (lower.indexOf('pt') === 0) return 'pt-BR';
+      if (STRINGS[tag]) return tag;
+      var base = lower.split('-')[0];
+      if (STRINGS[base]) return base;
+    }
+    return 'en';
+  }
+  var LANG = pickLanguage();
+  document.documentElement.lang = LANG;
+  var T = {};
+  for (var k = 0; k < KEYS.length; k++) T[KEYS[k]] = STRINGS[LANG][k] || STRINGS.en[k];
+  function t(key, values) {
+    var s = T[key];
+    if (values) for (var name in values) s = s.split('{' + name + '}').join(values[name]);
+    return s;
+  }
+
+  // Only links that go somewhere on the web (or to a decrypted blob) are used.
+  function safeURL(value) {
+    if (typeof value !== 'string' || !value) return null;
+    try {
+      var u = new URL(value, location.href);
+      return u.protocol === 'https:' || u.protocol === 'http:' || u.protocol === 'blob:' ? u.href : null;
+    } catch (e) { return null; }
+  }
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) for (var name in attrs) {
+      var v = attrs[name];
+      if (v === null || v === undefined || v === false) continue;
+      if (name === 'text') node.textContent = v;
+      else if (name === 'class') node.className = v;
+      else if (name.indexOf('on') === 0) node.addEventListener(name.slice(2), v);
+      else node.setAttribute(name, v === true ? '' : v);
+    }
+    (children || []).forEach(function (c) { if (c) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return node;
+  }
+  function formatSize(bytes) {
+    if (typeof bytes !== 'number' || !isFinite(bytes) || bytes < 0) return '';
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0, n = bytes;
+    while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+    var digits = i === 0 || n >= 100 ? 0 : 1;
+    try { return new Intl.NumberFormat(LANG, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(n) + ' ' + units[i]; }
+    catch (e) { return n.toFixed(digits) + ' ' + units[i]; }
+  }
+  function formatDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    try { return new Intl.DateTimeFormat(LANG, { dateStyle: 'medium', timeStyle: 'short' }).format(d); }
+    catch (e) { return d.toLocaleString(); }
+  }
+  function isExpired() {
+    if (!data.expires) return false;
+    var d = Date.parse(data.expires);
+    return !isNaN(d) && Date.now() > d;
+  }
+  function kindOf(type) {
+    type = String(type || '').toLowerCase();
+    if (type.indexOf('image/') === 0) return 'image';
+    if (type.indexOf('video/') === 0) return 'video';
+    if (type.indexOf('audio/') === 0) return 'audio';
+    if (type === 'application/pdf') return 'pdf';
+    return 'other';
+  }
+  function iconFor(type) {
+    var kind = kindOf(type);
+    if (kind === 'other' && String(type || '').indexOf('text/') === 0) return '📝';
+    return { image: '🖼️', video: '🎬', audio: '🎵', pdf: '📄' }[kind] || '📦';
+  }
+  function copyButton(label, getText) {
+    var button = el('button', { class: 'btn', type: 'button', text: label });
+    button.addEventListener('click', function () {
+      var text = getText();
+      var done = function () { button.textContent = t('copied'); setTimeout(function () { button.textContent = label; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () {});
+    });
+    return button;
+  }
+  function downloadLink(url, name, primary) {
+    return el('a', { class: primary ? 'btn primary' : 'btn', href: url, download: name || true, rel: 'noopener' }, [t('download')]);
+  }
+  function metaLine(parts) {
+    return el('p', { class: 'meta', text: parts.filter(Boolean).join(' · ') });
+  }
+  function expiryText() {
+    return data.expires ? t('expires', { date: formatDate(data.expires) }) : '';
+  }
+  function footer() {
+    if (data.brand === false) return null;
+    return el('footer', null, [el('a', { href: 'https://getaktar.com/', rel: 'noopener', target: '_blank', text: t('sharedWith') })]);
+  }
+  function render(nodes) {
+    app.textContent = '';
+    nodes.forEach(function (n) { if (n) app.appendChild(n); });
+  }
+  function expiredCard() {
+    render([el('div', { class: 'card' }, [el('div', { class: 'empty' }, [el('div', { class: 'icon', text: '⏳' }), el('p', { text: t('expired') })])]), footer()]);
+  }
+
+  function preview(url, type, name) {
+    var kind = kindOf(type);
+    var box = el('div', { class: 'preview' });
+    var fail = function () { box.textContent = ''; box.appendChild(el('div', { class: 'empty' }, [el('div', { class: 'icon', text: iconFor(type) }), el('p', { text: t('unavailable') })])); };
+    if (kind === 'image') { var img = el('img', { src: url, alt: name, onerror: fail }); box.appendChild(img); }
+    else if (kind === 'video') box.appendChild(el('video', { src: url, controls: true, preload: 'metadata', playsinline: true, onerror: fail }));
+    else if (kind === 'audio') box.appendChild(el('audio', { src: url, controls: true, preload: 'metadata', onerror: fail }));
+    else if (kind === 'pdf') box.appendChild(el('iframe', { src: url, title: name }));
+    else box.appendChild(el('div', { class: 'empty' }, [el('div', { class: 'icon', text: iconFor(type) }), el('p', { text: t('noPreview') })]));
+    return box;
+  }
+
+  // --- Text with a light, generic highlighter (keywords, strings, numbers, comments).
+  var KEYWORDS = {};
+  ('if else elif for while do return function func fn def class struct enum interface protocol extension let var const val import from export package module public private protected internal static final async await try catch except finally throw throws raise new delete null nil None undefined true false True False self this super type typeof instanceof in of is as switch case break continue default yield lambda match impl trait mut pub use mod where select insert update create table join on and or not with').split(' ').forEach(function (w) { KEYWORDS[w] = 1; });
+  var HASH_COMMENTS = { python: 1, ruby: 1, shell: 1, bash: 1, zsh: 1, yaml: 1, toml: 1, perl: 1, r: 1, dockerfile: 1, makefile: 1, powershell: 1, ini: 1, elixir: 1, nim: 1, crystal: 1, julia: 1 };
+  var PLAIN = { text: 1, markdown: 1, csv: 1, log: 1 };
+  function highlighted(text, syntax) {
+    var pre = el('pre');
+    if (!syntax || PLAIN[syntax] || text.length > 200000) { pre.textContent = text; return pre; }
+    var re = HASH_COMMENTS[syntax]
+      ? /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_][\w]*)/g
+      : /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|(\b\d[\d_]*(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)/g;
+    var last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) pre.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var cls = m[1] ? 'tk-c' : m[2] ? 'tk-s' : m[3] ? 'tk-n' : (KEYWORDS[m[4]] ? 'tk-k' : null);
+      if (cls) pre.appendChild(el('span', { class: cls, text: m[0] })); else pre.appendChild(document.createTextNode(m[0]));
+      last = re.lastIndex;
+    }
+    if (last < text.length) pre.appendChild(document.createTextNode(text.slice(last)));
+    return pre;
+  }
+  function textCard(name, text, syntax, rawURL, extra) {
+    var pre = highlighted(text, syntax);
+    var wrap = el('button', { class: 'btn', type: 'button', text: t('wrap') });
+    wrap.addEventListener('click', function () { pre.classList.toggle('wrap'); });
+    var row = el('div', { class: 'row' }, [copyButton(t('copyText'), function () { return text; }), rawURL ? downloadLink(rawURL, name, false) : null, wrap]);
+    return el('div', { class: 'card' }, [el('h1', { text: name })].concat(extra || [], [pre, row]));
+  }
+
+  // --- ZIP of the gallery's files (stored, no compression), made in the browser.
+  var CRC_TABLE = (function () {
+    var table = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) { var c = n; for (var j = 0; j < 8; j++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; table[n] = c >>> 0; }
+    return table;
+  })();
+  function crc32(bytes) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function makeZip(entries) {
+    var parts = [], central = [], offset = 0, now = new Date();
+    var time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    var date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    entries.forEach(function (entry) {
+      var name = new TextEncoder().encode(entry.name), crc = crc32(entry.bytes), size = entry.bytes.length;
+      var local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
+      local.setUint16(8, 0, true); local.setUint16(10, time, true); local.setUint16(12, date, true);
+      local.setUint32(14, crc, true); local.setUint32(18, size, true); local.setUint32(22, size, true);
+      local.setUint16(26, name.length, true); local.setUint16(28, 0, true);
+      parts.push(local.buffer, name, entry.bytes);
+      var dir = new DataView(new ArrayBuffer(46));
+      dir.setUint32(0, 0x02014b50, true); dir.setUint16(4, 20, true); dir.setUint16(6, 20, true); dir.setUint16(8, 0x0800, true);
+      dir.setUint16(10, 0, true); dir.setUint16(12, time, true); dir.setUint16(14, date, true);
+      dir.setUint32(16, crc, true); dir.setUint32(20, size, true); dir.setUint32(24, size, true);
+      dir.setUint16(28, name.length, true); dir.setUint32(42, offset, true);
+      central.push(dir.buffer, name);
+      offset += 30 + name.length + size;
+    });
+    var dirSize = central.reduce(function (n, p) { return n + p.byteLength; }, 0);
+    var end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, dirSize, true); end.setUint32(16, offset, true);
+    return new Blob(parts.concat(central, [end.buffer]), { type: 'application/zip' });
+  }
+  function uniqueNames(files) {
+    var seen = {};
+    return files.map(function (f) {
+      var name = String(f.name || 'file').replace(/[\\/]/g, '_');
+      if (!seen[name]) { seen[name] = 1; return name; }
+      var dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+      var n = 2; while (seen[stem + ' (' + n + ')' + ext]) n++;
+      var unique = stem + ' (' + n + ')' + ext; seen[unique] = 1; return unique;
+    });
+  }
+
+  // --- Views
+
+  function showFile() {
+    var f = (data.files || [])[0];
+    var url = f && safeURL(f.url);
+    if (!url) { render([el('div', { class: 'card' }, [el('p', { text: t('unavailable') })]), footer()]); return; }
+    var row = el('div', { class: 'row' }, [downloadLink(url, f.name, true), copyButton(t('copyLink'), function () { return location.href; })]);
+    render([el('div', { class: 'card' }, [
+      el('h1', { text: f.name }),
+      metaLine([formatSize(f.size), formatDate(data.created), expiryText()]),
+      preview(url, f.type, f.name), row
+    ]), footer()]);
+  }
+
+  function showText() {
+    var f = (data.files || [])[0] || {};
+    var text = typeof data.text === 'string' ? data.text : '';
+    render([textCard(f.name || 'text.txt', text, data.syntax, safeURL(f.url), [metaLine([formatSize(f.size), formatDate(data.created), expiryText()])]), footer()]);
+  }
+
+  function showGallery() {
+    var files = (data.files || []).filter(function (f) { return safeURL(f.url); });
+    var total = files.reduce(function (n, f) { return n + (typeof f.size === 'number' ? f.size : 0); }, 0);
+    var grid = el('div', { class: 'grid' }, files.map(function (f) {
+      var url = safeURL(f.url), thumb = safeURL(f.thumb) || (kindOf(f.type) === 'image' ? url : null);
+      var box = el('div', { class: 'thumb' }, [thumb ? el('img', { src: thumb, alt: '', loading: 'lazy' }) : el('span', { text: iconFor(f.type) })]);
+      return el('a', { class: 'tile', href: url, target: '_blank', rel: 'noopener' }, [box, el('div', { class: 'cap' }, [el('b', { text: f.name }), el('span', { text: formatSize(f.size) })])]);
+    }));
+    var row = el('div', { class: 'row' });
+    // Up to 1 GB is zipped in the browser; above that each file is downloaded on its own.
+    if (files.length > 1 && total <= 1e9 && window.fetch) {
+      var all = el('button', { class: 'btn primary', type: 'button', text: t('downloadAll') });
+      all.addEventListener('click', function () {
+        all.disabled = true; all.textContent = t('zipping');
+        var names = uniqueNames(files), entries = [];
+        files.reduce(function (p, f, i) {
+          return p.then(function () {
+            return fetch(safeURL(f.url)).then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer(); })
+              .then(function (buf) { entries.push({ name: names[i], bytes: new Uint8Array(buf) }); });
+          });
+        }, Promise.resolve()).then(function () {
+          var a = el('a', { href: URL.createObjectURL(makeZip(entries)), download: 'files.zip' });
+          document.body.appendChild(a); a.click(); a.remove();
+          all.disabled = false; all.textContent = t('downloadAll');
+        }, function () { all.disabled = false; all.textContent = t('failed'); });
+      });
+      row.appendChild(all);
+    }
+    row.appendChild(copyButton(t('copyLink'), function () { return location.href; }));
+    render([el('div', { class: 'card' }, [
+      el('h1', { text: t('nFiles', { n: String(files.length) }) }),
+      metaLine([formatSize(total), formatDate(data.created), expiryText()]),
+      grid, row
+    ]), footer()]);
+  }
+
+  function showEncrypted() {
+    var enc = data.encrypted || {};
+    var url = safeURL(enc.url);
+    var card = el('div', { class: 'card' });
+    var status = el('p', { class: 'meta' });
+    render([card, footer()]);
+    function fail(code) {
+      card.textContent = '';
+      card.appendChild(el('h1', { text: t('encrypted') }));
+      card.appendChild(el('p', { class: 'error', text: t(code === 'missingKey' ? 'missingKey' : code === 'wrongKey' ? 'wrongPassword' : code === 'expired' ? 'expired' : code === 'unavailable' ? 'unavailable' : 'damaged') }));
+    }
+    if (!url) { fail('unavailable'); return; }
+
+    function run(keyFor) {
+      card.textContent = '';
+      card.appendChild(el('h1', { text: t('encrypted') }));
+      card.appendChild(status);
+      status.textContent = t('decrypting');
+      fetch(url).then(function (response) {
+        if (response.status === 403) throw aktarError(isExpired() ? 'expired' : 'unavailable');
+        if (!response.ok) throw aktarError('unavailable');
+        var reader = response.body && response.body.getReader ? response.body.getReader() : null;
+        var whole = null;
+        var read = reader
+          ? function () { return reader.read().then(function (r) { return r.done ? null : r.value; }); }
+          : function () { if (whole === 'done') return Promise.resolve(null); return response.arrayBuffer().then(function (b) { whole = 'done'; return new Uint8Array(b); }); };
+        var size = typeof enc.size === 'number' ? enc.size : 0;
+        return aktarDecrypt(read, keyFor, function (n) {
+          if (size > 0) status.textContent = t('decrypting') + ' ' + Math.min(100, Math.round(n * 100 / size)) + '%';
+        });
+      }).then(function (result) {
+        var meta = result.meta;
+        var type = /^[\w.+-]+\/[\w.+-]+$/.test(meta.type) ? meta.type : 'application/octet-stream';
+        var blob = new Blob(result.parts, { type: type });
+        var blobURL = URL.createObjectURL(blob);
+        var name = String(meta.name).replace(/[\\/]/g, '_') || 'file';
+        var note = el('p', { class: 'hint', text: '🔒 ' + t('e2eNote') });
+        var isText = type.indexOf('text/') === 0 || /^application\/(json|xml|javascript|x-sh|x-yaml|toml)$/.test(type);
+        if (isText && blob.size <= 1000000) {
+          return blob.text().then(function (text) {
+            var syntax = meta.syntax && /^[a-z0-9+#-]{1,20}$/.test(meta.syntax) ? meta.syntax : null;
+            render([textCard(name, text, syntax, blobURL, [metaLine([formatSize(blob.size), expiryText()])]), el('div', null, [note]), footer()]);
+          });
+        }
+        var row = el('div', { class: 'row' }, [downloadLink(blobURL, name, true), copyButton(t('copyLink'), function () { return location.href; })]);
+        render([el('div', { class: 'card' }, [
+          el('h1', { text: name }),
+          metaLine([formatSize(blob.size), expiryText()]),
+          preview(blobURL, type, name), row, note
+        ]), footer()]);
+      }).catch(function (e) {
+        if (e && e.aktar === 'wrongKey' && enc.password) { askPassword(true); return; }
+        fail(e && e.aktar ? e.aktar : 'damaged');
+      });
+    }
+
+    function askPassword(again) {
+      card.textContent = '';
+      var input = el('input', { type: 'password', autocomplete: 'off', placeholder: t('password'), 'aria-label': t('password') });
+      var form = el('form', { class: 'pw' }, [input, el('button', { class: 'btn primary', type: 'submit', text: t('unlock') })]);
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var password = input.value;
+        if (!password) return;
+        run(function (header) { if (header.kdf !== 1) throw aktarError('damaged'); return aktarDeriveKey(password, header); });
+      });
+      card.appendChild(el('h1', { text: t('encrypted') }));
+      card.appendChild(metaLine([formatSize(enc.size), expiryText()]));
+      if (again) card.appendChild(el('p', { class: 'error', text: t('wrongPassword') }));
+      card.appendChild(form);
+      input.focus();
+    }
+
+    if (isExpired()) { fail('expired'); return; }
+    if (enc.password) { askPassword(false); return; }
+    var raw = aktarKeyFromFragment(location.hash);
+    if (!raw) { fail('missingKey'); return; }
+    run(function (header) { if (header.kdf !== 0) throw aktarError('damaged'); return aktarImportKey(raw); });
+  }
+
+  function showRequest() {
+    var req = data.request || {};
+    if (isExpired()) { expiredCard(); return; }
+    var slots = (req.slots || []).filter(function (s) { return safeURL(s.file) && safeURL(s.meta); });
+    var maxBytes = typeof req.maxBytes === 'number' && req.maxBytes > 0 ? Math.min(req.maxBytes, 5e9) : 5e9;
+    // The next slot to try survives a reload, so a sender on a provider
+    // without conditional writes doesn't write over their own files.
+    var storeKey = 'aktar-request:' + location.pathname;
+    var next = 0, busy = false, queue = [];
+    try { var saved = parseInt(localStorage.getItem(storeKey), 10); if (saved > 0) next = saved; } catch (e) {}
+    function advance() { next++; try { localStorage.setItem(storeKey, String(next)); } catch (e) {} }
+    var list = el('ul', { class: 'list' });
+    var input = el('input', { type: 'file', multiple: true, hidden: true });
+    var choose = el('button', { class: 'btn primary', type: 'button', text: t('chooseFiles') });
+    choose.addEventListener('click', function () { input.click(); });
+    var drop = el('div', { class: 'drop' }, [choose, el('p', { text: t('orDrop') })]);
+    var message = el('p', { class: 'error' });
+    message.hidden = true;
+
+    function put(url, body, type, onProgress) {
+      return new Promise(function (resolve) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', url);
+        xhr.setRequestHeader('Content-Type', type);
+        if (req.conditional) xhr.setRequestHeader('If-None-Match', '*');
+        if (onProgress && xhr.upload) xhr.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+        xhr.onload = function () { resolve(xhr.status); };
+        xhr.onerror = function () { resolve(0); };
+        xhr.send(body);
+      });
+    }
+    function send(item) {
+      if (next >= slots.length) { item.fail(t('full')); return Promise.resolve(); }
+      var slot = slots[next];
+      item.start();
+      return put(slot.file, item.file, 'application/octet-stream', item.progress).then(function (status) {
+        if (status === 412) { advance(); return send(item); }
+        if (status === 403) { item.fail(t(isExpired() ? 'expired' : 'failed')); return; }
+        if (status < 200 || status >= 300) { item.fail(t('failed'), true); return; }
+        advance();
+        var meta = JSON.stringify({ v: 1, name: item.file.name, type: item.file.type || '', size: item.file.size, sent: new Date().toISOString() });
+        // The file is there either way; without its metadata the app names it upload-<n>.
+        function putMeta(tries) {
+          return put(slot.meta, new Blob([meta], { type: 'application/json' }), 'application/json').then(function (s) {
+            if ((s < 200 || s >= 300) && s !== 412 && tries > 1) return putMeta(tries - 1);
+          });
+        }
+        return putMeta(3).then(function () { item.done(); });
+      });
+    }
+    function pump() {
+      if (busy) return;
+      var item = queue.shift();
+      if (!item) return;
+      busy = true;
+      send(item).then(function () { busy = false; pump(); });
+    }
+    function add(file) {
+      var state = el('span', { class: 'state' });
+      var bar = el('progress', { max: '1', value: '0' });
+      bar.hidden = true;
+      var row = el('li', null, [el('span', { class: 'name', text: file.name }), bar, state]);
+      list.appendChild(row);
+      var item = {
+        file: file,
+        start: function () { state.textContent = t('sending'); state.className = 'state'; bar.hidden = false; bar.value = 0; },
+        progress: function (f) { bar.value = f; },
+        done: function () { bar.hidden = true; state.textContent = t('sent'); state.className = 'state ok'; },
+        fail: function (text, retry) {
+          bar.hidden = true; state.textContent = text; state.className = 'state bad';
+          if (retry) {
+            var again = el('button', { class: 'btn', type: 'button', text: t('retry') });
+            again.addEventListener('click', function () { again.remove(); queue.push(item); pump(); });
+            row.appendChild(again);
+          }
+        }
+      };
+      if (file.size > maxBytes) { item.fail(t('tooLarge', { size: formatSize(maxBytes) })); return; }
+      queue.push(item);
+      pump();
+    }
+    input.addEventListener('change', function () { Array.prototype.forEach.call(input.files || [], add); input.value = ''; });
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+    drop.addEventListener('drop', function (e) {
+      e.preventDefault(); drop.classList.remove('over');
+      Array.prototype.forEach.call((e.dataTransfer && e.dataTransfer.files) || [], add);
+    });
+    render([el('div', { class: 'card' }, [
+      el('h1', { text: req.title || t('sendFiles') }),
+      metaLine([expiryText()]),
+      req.note ? el('p', { class: 'note', text: req.note }) : null,
+      drop, input, list, message,
+      el('p', { class: 'hint', text: t('requestHint') + ' ≤ ' + formatSize(maxBytes) })
+    ]), footer()]);
+  }
+
+  if (data.kind !== 'encrypted' && data.kind !== 'request' && isExpired()) { expiredCard(); return; }
+  if (data.kind === 'file') showFile();
+  else if (data.kind === 'text') showText();
+  else if (data.kind === 'gallery') showGallery();
+  else if (data.kind === 'encrypted') showEncrypted();
+  else if (data.kind === 'request') showRequest();
+  else app.textContent = 'This page could not be read.';
+})();
+</script>
+</body>
+</html>

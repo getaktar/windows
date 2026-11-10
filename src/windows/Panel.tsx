@@ -29,6 +29,7 @@ import {
   MoreHorizontalRegular,
   ScreenshotRegular,
   SettingsRegular,
+  MailInboxArrowDownRegular,
   TimerRegular,
   TrayItemRemoveRegular,
   WifiOffRegular,
@@ -40,6 +41,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog, MenuEntries, type MenuEntry } from "../components/Dialogs";
 import { QrCodeDialog } from "../components/QrCodeDialog";
+import { RequestFilesDialog } from "../components/RequestFilesDialog";
 import { shortLinkMenu } from "../components/shortLinkMenu";
 import { temporaryLinkMenu } from "../components/temporaryLinkMenu";
 import { ExpiryBadge, FileIcon, Thumbnail } from "../components/FileVisuals";
@@ -55,18 +57,21 @@ import {
   type DestinationConfig,
   type Job,
   type NameRequest,
+  type PasswordRequest,
   type UploadRecord,
 } from "../lib/api";
 import {
   durationLabel,
   expiryRulesExplanation,
-  formatOutput,
+  formatRecord,
+  recordLink,
   providerName,
   rulesStatusMessage,
   temporaryLinkLabel,
   withoutScheme,
 } from "../lib/format";
 import { useDestinations, useHistory, useJobs, useLive, useSettings, useTauriEvent, useWatched } from "../lib/hooks";
+import { sharex, type ShareXStatus } from "../lib/sharex";
 import { useI18n } from "../lib/i18n";
 import { LargeBatchBanners, PauseControl, watchingStatus } from "./settings/WatchedFolders";
 
@@ -77,9 +82,13 @@ export default function Panel() {
   const [records] = useHistory();
   const [settings] = useSettings();
   const [names, refreshNames] = useLive<NameRequest[]>(api.pendingNames, [events.namesChanged], []);
+  const [passwords, refreshPasswords] = useLive<PasswordRequest[]>(api.pendingPasswords, [events.passwordsChanged], []);
   // Uploads Undo would take back right now (the last one, for 10 seconds).
   const [undoable] = useLive<string[]>(api.undoableUploads, [events.undoChanged, events.historyChanged], []);
+  // "Import your ShareX uploaders?", once, before the first destination.
+  const [shareX] = useLive<ShareXStatus | null>(sharex.status, [events.settingsChanged, events.destinationsChanged], null);
   const [isSettingUpExpiry, setIsSettingUpExpiry] = useState(false);
+  const [requestingFiles, setRequestingFiles] = useState(false);
   const [isTargeted, setIsTargeted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -237,6 +246,22 @@ export default function Panel() {
           <Button appearance="primary" onClick={() => api.openWindow("onboarding")}>
             {t("Connect Storage")}
           </Button>
+          {shareX?.showBanner && (
+            <div className="panel-sharex">
+              <Text weight="semibold">{t("Import your ShareX uploaders?")}</Text>
+              <Text size={200} className="secondary">
+                {t("Aktar found ShareX’s settings on this PC. Its S3 and Backblaze B2 uploaders can become destinations.")}
+              </Text>
+              <div className="inline-row">
+                <Button size="small" appearance="primary" onClick={() => sharex.openImport()}>
+                  {t("Import")}
+                </Button>
+                <Button size="small" appearance="subtle" onClick={() => sharex.dismissOffer()}>
+                  {t("Not Now")}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -244,14 +269,24 @@ export default function Panel() {
             <Text weight="semibold" size={400}>
               {t("Upload")}
             </Text>
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<SettingsRegular />}
-              aria-label={t("Settings")}
-              title={t("Settings")}
-              onClick={() => api.openWindow("settings")}
-            />
+            <div className="inline-row">
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<MailInboxArrowDownRegular />}
+                aria-label={t("Request Files…")}
+                title={t("Request Files…")}
+                onClick={() => setRequestingFiles(true)}
+              />
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<SettingsRegular />}
+                aria-label={t("Settings")}
+                title={t("Settings")}
+                onClick={() => api.openWindow("settings")}
+              />
+            </div>
           </div>
 
           <DestinationPicker destinations={destinations} />
@@ -352,6 +387,8 @@ export default function Panel() {
         </>
       )}
       <NameDialog request={names[0] ?? null} onResolved={refreshNames} />
+      <RequestFilesDialog open={requestingFiles} onClose={() => setRequestingFiles(false)} />
+      <PasswordDialog request={names.length === 0 ? (passwords[0] ?? null) : null} onResolved={refreshPasswords} />
     </div>
   );
 }
@@ -440,6 +477,79 @@ function NameDialog({ request, onResolved }: { request: NameRequest | null; onRe
                 {t("Cancel")}
               </Button>
               <Button appearance="primary" type="submit">
+                {t("Upload")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </form>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
+/** "Encrypt With a Password", for uploads to an "Ask for a Password"
+ * destination: the files are encrypted with it before they go up, and the
+ * link alone doesn't open them. Empty or cancelled uploads nothing. */
+function PasswordDialog({ request, onResolved }: { request: PasswordRequest | null; onResolved: () => void }) {
+  const { t } = useI18n();
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!request) return;
+    setValue("");
+    setBusy(false);
+    window.setTimeout(() => input.current?.focus(), 0);
+  }, [request?.id]);
+
+  const resolve = (password: string | null) => {
+    if (!request) return;
+    setBusy(true);
+    api
+      .resolvePassword(request.id, password)
+      .catch(() => {})
+      .then(() => {
+        setValue("");
+        onResolved();
+      });
+  };
+
+  const files = request ? (request.count > 1 ? t("{0} files", request.count) : request.filename) : "";
+  return (
+    <Dialog open={request !== null} onOpenChange={(_, data) => !data.open && resolve(null)}>
+      <DialogSurface className="name-surface">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            resolve(value === "" ? null : value);
+          }}
+        >
+          <DialogBody>
+            <DialogTitle>{t("Password for This Upload")}</DialogTitle>
+            <DialogContent>
+              <Text block size={200} className="secondary">
+                {request ? `${files} · ${request.destinationName}` : ""}
+              </Text>
+              <Input
+                ref={input}
+                className="name-input"
+                type="password"
+                autoComplete="new-password"
+                value={value}
+                aria-label={t("Password")}
+                placeholder={t("Password")}
+                onChange={(_, data) => setValue(data.value)}
+              />
+              <Text block size={200} className="secondary">
+                {t("Share the password separately; the link alone doesn’t open the file.")}
+              </Text>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => resolve(null)}>
+                {t("Cancel")}
+              </Button>
+              <Button appearance="primary" type="submit" disabled={busy || value === ""}>
                 {t("Upload")}
               </Button>
             </DialogActions>
@@ -709,7 +819,7 @@ function RecentRow({
   const [showingQr, setShowingQr] = useState(false);
   // The short link when the upload has one.
   const copy = (mode: "url" | "markdown" | "html") =>
-    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType, record.shortUrl));
+    api.copyText(formatRecord(record, mode, settings?.customTemplate));
 
   const deleteRemote = async () => {
     setConfirmingDelete(false);
@@ -728,7 +838,7 @@ function RecentRow({
     temporaryLinkMenu(record, t, onError),
     { label: t("Show QR Code"), onClick: () => setShowingQr(true) },
     "divider",
-    { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
+    { label: t("Open in Browser"), onClick: () => api.openUrl(recordLink(record)) },
     { label: t("Show in Library"), onClick: () => api.openWindow("library") },
     "divider",
     { label: t("Delete Remote File…"), destructive: true, onClick: () => setConfirmingDelete(true) },
@@ -743,7 +853,7 @@ function RecentRow({
         </Text>
         <span className="inline-row recent-subtitle">
           <Text size={100} className="secondary ellipsis">
-            {withoutScheme(record.publicUrl)}
+            {withoutScheme(recordLink(record))}
           </Text>
           <ExpiryBadge expiresAt={record.expiresAt} />
         </span>

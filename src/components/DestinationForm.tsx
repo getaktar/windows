@@ -40,6 +40,7 @@ import {
   thumbnailModes,
   type ConnectionResult,
   type DestinationConfig,
+  type EncryptionMode,
   type ExpiryRulesCheck,
   type FileKind,
   type FileRouting,
@@ -134,6 +135,9 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
   /** Upload Defaults; null follows Settings > Output. */
   const [outputMode, setOutputMode] = useState<OutputMode | null>(null);
   const [temporaryLink, setTemporaryLink] = useState<number | null>(null);
+  /** Share Page and Encryption (docs/share-pages.md). */
+  const [sharePage, setSharePage] = useState(false);
+  const [encryption, setEncryption] = useState<EncryptionMode | null>(null);
   const [expiryDays, setExpiryDays] = useState(0);
   const [imageMetadata, setImageMetadata] = useState<ImageMetadataPolicy>("removeLocation");
   const [folderUpload, setFolderUpload] = useState<FolderUploadMode>("zip");
@@ -208,6 +212,8 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     setCleanURLSuggestionDismissed(existing ? isCleanURLSuggestionDismissed(existing.id) : false);
     setOutputMode(existing?.outputMode ?? null);
     setTemporaryLink(existing?.temporaryLink ?? null);
+    setSharePage(existing?.sharePage ?? false);
+    setEncryption(existing?.encryption ?? null);
     setExpiryDays(existing?.expiryDays ?? settings?.deleteAfterDays ?? 0);
     setImageMetadata(existing?.imageMetadata ?? "removeLocation");
     setFolderUpload(existing?.folderUpload ?? "zip");
@@ -292,6 +298,10 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
     cloudflareZoneId: isZoneId(cloudflareZoneId) ? cloudflareZoneId.trim().toLowerCase() : null,
     hooks: hooks.length > 0 ? hooks : null,
     shortLinks: formSettings(shortLinks, shortLinkProviders, t),
+    sharePage: sharePage || null,
+    encryption,
+    // Set up again by the next request when the origin changes.
+    requestCorsOrigin: existing?.requestCorsOrigin ?? null,
   });
 
   /** Null when it claims nothing, so uploads only come here when picked. */
@@ -791,6 +801,43 @@ export function DestinationForm({ open, existing, onSaved, onCancel }: Props) {
               </div>
 
               <Text weight="semibold" className="form-heading">
+                {t("Share Page")}
+              </Text>
+              <div className="form-group">
+                <Switch label={t("Share Page")} checked={sharePage} onChange={(_, data) => setSharePage(data.checked)} />
+                <Text size={200} className="secondary">
+                  {t(
+                    "Copies a link to a page with a preview and a download button, written next to the file in your bucket. Slack, Discord, iMessage and X show a card for it.",
+                  )}
+                </Text>
+                {sharePage && <SharePageWarnings publicBaseURL={publicBaseURL} bucket={bucket} encrypted={false} />}
+                <Field label={t("Encryption")}>
+                  <Select value={encryption ?? ""} onChange={(_, data) => setEncryption((data.value || null) as EncryptionMode | null)}>
+                    <option value="">{t("Off")}</option>
+                    <option value="link">{t("Key in the Link")}</option>
+                    <option value="password">{t("Ask for a Password")}</option>
+                  </Select>
+                </Field>
+                <Text size={200} className="secondary">
+                  {t(
+                    "Files are encrypted on this device before they’re uploaded. The link opens a page that decrypts them in the browser; your storage provider only ever sees noise.",
+                  )}
+                </Text>
+                {encryption === "link" && (
+                  <Text size={200} className="secondary">
+                    {t("Anyone with the link can open the file.")}
+                  </Text>
+                )}
+                {encryption === "password" && (
+                  <Text size={200} className="secondary">
+                    {t("Aktar asks for a password for each upload. Share it separately; the link alone doesn’t open the file.")}{" "}
+                    {t("Uploads from watched folders, the local API and file requests use a key in the link instead.")}
+                  </Text>
+                )}
+                {encryption && <SharePageWarnings publicBaseURL={publicBaseURL} bucket={bucket} encrypted />}
+              </div>
+
+              <Text weight="semibold" className="form-heading">
                 {t("Use For")}
               </Text>
               <div className="form-group">
@@ -1168,5 +1215,45 @@ function dismissCleanURLSuggestion(id: string) {
     localStorage.setItem(cleanURLSuggestionKey(id), "1");
   } catch {
     // Shown again next time; nothing else depends on it.
+  }
+}
+
+/** Where a share page is served from matters (docs/share-pages.md): r2.dev
+ * is rate limited and filtered, and a path-style URL shares one web
+ * address with everything else on the server. */
+function SharePageWarnings({ publicBaseURL, bucket, encrypted }: { publicBaseURL: string; bucket: string; encrypted: boolean }) {
+  const { t } = useI18n();
+  const { host, pathStyle } = sharePageHost(publicBaseURL, bucket);
+  return (
+    <>
+      {!encrypted && host.endsWith(".r2.dev") && (
+        <MessageBar intent="warning">
+          <MessageBarBody>{t("r2.dev links are rate limited and some filters block HTML pages on them. A custom domain works better.")}</MessageBarBody>
+        </MessageBar>
+      )}
+      {pathStyle && (
+        <MessageBar intent="warning">
+          <MessageBarBody>
+            {encrypted
+              ? t("Encrypted links need their own domain (or virtual-hosted URLs) to be safe here.")
+              : t("Pages here share one web address with everything else on this server.")}
+          </MessageBarBody>
+        </MessageBar>
+      )}
+    </>
+  );
+}
+
+/** The public base URL's host, and whether its path starts with the bucket
+ * (path style, as with MinIO or B2's friendly URLs). */
+export function sharePageHost(publicBaseURL: string, bucket: string) {
+  try {
+    const raw = publicBaseURL.trim();
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    const first = url.pathname.split("/").filter(Boolean)[0] ?? "";
+    const name = bucket.trim();
+    return { host: url.hostname.toLowerCase(), pathStyle: name !== "" && (first === name || (first === "file" && url.pathname.split("/").filter(Boolean)[1] === name)) };
+  } catch {
+    return { host: "", pathStyle: false };
   }
 }

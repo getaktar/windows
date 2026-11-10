@@ -35,6 +35,12 @@ impl OutputMode {
 /// {url} use; a custom template also has {shortUrl} (the short link, or the
 /// long one without it) and {longUrl}.
 pub fn format(long_url: &str, short_url: Option<&str>, mode: OutputMode, filename: &str, custom_template: &str) -> String {
+    format_with_file(long_url, short_url, mode, filename, custom_template, long_url)
+}
+
+/// `format`, with a custom template's {file} as `file_url`: the file's own
+/// link when `long_url` is its share page's (docs/share-pages.md).
+pub fn format_with_file(long_url: &str, short_url: Option<&str>, mode: OutputMode, filename: &str, custom_template: &str, file_url: &str) -> String {
     let public_url = short_url.unwrap_or(long_url);
     match mode {
         OutputMode::Url => public_url.to_string(),
@@ -47,6 +53,7 @@ pub fn format(long_url: &str, short_url: Option<&str>, mode: OutputMode, filenam
         OutputMode::Custom => {
             let (name, ext) = split_extension(filename);
             custom_template
+                .replace("{file}", file_url)
                 .replace("{url}", public_url)
                 .replace("{shortUrl}", public_url)
                 .replace("{longUrl}", long_url)

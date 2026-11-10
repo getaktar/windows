@@ -132,6 +132,34 @@ pub struct DestinationConfig {
     /// Settings this version can't use (an unknown provider) read as off.
     #[serde(default, deserialize_with = "crate::short_links::definition::lenient")]
     pub short_links: Option<ShortLinkSettings>,
+    /// "Share Page": each upload's link is a page next to the file, with a
+    /// preview and a download button (docs/share-pages.md). None is off.
+    #[serde(default)]
+    pub share_page: Option<bool>,
+    /// Encrypted links: files are encrypted here before they go up; none
+    /// is off. A value this version doesn't know reads as off.
+    #[serde(default, deserialize_with = "lenient_encryption")]
+    pub encryption: Option<EncryptionMode>,
+    /// The page origin file requests' CORS rule was set up for on this
+    /// bucket. Not transferred to other devices.
+    #[serde(default)]
+    pub request_cors_origin: Option<String>,
+}
+
+/// How an encrypted destination's key is made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EncryptionMode {
+    /// "Key in the Link": a random key in the link's fragment.
+    Link,
+    /// "Ask for a Password": asked for each upload made by hand.
+    Password,
+}
+
+/// An unknown `encryption` value is off rather than a broken file.
+fn lenient_encryption<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<EncryptionMode>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| serde_json::from_value(value).ok()))
 }
 
 /// How long a temporary (presigned) link can stay valid, in seconds: 5 and
@@ -218,6 +246,11 @@ impl DestinationConfig {
         self.short_cache.unwrap_or(false)
     }
 
+    /// Whether uploads here get a share page (encrypted ones always do).
+    pub fn share_page(&self) -> bool {
+        self.share_page.unwrap_or(false)
+    }
+
     /// The hooks that run after an upload or replace here.
     pub fn enabled_hooks(&self) -> Vec<Hook> {
         self.hooks.iter().flatten().filter(|hook| hook.enabled).cloned().collect()
@@ -258,6 +291,10 @@ impl DestinationConfig {
         if self.short_cache == Some(false) {
             self.short_cache = None;
         }
+        if self.share_page == Some(false) {
+            self.share_page = None;
+        }
+        self.request_cors_origin = self.request_cors_origin.take().filter(|origin| !origin.trim().is_empty());
         if self.hooks.as_ref().is_some_and(Vec::is_empty) {
             self.hooks = None;
         }
@@ -408,6 +445,26 @@ fn sync_default_flags(wrapper: &mut Wrapper) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_share_pages_and_encryption() {
+        let base = r#""id":"A","name":"N","preset":"minIO","endpoint":"e","region":"r","bucket":"b","publicBaseURL":"p","objectPathTemplate":"{uuid}.{ext}","forcePathStyle":true"#;
+        let old: DestinationConfig = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert!(!old.share_page());
+        assert_eq!(old.encryption, None);
+        let new: DestinationConfig = serde_json::from_str(&format!(r#"{{{base},"sharePage":true,"encryption":"link","requestCorsOrigin":"https://cdn.example.com"}}"#)).unwrap();
+        assert!(new.share_page());
+        assert_eq!(new.encryption, Some(EncryptionMode::Link));
+        assert_eq!(new.request_cors_origin.as_deref(), Some("https://cdn.example.com"));
+        let json = serde_json::to_string(&new).unwrap();
+        assert!(json.contains(r#""sharePage":true"#) && json.contains(r#""encryption":"link""#), "{json}");
+        // Unknown modes are off rather than a destinations.json that can't be read.
+        let unknown: DestinationConfig = serde_json::from_str(&format!(r#"{{{base},"encryption":"quantum","sharePage":false}}"#)).unwrap();
+        assert_eq!(unknown.encryption, None);
+        let mut unknown = unknown;
+        unknown.sanitize();
+        assert_eq!(unknown.share_page, None);
+    }
 
     #[test]
     fn reads_image_processing() {

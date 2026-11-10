@@ -67,6 +67,10 @@ pub struct Settings {
     /// with stays in the tray instead of opening the panel.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub quiet_next_launch: bool,
+    /// The panel's one-time "Import your ShareX uploaders?" was answered
+    /// (or the import was opened another way).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sharex_offer_answered: bool,
 }
 
 impl Default for Settings {
@@ -94,6 +98,7 @@ impl Default for Settings {
             delete_after_days: 0,
             expiry_rules: HashMap::new(),
             quiet_next_launch: false,
+            sharex_offer_answered: false,
         }
     }
 }

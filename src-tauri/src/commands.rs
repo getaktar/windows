@@ -560,6 +560,9 @@ pub fn remove_destination(core: Core, id: String) {
         return;
     };
     let _ = crate::hotkey::set_destination(&core.app, &id, None);
+    if let Some(destination) = core.destinations.find(Some(&id)) {
+        crate::file_requests::close_for_destination(&core, &destination);
+    }
     core.destinations.remove(&id);
     thumbnails::remote::forget_destination(&core, &id);
     expiry::record(&core, &id, None);
@@ -763,6 +766,50 @@ pub fn pending_names(core: Core) -> Vec<NameRequest> {
 #[tauri::command]
 pub fn resolve_name(core: Core, id: String, name: Option<String>) {
     uploads::resolve_name(&core, &id, name);
+}
+
+/// File requests made on this PC, newest first.
+#[tauri::command]
+pub fn list_requests(core: Core) -> Vec<crate::file_requests::FileRequest> {
+    core.requests.all()
+}
+
+/// "Request Files": makes the link (see `file_requests::create`).
+#[tauri::command]
+pub async fn create_request(core: Core<'_>, request: crate::file_requests::NewRequest) -> Result<crate::file_requests::FileRequest, crate::file_requests::CreateError> {
+    crate::file_requests::create(&core, request).await
+}
+
+/// "Check Now".
+#[tauri::command]
+pub async fn check_requests(core: Core<'_>) -> Result<(), String> {
+    crate::file_requests::check_all(&core).await;
+    Ok(())
+}
+
+/// "Close Now": the link stops working at once.
+#[tauri::command]
+pub async fn close_request(core: Core<'_>, id: String) -> Result<(), String> {
+    crate::file_requests::close(&core, &id).await
+}
+
+/// Removes a closed request from the list.
+#[tauri::command]
+pub fn forget_request(core: Core, id: String) {
+    core.requests.remove(&id);
+    core.notify(crate::core::events::REQUESTS_CHANGED);
+}
+
+/// Uploads waiting for a password ("Ask for a Password" destinations).
+#[tauri::command]
+pub fn pending_passwords(core: Core) -> Vec<uploads::PasswordRequest> {
+    uploads::pending_passwords(&core)
+}
+
+/// Uploads what waited with `password`, or drops it when there's none.
+#[tauri::command]
+pub fn resolve_password(core: Core, id: String, password: Option<String>) {
+    uploads::resolve_password(&core, &id, password);
 }
 
 /// Whether Alt is held right now: files dropped on the panel with Alt

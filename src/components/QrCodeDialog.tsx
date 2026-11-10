@@ -13,7 +13,7 @@ import { CheckmarkRegular, CopyRegular, SaveRegular } from "@fluentui/react-icon
 import { useEffect, useState } from "react";
 
 import { api, errorMessage, type DestinationConfig, type QrMatrix, type UploadRecord } from "../lib/api";
-import { splitExtension } from "../lib/format";
+import { recordLink, splitExtension } from "../lib/format";
 import { useFlag } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 
@@ -22,6 +22,8 @@ import { useI18n } from "../lib/i18n";
  * when the upload's destination is set to temporary links, and the public
  * URL otherwise (or when the destination is gone). */
 async function linkFor(record: UploadRecord, destinations: DestinationConfig[]) {
+  // A share page (signed once, when it was written).
+  if (record.shareUrl) return recordLink(record);
   if (record.shortUrl) return record.shortUrl;
   const destination = destinations.find((candidate) => candidate.id === record.destinationId);
   if (destination?.temporaryLink) {

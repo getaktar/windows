@@ -1,0 +1,55 @@
+{
+  "note": "See docs/share-pages.md, \"Encrypted links\". plaintext[i] = i % 251.",
+  "rawKey": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "noncePrefix": "a0a1a2a3a4a5a6a7",
+  "link": [
+    {
+      "size": 0,
+      "meta": "{\"name\":\"file-0.bin\",\"type\":\"application/octet-stream\",\"size\":0}",
+      "encryptedLength": 138,
+      "sha256": "7b60986f7c9195480c93f16106c281a0064430c76f5beb3d9f868065b3ab6c47",
+      "hex": "414b453101000000000000000000000000000000000000000000a0a1a2a3a4a5a6a70001000000000050857b80c93c57501ff519b3f5e95b0584c4fc00de97ad29e7bde16e52ea2ca420808114f90b1a10793e690b5f992765f50a1fd1a7201ffa1ea1e92095349ea0bf50ebf2f96ca914cc30c8a01f7877136a5f1d8cb64a65f792b1b0395a82660ceb"
+    },
+    {
+      "size": 5,
+      "meta": "{\"name\":\"file-5.bin\",\"type\":\"application/octet-stream\",\"size\":5}",
+      "encryptedLength": 143,
+      "sha256": "c1f335dd9fffa2c28767b3e145d57156b4cc6c852ee9f04dd8dee7921c37636e",
+      "hex": "414b453101000000000000000000000000000000000000000000a0a1a2a3a4a5a6a70001000000000050857b80c93c57501ff519b3f5e95b0084c4fc00de97ad29e7bde16e52ea2ca420808114f90b1a10793e690b5f992765f50a1fd1a7201ffa1ea1e92095349ea5bf0b58ef248f46411bbf4f3330ce63f4a533825527702df5446d1aea778c959b0441073e2ab2"
+    },
+    {
+      "size": 65535,
+      "meta": "{\"name\":\"file-65535.bin\",\"type\":\"application/octet-stream\",\"size\":65535}",
+      "encryptedLength": 65681,
+      "sha256": "15cd9f01d31258326556e80a2c65382153d473b43f2bc3e9fd4796296d5cc978"
+    },
+    {
+      "size": 65536,
+      "meta": "{\"name\":\"file-65536.bin\",\"type\":\"application/octet-stream\",\"size\":65536}",
+      "encryptedLength": 65682,
+      "sha256": "02565b7bc894dfd24f23c2093eaab3c43b88303fc900e0405c33f64390fa20fd"
+    },
+    {
+      "size": 65537,
+      "meta": "{\"name\":\"file-65537.bin\",\"type\":\"application/octet-stream\",\"size\":65537}",
+      "encryptedLength": 65699,
+      "sha256": "3c9192d59ba003b7c1753e1721f92de71cb74742cb9e1e560259cdbec0490845"
+    },
+    {
+      "size": 200000,
+      "meta": "{\"name\":\"file-200000.bin\",\"type\":\"application/octet-stream\",\"size\":200000}",
+      "encryptedLength": 200196,
+      "sha256": "b015c3c16713704f59e27f00d011cc2731eb00493e67d616609be4d65b2ef162"
+    }
+  ],
+  "password": {
+    "password": "correct horse battery staple",
+    "salt": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+    "iterations": 600000,
+    "derivedKey": "be08c372106db3812f208f9ede95664b12100dc824917c69d7fd72fcbbf9cec0",
+    "size": 1000,
+    "meta": "{\"name\":\"notes.md\",\"type\":\"text/markdown\",\"size\":1000,\"syntax\":\"markdown\"}",
+    "encryptedLength": 1148,
+    "sha256": "2863600fee13b098001a0fcc7a4ae24dc4070f5f4473132bf57607ea6eb760bf"
+  }
+}

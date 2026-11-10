@@ -47,6 +47,21 @@ pub struct UploadRecord {
     pub short_url: Option<String>,
     pub short_link_id: Option<String>,
     pub short_provider: Option<String>,
+    /// The key of the upload's share page or gallery page
+    /// (docs/share-pages.md); none for an upload without one.
+    pub share_page_key: Option<String>,
+    /// An encrypted upload's key (base64url of the 32 bytes) and, for a
+    /// password, its salt (hex), so Replace File keeps the link. Never
+    /// sent to the windows: they get `share_url`.
+    #[serde(skip_serializing)]
+    pub encryption_key: Option<String>,
+    #[serde(skip_serializing)]
+    pub encryption_salt: Option<String>,
+    /// The link to the share page (with the key in its fragment for an
+    /// encrypted upload with the key in the link), worked out when read.
+    pub share_url: Option<String>,
+    /// Encrypted (docs/share-pages.md, part 5): its link is never formatted.
+    pub encrypted: bool,
 }
 
 impl UploadRecord {
@@ -69,6 +84,15 @@ pub struct NewRecord<'a> {
     pub content_hash: Option<&'a str>,
     /// A watched folder's ID and name.
     pub watched_folder: Option<(&'a str, &'a str)>,
+    /// Any other source and its name, when it's not a watched folder:
+    /// `request:<ID>` with the request's title, `sharex` with "ShareX".
+    pub source: Option<(&'a str, &'a str)>,
+    /// When it was uploaded, for one imported from elsewhere; none is now.
+    pub created_at: Option<i64>,
+    /// See `UploadRecord::share_page_key`.
+    pub share_page_key: Option<&'a str>,
+    /// See `UploadRecord::encryption_key`: the key and the salt.
+    pub encryption: Option<(&'a str, Option<&'a str>)>,
 }
 
 /// What a replaced file changes in its history entry.
@@ -89,12 +113,25 @@ pub struct History {
 
 macro_rules! columns {
     () => {
-        "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name, replaced_at"
+        "id, local_filename, object_key, public_url, destination_id, destination_name, mime_type, byte_size, created_at, expires_at, content_hash, source, source_name, replaced_at, share_page_key, encryption_key, encryption_salt"
     };
 }
 const COLUMNS: &str = columns!();
 /// `COLUMNS` and the upload's active short link, for reading.
 const SELECT_COLUMNS: &str = concat!(columns!(), ", ", crate::short_links::store::active_column!());
+
+/// The share page's link for an upload whose page is at `page_key`: its
+/// public URL sits where the file's does, with the key in the fragment
+/// for an encrypted upload whose key is in the link.
+pub fn share_url(public_url: &str, object_key: &str, page_key: &str, encryption_key: Option<&str>) -> String {
+    let encoded_key = crate::output::encode_key_path(object_key);
+    let base = public_url.strip_suffix(&encoded_key).unwrap_or(public_url);
+    let page_url = format!("{base}{}", crate::output::encode_key_path(page_key));
+    match encryption_key {
+        Some(key) => format!("{page_url}#k={key}"),
+        None => page_url,
+    }
+}
 
 /// The `source` of a watched folder's uploads.
 pub fn watched_source(folder_id: &str) -> String {
@@ -127,12 +164,19 @@ impl History {
     fn record_from_row(&self, row: &Row) -> rusqlite::Result<UploadRecord> {
         let id: String = row.get(0)?;
         let thumbnail_path = self.thumbnails.path(&id).map(|path| path.to_string_lossy().into_owned());
-        let short = crate::short_links::store::split_active(row.get(14)?);
+        let short = crate::short_links::store::split_active(row.get(17)?);
+        let share_page_key: Option<String> = row.get(14)?;
+        let encryption_key: Option<String> = row.get(15)?;
+        let encryption_salt: Option<String> = row.get(16)?;
+        let public_url: String = row.get(3)?;
+        let object_key: String = row.get(2)?;
+        let link_key = encryption_key.as_deref().filter(|_| encryption_salt.is_none());
         Ok(UploadRecord {
             id,
             local_filename: row.get(1)?,
-            object_key: row.get(2)?,
-            public_url: row.get(3)?,
+            share_url: share_page_key.as_deref().map(|key| share_url(&public_url, &object_key, key, link_key)),
+            object_key,
+            public_url,
             destination_id: row.get(4)?,
             destination_name: row.get(5)?,
             mime_type: row.get(6)?,
@@ -148,11 +192,17 @@ impl History {
             short_link_id: short.as_ref().map(|(id, _, _)| id.clone()),
             short_provider: short.as_ref().map(|(_, provider, _)| provider.clone()),
             short_url: short.map(|(_, _, url)| url),
+            share_page_key,
+            encrypted: encryption_key.is_some(),
+            encryption_key,
+            encryption_salt,
         })
     }
 
     pub fn insert(&self, record: NewRecord) -> UploadRecord {
-        let created_at = crate::util::now_millis();
+        let created_at = record.created_at.unwrap_or_else(crate::util::now_millis);
+        let share_page_key = record.share_page_key.map(str::to_string);
+        let encryption_key = record.encryption.map(|(key, _)| key.to_string());
         let stored = UploadRecord {
             id: crate::util::new_id(),
             local_filename: record.local_filename.to_string(),
@@ -165,18 +215,26 @@ impl History {
             created_at,
             expires_at: record.expire_after_days.map(|days| crate::expiry::expires_at(created_at, days)),
             content_hash: record.content_hash.map(str::to_string),
-            source: record.watched_folder.map(|(id, _)| watched_source(id)),
-            source_name: record.watched_folder.map(|(_, name)| name.to_string()),
+            source: record.watched_folder.map(|(id, _)| watched_source(id)).or_else(|| record.source.map(|(source, _)| source.to_string())),
+            source_name: record.watched_folder.or(record.source).map(|(_, name)| name.to_string()),
             replaced_at: None,
             has_thumbnail: false,
             thumbnail_path: None,
             short_url: None,
             short_link_id: None,
             short_provider: None,
+            share_url: share_page_key.as_deref().map(|key| {
+                let link_key = encryption_key.as_deref().filter(|_| record.encryption.is_some_and(|(_, salt)| salt.is_none()));
+                share_url(record.public_url, record.object_key, key, link_key)
+            }),
+            share_page_key,
+            encrypted: encryption_key.is_some(),
+            encryption_key,
+            encryption_salt: record.encryption.and_then(|(_, salt)| salt.map(str::to_string)),
         };
         let connection = self.connection.lock().unwrap();
         let result = connection.execute(
-            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
+            &format!("INSERT INTO uploads ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)"),
             params![
                 stored.id,
                 stored.local_filename,
@@ -191,7 +249,10 @@ impl History {
                 stored.content_hash,
                 stored.source,
                 stored.source_name,
-                stored.replaced_at
+                stored.replaced_at,
+                stored.share_page_key,
+                stored.encryption_key,
+                stored.encryption_salt
             ],
         );
         if let Err(error) = result {
@@ -355,6 +416,30 @@ impl History {
         }
     }
 
+    /// Whether another upload than `except_id` shares the page at
+    /// `page_key` (the files of a gallery).
+    pub fn others_with_page(&self, destination_id: &str, page_key: &str, except_id: &str) -> bool {
+        let connection = self.connection.lock().unwrap();
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM uploads WHERE destination_id = ?1 AND share_page_key = ?2 AND id != ?3",
+                params![destination_id, page_key, except_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count > 0)
+            .unwrap_or(true)
+    }
+
+    /// The files of a gallery all point to its page.
+    pub fn set_share_page(&self, ids: &[String], page_key: &str) {
+        let connection = self.connection.lock().unwrap();
+        for id in ids {
+            if let Err(error) = connection.execute("UPDATE uploads SET share_page_key = ?2 WHERE id = ?1", params![id, page_key]) {
+                log::error!("Could not update upload history: {error}");
+            }
+        }
+    }
+
     fn ids_for(&self, key: &str, destination_id: &str) -> Vec<String> {
         let connection = self.connection.lock().unwrap();
         let Ok(mut statement) = connection.prepare("SELECT id FROM uploads WHERE object_key = ?1 AND destination_id = ?2") else {
@@ -397,6 +482,11 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     }
     if !has_column(connection, "uploads", "replaced_at")? {
         connection.execute_batch("ALTER TABLE uploads ADD COLUMN replaced_at INTEGER;")?;
+    }
+    if !has_column(connection, "uploads", "share_page_key")? {
+        connection.execute_batch(
+            "ALTER TABLE uploads ADD COLUMN share_page_key TEXT; ALTER TABLE uploads ADD COLUMN encryption_key TEXT; ALTER TABLE uploads ADD COLUMN encryption_salt TEXT;",
+        )?;
     }
     crate::short_links::store::prepare(connection)
 }
@@ -443,6 +533,9 @@ mod tests {
             cloudflare_zone_id: None,
             hooks: None,
             short_links: None,
+            share_page: None,
+            encryption: None,
+            request_cors_origin: None,
         }
     }
 
@@ -478,6 +571,51 @@ mod tests {
     }
 
     #[test]
+    fn keeps_share_pages_and_encryption_keys() {
+        assert_eq!(share_url("https://cdn.example.com/2026/a%20b.png", "2026/a b.png", "2026/a b.png.html", None), "https://cdn.example.com/2026/a%20b.png.html");
+        assert_eq!(share_url("https://cdn.example.com/e/X", "e/X", "e/X.html", Some("KEY")), "https://cdn.example.com/e/X.html#k=KEY");
+        let connection = Connection::open_in_memory().unwrap();
+        prepare(&connection).unwrap();
+        let history = History { connection: Arc::new(Mutex::new(connection)), thumbnails: LocalStore::open(std::env::temp_dir().join("aktar-history-test"), None) };
+        let destination = destination();
+        let new = |key: &'static str, page: Option<&'static str>, encryption: Option<(&'static str, Option<&'static str>)>| NewRecord {
+            local_filename: "a.png",
+            object_key: key,
+            public_url: "",
+            destination: &destination,
+            mime_type: "image/png",
+            byte_size: 5,
+            expire_after_days: None,
+            content_hash: None,
+            watched_folder: None,
+            source: Some(("request:R1", "Logs")),
+            created_at: Some(1_000),
+            share_page_key: page,
+            encryption,
+        };
+        let plain = history.insert(NewRecord { public_url: "https://img.example.com/a.png", ..new("a.png", Some("a.png.html"), None) });
+        let stored = history.get(&plain.id).unwrap();
+        assert_eq!(stored.share_url.as_deref(), Some("https://img.example.com/a.png.html"));
+        assert_eq!((stored.created_at, stored.source.as_deref(), stored.source_name.as_deref()), (1_000, Some("request:R1"), Some("Logs")));
+        let linked = history.insert(NewRecord { public_url: "https://img.example.com/e/X", ..new("e/X", Some("e/X.html"), Some(("KEY", None))) });
+        assert_eq!(history.get(&linked.id).unwrap().share_url.as_deref(), Some("https://img.example.com/e/X.html#k=KEY"));
+        assert_eq!(linked.share_url.as_deref(), Some("https://img.example.com/e/X.html#k=KEY"));
+        // A password's key never goes in the link.
+        let password = history.insert(NewRecord { public_url: "https://img.example.com/e/Y", ..new("e/Y", Some("e/Y.html"), Some(("KEY", Some("00ff")))) });
+        let stored = history.get(&password.id).unwrap();
+        assert_eq!(stored.share_url.as_deref(), Some("https://img.example.com/e/Y.html"));
+        assert_eq!((stored.encryption_key.as_deref(), stored.encryption_salt.as_deref()), (Some("KEY"), Some("00ff")));
+        assert!(!serde_json::to_string(&stored).unwrap().contains("KEY"), "the key isn't sent to the windows");
+        // A gallery: the page goes with the last of its files.
+        let b = history.insert(new("b.png", None, None));
+        history.set_share_page(&[plain.id.clone(), b.id.clone()], "a.png.gallery.html");
+        assert!(history.others_with_page(&destination.id, "a.png.gallery.html", &plain.id));
+        history.delete(&b.id);
+        assert!(!history.others_with_page(&destination.id, "a.png.gallery.html", &plain.id));
+        assert_eq!(history.get(&plain.id).unwrap().share_page_key.as_deref(), Some("a.png.gallery.html"));
+    }
+
+    #[test]
     fn replaces_in_place() {
         let connection = Connection::open_in_memory().unwrap();
         prepare(&connection).unwrap();
@@ -494,6 +632,10 @@ mod tests {
             expire_after_days: Some(7),
             content_hash: Some("old"),
             watched_folder: None,
+            source: None,
+            created_at: None,
+            share_page_key: None,
+            encryption: None,
         });
         assert_eq!(record.replaced_at, None);
         let replaced = history
@@ -530,6 +672,10 @@ mod tests {
             expire_after_days: Some(7),
             content_hash: None,
             watched_folder: Some(("F1", "Screenshots")),
+            source: None,
+            created_at: None,
+            share_page_key: None,
+            encryption: None,
         });
         assert_eq!(history.get(&record.id).unwrap().source.as_deref(), Some("watchedFolder:F1"));
         assert_eq!(history.get(&record.id).unwrap().source_name.as_deref(), Some("Screenshots"));
@@ -570,6 +716,10 @@ mod tests {
             expire_after_days: Some(1),
             content_hash: Some("abc"),
             watched_folder: None,
+            source: None,
+            created_at: None,
+            share_page_key: None,
+            encryption: None,
         });
         assert_eq!(history.with_content(&destination.id, "abc").len(), 1);
         assert!(history.with_content("other", "abc").is_empty());

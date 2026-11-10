@@ -14,6 +14,7 @@ mod deeplink;
 mod destination_hooks;
 mod destinations;
 mod expiry;
+mod file_requests;
 #[cfg(windows)]
 mod explorer_command;
 mod folder_upload;
@@ -33,6 +34,8 @@ mod quick_share;
 mod remote_download;
 mod routing;
 mod settings;
+mod share_page;
+mod sharex;
 mod shell;
 mod short_keys;
 mod short_links;
@@ -122,6 +125,12 @@ pub fn run() {
             commands::short_link_providers,
             commands::test_short_links,
             commands::pick_sharex_configuration,
+            sharex::commands::sharex_status,
+            sharex::commands::sharex_dismiss_offer,
+            sharex::commands::sharex_open_import,
+            sharex::commands::sharex_scan,
+            sharex::commands::sharex_pick_file,
+            sharex::commands::sharex_import,
             commands::short_link_info,
             commands::create_short_link,
             commands::retry_short_link,
@@ -148,6 +157,13 @@ pub fn run() {
             commands::set_action_shortcut,
             commands::pending_names,
             commands::resolve_name,
+            commands::pending_passwords,
+            commands::list_requests,
+            commands::create_request,
+            commands::check_requests,
+            commands::close_request,
+            commands::forget_request,
+            commands::resolve_password,
             commands::alt_key_down,
             commands::qr_code,
             commands::copy_qr_image,
@@ -282,6 +298,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // uploads waiting for the network go when it's back.
     uploads::restore_outbox(&core);
     quick_share::watch_network(&core);
+    file_requests::schedule(&core);
 
     // The installer registers aktar:// for installed builds; a dev build
     // registers itself so links can be tested.

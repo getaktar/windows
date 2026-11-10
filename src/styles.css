@@ -237,6 +237,16 @@ body {
   margin-top: 4px;
 }
 
+.panel-sharex {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--colorNeutralBackground3);
+}
+
 .panel-header {
   display: flex;
   align-items: center;
@@ -1458,4 +1468,84 @@ body {
 
 .short-link-badge {
   flex-shrink: 0;
+}
+
+/* File requests: the "Request Files" dialog and Library > Requests. */
+.request-surface {
+  max-width: 520px;
+}
+
+.request-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.request-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.request-rule {
+  margin: 8px 0 0;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.request-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.request-link .inline-row {
+  width: 100%;
+}
+
+.requests-view {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  min-height: 0;
+  overflow: auto;
+  background: var(--colorNeutralBackground1);
+  border-top-left-radius: 8px;
+  border-left: 1px solid var(--colorNeutralStroke3);
+}
+
+.requests-view[hidden] {
+  display: none;
+}
+
+.requests-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.request-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--colorNeutralBackground2);
+}
+
+.requests-empty {
+  max-width: 420px;
 }

@@ -5,6 +5,7 @@ import {
   api,
   events,
   type DestinationConfig,
+  type FileRequest,
   type Job,
   type LocalApiState,
   type Settings,
@@ -60,6 +61,8 @@ export const useDestinations = () =>
   useLive<DestinationConfig[]>(api.listDestinations, [events.destinationsChanged, events.languageChanged], []);
 
 export const useJobs = () => useLive<Job[]>(api.listJobs, [events.jobsChanged], []);
+
+export const useRequests = () => useLive<FileRequest[]>(api.listRequests, [events.requestsChanged], []);
 
 export const useHistory = () => useLive<UploadRecord[]>(api.listHistory, [events.historyChanged], []);
 

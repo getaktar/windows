@@ -41,7 +41,7 @@ import { QrCodeDialog } from "../../components/QrCodeDialog";
 import { shortLinkMenu } from "../../components/shortLinkMenu";
 import { temporaryLinkMenu } from "../../components/temporaryLinkMenu";
 import { api, errorMessage, type DestinationConfig, type Job, type UploadRecord } from "../../lib/api";
-import { dayBucket, formatBytes, formatDateTime, formatOutput, formatTime, shortDay } from "../../lib/format";
+import { dayBucket, formatBytes, formatDateTime, formatRecord, formatTime, recordLink, shortDay } from "../../lib/format";
 import { hasTextSelection, useDestinations, useFlag, useHistory, useJobs, useSelection, useSettings } from "../../lib/hooks";
 import { useI18n } from "../../lib/i18n";
 import { DetailRow, LinkSection } from "./BucketView";
@@ -52,6 +52,8 @@ const WATCHED_FILTER = "watched";
 
 /** "Watched: Screenshots" for a watched folder's upload. */
 function sourceLabel(record: UploadRecord, t: ReturnType<typeof useI18n>["t"]) {
+  if (record.source?.startsWith("request:")) return record.sourceName ? t("Request: {0}", record.sourceName) : t("Request");
+  if (record.source === "sharex") return "ShareX";
   return record.source?.startsWith("watchedFolder:") ? t("Watched: {0}", record.sourceName ?? "") : null;
 }
 
@@ -125,7 +127,7 @@ export function HistoryView({ active }: { active: boolean }) {
   const copyAll = (targets: UploadRecord[], mode: "url" | "markdown" | "html" | "custom") =>
     api.copyText(
       targets
-        .map((record) => formatOutput(record.publicUrl, mode, record.localFilename, settings?.customTemplate, record.mimeType, record.shortUrl))
+        .map((record) => formatRecord(record, mode, settings?.customTemplate))
         .join("\n"),
     );
 
@@ -171,7 +173,7 @@ export function HistoryView({ active }: { active: boolean }) {
       temporaryLinkMenu(record, t, showLinkError),
       { label: t("Show QR Code"), onClick: () => setQrRecord(record) },
       "divider",
-      { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
+      { label: t("Open in Browser"), onClick: () => api.openUrl(recordLink(record)) },
       { label: t("Reveal Details"), onClick: () => selection.set([record.id]) },
       "divider",
       { label: t("Replace File…"), onClick: () => replace(record) },
@@ -207,13 +209,13 @@ export function HistoryView({ active }: { active: boolean }) {
         const id = selection.move(event.key === "ArrowDown" ? 1 : -1);
         if (id) document.getElementById(`record-${id}`)?.scrollIntoView({ block: "nearest" });
       } else if (event.ctrlKey && event.key.toLowerCase() === "c" && selectedRecords.length === 1 && !hasTextSelection()) {
-        api.copyText(selectedRecords[0].publicUrl);
+        api.copyText(recordLink(selectedRecords[0]));
       } else if (event.ctrlKey && event.key.toLowerCase() === "a") {
         selection.set(ids);
       } else if (event.key === "Delete" && selectedRecords.length > 0) {
         setPendingDeletion(selectedRecords);
       } else if (event.key === "Enter" && selectedRecords.length === 1) {
-        api.openUrl(selectedRecords[0].publicUrl);
+        api.openUrl(recordLink(selectedRecords[0]));
       } else {
         return;
       }
@@ -512,9 +514,9 @@ function UploadDetail(props: {
   const thumbnail = useThumbnailURL(record);
   // With the short link when the upload has one.
   const copy = (mode: "markdown" | "html" | "custom") =>
-    api.copyText(formatOutput(record.publicUrl, mode, record.localFilename, props.customTemplate, record.mimeType, record.shortUrl));
+    api.copyText(formatRecord(record, mode, props.customTemplate));
   const copyURL = () => {
-    api.copyText(record.publicUrl);
+    api.copyText(recordLink(record));
     flashCopied();
   };
 
@@ -532,7 +534,7 @@ function UploadDetail(props: {
     temporaryLinkMenu(record, t, showLinkError),
     { label: t("Show QR Code"), onClick: props.onShowQr },
     "divider",
-    { label: t("Open in Browser"), onClick: () => api.openUrl(record.publicUrl) },
+    { label: t("Open in Browser"), onClick: () => api.openUrl(recordLink(record)) },
     "divider",
     { label: t("Replace File…"), onClick: props.onReplace },
     props.deleting
@@ -591,7 +593,7 @@ function UploadDetail(props: {
             </MessageBarActions>
           </MessageBar>
         )}
-        <LinkSection url={record.publicUrl} copied={copied} onCopy={copyURL} />
+        <LinkSection url={recordLink(record)} copied={copied} onCopy={copyURL} />
         <ShortLinkSection record={record} />
         <section className="detail-section">
           <Text weight="semibold" className="secondary">

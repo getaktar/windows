@@ -63,6 +63,9 @@ pub struct SettingsRequest {
     pub watch_path: Option<String>,
     /// An aktar://import link to open "Import from Another Device" with.
     pub import_link: Option<String>,
+    /// Opens "Import from ShareX" (the panel's offer).
+    #[serde(rename = "shareXImport")]
+    pub sharex_import: bool,
 }
 
 impl WatchService {
@@ -622,6 +625,16 @@ pub fn show_import(core: &SharedCore, link: &str) {
     let mut request = core.watched.request.lock().unwrap();
     request.tab = Some("destinations".into());
     request.import_link = Some(link.to_string());
+    drop(request);
+    open_settings(core);
+}
+
+/// The panel's "Import your ShareX uploaders?": Settings opens "Import
+/// from ShareX".
+pub fn show_sharex_import(core: &SharedCore) {
+    let mut request = core.watched.request.lock().unwrap();
+    request.tab = Some("destinations".into());
+    request.sharex_import = true;
     drop(request);
     open_settings(core);
 }

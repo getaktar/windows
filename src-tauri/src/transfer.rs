@@ -191,6 +191,8 @@ fn encode_payload(payload: &TransferPayload, now: i64) -> Vec<u8> {
     let mut destination = serde_json::to_value(&payload.destination).unwrap_or(Value::Null);
     if let Value::Object(object) = &mut destination {
         object.remove("isDefault");
+        // Remembered per device: the other one sets its own CORS rule up.
+        object.remove("requestCorsOrigin");
         // Kept as written: a custom body template's nulls are its own.
         let short_links = object.remove("shortLinks").filter(|value| !value.is_null());
         remove_nulls(object);
@@ -289,6 +291,10 @@ fn decode_payload(data: &[u8], now: i64) -> Result<TransferPayload, TransferErro
         // Settings for a provider this app doesn't know (or a custom one it
         // can't read) leave short links off.
         short_links: object.get("shortLinks").and_then(crate::short_links::definition::from_value),
+        share_page: object.get("sharePage").and_then(Value::as_bool),
+        encryption: known(object.get("encryption")),
+        // Set up again on this device's first request.
+        request_cors_origin: None,
     };
     // Values this app doesn't offer (a "Delete after" or link duration)
     // are dropped, the same as in destinations.json.
@@ -656,6 +662,36 @@ mod tests {
         let json: Value = serde_json::from_slice(&encode_payload(&without, 1_000)).unwrap();
         assert!(json["destination"].get("shortLinks").is_none());
         assert!(json["credentials"].get("shortLinkToken").is_none());
+    }
+
+    #[test]
+    fn share_pages_and_encryption_travel() {
+        let mut destination = open(FULL, CODE).unwrap().destination;
+        assert_eq!((destination.share_page, destination.encryption), (None, None));
+        destination.share_page = Some(true);
+        destination.encryption = Some(crate::destinations::EncryptionMode::Password);
+        destination.request_cors_origin = Some("https://cdn.example.com".into());
+        let payload = TransferPayload {
+            destination,
+            credentials: StorageCredentials { access_key_id: "AKID".into(), secret_access_key: "secret".into(), session_token: None, cloudflare_token: None, short_link_token: None },
+            custom_template: None,
+        };
+        let data = encode_payload(&payload, 1_000);
+        let json: Value = serde_json::from_slice(&data).unwrap();
+        assert_eq!(json["destination"]["sharePage"], true);
+        assert_eq!(json["destination"]["encryption"], "password");
+        // Set up per device, never sent.
+        assert!(json["destination"].get("requestCorsOrigin").is_none());
+        let decoded = decode_payload(&data, 1_000).unwrap().destination;
+        assert_eq!(decoded.share_page, Some(true));
+        assert_eq!(decoded.encryption, Some(crate::destinations::EncryptionMode::Password));
+        assert_eq!(decoded.request_cors_origin, None);
+        // A value from a newer app is off, not a failed import.
+        let mut newer = json.clone();
+        newer["destination"]["encryption"] = "quantum".into();
+        newer["destination"]["sharePage"] = false.into();
+        let decoded = decode_payload(&serde_json::to_vec(&newer).unwrap(), 1_000).unwrap().destination;
+        assert_eq!((decoded.share_page, decoded.encryption), (None, None));
     }
 
     #[test]

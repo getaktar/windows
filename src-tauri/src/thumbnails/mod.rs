@@ -184,6 +184,9 @@ mod tests {
             cloudflare_zone_id: None,
             hooks: None,
             short_links: None,
+            share_page: None,
+            encryption: None,
+            request_cors_origin: None,
         }
     }
 

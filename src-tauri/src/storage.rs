@@ -473,6 +473,23 @@ impl S3Provider {
         Ok(())
     }
 
+    /// A share page (docs/share-pages.md): the one HTML Aktar uploads to
+    /// open inline, so it has no Content-Disposition, and a short cache
+    /// time since Replace File writes it again.
+    pub async fn put_page(&self, object_key: &str, html: String) -> Result<(), StorageError> {
+        self.client
+            .put_object()
+            .bucket(self.bucket())
+            .key(object_key)
+            .content_type(crate::share_page::CONTENT_TYPE)
+            .cache_control(crate::share_page::CACHE_CONTROL)
+            .body(ByteStream::from(html.into_bytes()))
+            .send()
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(())
+    }
+
     /// The object at `key` and when it was last written (Unix
     /// milliseconds), or None when there's no such object. For small
     /// objects only: anything over `max_bytes` is refused.
@@ -825,6 +842,88 @@ impl S3Provider {
             .map_err(|error| map_error(error, self.bucket()))?;
         Ok(request.uri().to_string())
     }
+}
+
+/// File requests (docs/share-pages.md, part 4): presigned PUTs the request
+/// page sends files with, and the bucket's CORS rules that let it.
+impl S3Provider {
+    /// A PUT to `object_key` valid `seconds`, signed with exactly these
+    /// headers (and `host`): `content-type`, and `if-none-match: *` with
+    /// `only_if_new`. The page sends exactly those, so a PUT with another
+    /// Content-Type is refused.
+    pub async fn presigned_put(&self, object_key: &str, content_type: &str, only_if_new: bool, seconds: u64) -> Result<String, StorageError> {
+        let presigning = PresigningConfig::expires_in(Duration::from_secs(seconds)).map_err(|error| StorageError::Unknown(error.to_string()))?;
+        let request = self
+            .client
+            .put_object()
+            .bucket(self.bucket())
+            .key(object_key)
+            .content_type(content_type)
+            .set_if_none_match(only_if_new.then(|| "*".to_string()))
+            .presigned(presigning)
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(request.uri().to_string())
+    }
+
+    /// The bucket's CORS rules; none when it has no configuration.
+    pub async fn bucket_cors(&self) -> Result<Vec<crate::file_requests::CorsRule>, StorageError> {
+        let output = match self.client.get_bucket_cors().bucket(self.bucket()).send().await {
+            Ok(output) => output,
+            Err(error) if error.code().is_some_and(|code| code.eq_ignore_ascii_case("NoSuchCORSConfiguration")) => return Ok(Vec::new()),
+            Err(error) => return Err(map_error(error, self.bucket())),
+        };
+        Ok(output
+            .cors_rules()
+            .iter()
+            .map(|rule| crate::file_requests::CorsRule {
+                id: rule.id().map(str::to_string),
+                allowed_origins: rule.allowed_origins().to_vec(),
+                allowed_methods: rule.allowed_methods().to_vec(),
+                allowed_headers: rule.allowed_headers().to_vec(),
+                expose_headers: rule.expose_headers().to_vec(),
+                max_age_seconds: rule.max_age_seconds(),
+            })
+            .collect())
+    }
+
+    pub async fn set_bucket_cors(&self, rules: &[crate::file_requests::CorsRule]) -> Result<(), StorageError> {
+        use aws_sdk_s3::types::{CorsConfiguration, CorsRule};
+        let rules = rules
+            .iter()
+            .map(|rule| {
+                CorsRule::builder()
+                    .set_id(rule.id.clone())
+                    .set_allowed_origins(Some(rule.allowed_origins.clone()))
+                    .set_allowed_methods(Some(rule.allowed_methods.clone()))
+                    .set_allowed_headers((!rule.allowed_headers.is_empty()).then(|| rule.allowed_headers.clone()))
+                    .set_expose_headers((!rule.expose_headers.is_empty()).then(|| rule.expose_headers.clone()))
+                    .set_max_age_seconds(rule.max_age_seconds)
+                    .build()
+                    .map_err(|error| StorageError::Unknown(error.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let configuration = CorsConfiguration::builder()
+            .set_cors_rules(Some(rules))
+            .build()
+            .map_err(|error| StorageError::Unknown(error.to_string()))?;
+        self.client
+            .put_bucket_cors()
+            .bucket(self.bucket())
+            .cors_configuration(configuration)
+            .send()
+            .await
+            .map_err(|error| map_error(error, self.bucket()))?;
+        Ok(())
+    }
+}
+
+/// Where the S3 endpoint serves this bucket's objects from, as an origin
+/// (`https://bucket.s3.example.com`, or the endpoint itself path-style):
+/// where presigned links go.
+pub fn object_origin(config: &DestinationConfig) -> Option<String> {
+    let url = bucket_url(config, "x").ok()?;
+    Some(url.origin().ascii_serialization())
 }
 
 /// Sends the parts of a multipart upload.
@@ -1236,6 +1335,9 @@ mod tests {
             cloudflare_zone_id: None,
             hooks: None,
             short_links: None,
+            share_page: None,
+            encryption: None,
+            request_cors_origin: None,
         }
     }
 
@@ -1331,6 +1433,9 @@ mod live_tests {
             cloudflare_zone_id: None,
             hooks: None,
             short_links: None,
+            share_page: None,
+            encryption: None,
+            request_cors_origin: None,
         };
         // Moto takes any key unless it's started with authentication on.
         let credentials = StorageCredentials {
@@ -1341,6 +1446,41 @@ mod live_tests {
             short_link_token: None,
         };
         Some(S3Provider::new(config, credentials))
+    }
+
+    /// docs/share-pages.md: a page opens inline (no Content-Disposition)
+    /// with a short cache time, and a request slot's presigned PUT takes
+    /// exactly its signed Content-Type.
+    #[tokio::test]
+    #[ignore]
+    async fn share_pages_and_request_slots() {
+        let Some(storage) = provider("aktar-test", "secret") else { return };
+        let client = reqwest::Client::new();
+        storage.put_page("pages/a.png.html", "<!doctype html><p>hi</p>".into()).await.unwrap();
+        let page = client.get(format!("{}/pages/a.png.html", storage.config.public_base_url)).send().await.unwrap();
+        assert!(page.status().is_success(), "{}", page.status());
+        assert_eq!(page.headers().get("content-type").unwrap(), "text/html; charset=utf-8");
+        assert_eq!(page.headers().get("cache-control").unwrap(), "public, max-age=60");
+        assert!(page.headers().get("content-disposition").is_none());
+        storage.delete("pages/a.png.html").await.unwrap();
+        assert!(!storage.object_exists("pages/a.png.html").await.unwrap());
+
+        let url = storage.presigned_put(".aktar/requests/test/1", "application/octet-stream", false, 3600).await.unwrap();
+        // Another Content-Type than the signed one is refused.
+        let refused = client.put(&url).header("content-type", "text/html").body("x").send().await.unwrap();
+        assert_eq!(refused.status().as_u16(), 403);
+        let sent = client.put(&url).header("content-type", "application/octet-stream").body("hello").send().await.unwrap();
+        assert!(sent.status().is_success(), "{}", sent.status());
+        assert_eq!(storage.object_size(".aktar/requests/test/1").await.unwrap(), Some(5));
+        storage.delete(".aktar/requests/test/1").await.unwrap();
+        // With If-None-Match signed, the PUT must send it too.
+        let conditional = storage.presigned_put(".aktar/requests/test/2", "application/json", true, 3600).await.unwrap();
+        let without = client.put(&conditional).header("content-type", "application/json").body("{}").send().await.unwrap();
+        // 403 from S3, 400 from MinIO: refused either way.
+        assert!(without.status().is_client_error(), "{}", without.status());
+        let with = client.put(&conditional).header("content-type", "application/json").header("if-none-match", "*").body("{}").send().await.unwrap();
+        assert!(with.status().is_success(), "{}", with.status());
+        storage.delete(".aktar/requests/test/2").await.unwrap();
     }
 
     #[tokio::test]

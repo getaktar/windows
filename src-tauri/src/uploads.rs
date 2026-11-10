@@ -24,6 +24,7 @@ use crate::outbox::EarlyLink;
 use crate::output::{self, ContentHashes};
 use crate::quick_share::{self, Origin, PasteTarget, Stopped};
 use crate::remote_download::{self, Downloaded, RemoteSource};
+use crate::share_page::crypto::FileKey;
 use crate::short_keys::{self, ShortKeyTarget};
 use crate::storage::{BucketObject, Progress, S3Provider, StorageError, UploadResult, SINGLE_UPLOAD_LIMIT};
 use crate::{image_metadata, image_processing};
@@ -82,6 +83,31 @@ pub struct UploadInput {
     /// Someone waits for the result (the local API): no early link, and a
     /// failure is reported rather than waited out.
     pub waited: bool,
+    /// A file someone sent through a file request, collected into this
+    /// destination: no link is copied, no paste, no notification, no share
+    /// page, and history says where it came from.
+    pub request: Option<RequestSource>,
+    /// The password typed for an upload to an "Ask for a Password"
+    /// destination; none uses a key in the link.
+    pub password: Option<Password>,
+}
+
+/// A typed password, never printed.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Password(pub String);
+
+impl std::fmt::Debug for Password {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Password(..)")
+    }
+}
+
+/// The file request a collected file came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestSource {
+    pub request_id: String,
+    /// Its title, empty when it has none.
+    pub title: String,
 }
 
 /// A file written over an existing upload or bucket object, keeping its key
@@ -146,6 +172,8 @@ impl UploadInput {
             remote: None,
             temporary_folder: None,
             waited: false,
+            request: None,
+            password: None,
         }
     }
 
@@ -276,9 +304,29 @@ pub struct JobSnapshot {
 }
 
 /// What the finished files of a folder (or of a drop spread over several
-/// destinations) left to copy, formatted as their destinations copy them,
-/// by position.
-type GroupLinks = BTreeMap<usize, String>;
+/// destinations, or of a drop to a destination with share pages) left to
+/// copy, formatted as their destinations copy them, by position.
+type GroupLinks = BTreeMap<usize, GroupEntry>;
+
+/// A finished file of a group: its formatted link, and what its gallery
+/// tile needs when its destination makes share pages.
+struct GroupEntry {
+    text: String,
+    gallery: Option<GalleryFile>,
+}
+
+#[derive(Clone)]
+struct GalleryFile {
+    destination: DestinationConfig,
+    record_id: String,
+    object_key: String,
+    public_url: String,
+    filename: String,
+    size: u64,
+    mime_type: String,
+    /// The bucket thumbnail's key, when one was made.
+    thumb_key: Option<String>,
+}
 
 #[derive(Default)]
 pub struct UploadManager {
@@ -291,6 +339,8 @@ pub struct UploadManager {
     job_sessions: Mutex<HashMap<String, String>>,
     /// Files waiting for their name ("Rename and upload").
     pending_names: Mutex<Vec<PendingName>>,
+    /// Uploads to an "Ask for a Password" destination waiting for it.
+    pending_passwords: Mutex<Vec<PendingPassword>>,
     /// The uploads the user started, by ID, for Undo and pasting.
     pub(crate) actions: Mutex<HashMap<String, quick_share::UploadAction>>,
     /// The action Undo would take back now; none once its time is up.
@@ -305,6 +355,24 @@ struct PendingName {
     id: String,
     input: UploadInput,
     destination: Option<DestinationConfig>,
+}
+
+/// Files of one upload waiting for a password.
+struct PendingPassword {
+    id: String,
+    inputs: Vec<UploadInput>,
+    destination: DestinationConfig,
+}
+
+/// What the password dialog shows.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordRequest {
+    pub id: String,
+    pub destination_name: String,
+    /// The first file's name, and how many there are.
+    pub filename: String,
+    pub count: usize,
 }
 
 /// What the name dialog shows for a file waiting for its name.
@@ -357,7 +425,7 @@ pub fn enqueue(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<
 /// kept from before (a capture). Everything but a watched folder's files is
 /// one `quick_share::UploadAction`, which Undo takes back as a whole.
 pub fn enqueue_with(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<DestinationConfig>, origin: Origin) -> Vec<Queued> {
-    let action = inputs.iter().any(|input| input.watched.is_none()).then(|| quick_share::new_action(core, origin));
+    let action = inputs.iter().any(|input| input.watched.is_none() && input.request.is_none()).then(|| quick_share::new_action(core, origin));
     let queued = route_and_enqueue(core, inputs, destination, action.as_deref());
     if let Some(action) = &action {
         quick_share::drop_if_empty(core, action);
@@ -448,9 +516,30 @@ fn enqueue_to(core: &SharedCore, inputs: Vec<UploadInput>, destination: Option<D
         crate::windows::open(&core.app, AppWindow::Onboarding);
         return Vec::new();
     };
+    // "Ask for a Password": uploads made by hand wait for one first.
+    let (inputs, waiting): (Vec<UploadInput>, Vec<UploadInput>) = inputs.into_iter().partition(|input| {
+        destination.encryption != Some(crate::destinations::EncryptionMode::Password) || input.password.is_some() || !asks_for_password(input)
+    });
+    if !waiting.is_empty() {
+        ask_for_password(core, waiting, destination.clone());
+    }
+    if inputs.is_empty() {
+        return Vec::new();
+    }
     let delete_after_days = destination.expiry_days.unwrap_or(core.settings.get().delete_after_days);
     let rules_active = crate::expiry::is_active(core, &destination.id);
-    let inputs = expanding_folders(core, inputs, &destination);
+    let mut inputs = expanding_folders(core, inputs, &destination);
+    // Several files dropped together on a destination with share pages
+    // share one gallery and one link (docs/share-pages.md, part 2).
+    // Encrypted ones are each on their own.
+    let loose: Vec<usize> = (0..inputs.len()).filter(|&index| gets_own_page(&inputs[index]) && !inputs[index].path.is_dir()).collect();
+    if destination.share_page() && destination.encryption.is_none() && loose.len() > 1 {
+        let id = crate::util::new_id();
+        core.uploads.open_groups.lock().unwrap().insert(id.clone(), GroupLinks::new());
+        for (position, &index) in loose.iter().enumerate() {
+            inputs[index].group = Some(UploadGroup { id: id.clone(), name: String::new(), index: position, count: loose.len() });
+        }
+    }
     let mut queued = Vec::new();
     let mut action_jobs = Vec::new();
     {
@@ -553,6 +642,7 @@ fn expanding_folders(core: &SharedCore, inputs: Vec<UploadInput>, destination: &
                         folder_key: Some(format!("{prefix}{}", entry.relative_path)),
                         group: Some(UploadGroup { id: id.clone(), name: name.clone(), index, count }),
                         expiry: input.expiry,
+                        password: input.password.clone(),
                         ..UploadInput::from_path(entry.path)
                     }));
                 }
@@ -699,6 +789,48 @@ pub fn ask_for_names(core: &SharedCore, inputs: Vec<UploadInput>, destination: O
     }));
     core.notify(events::NAMES_CHANGED);
     crate::panel::show(&core.app);
+}
+
+/// Holds uploads to an "Ask for a Password" destination until the panel's
+/// password dialog has one (or they're cancelled).
+fn ask_for_password(core: &SharedCore, inputs: Vec<UploadInput>, destination: DestinationConfig) {
+    core.uploads.pending_passwords.lock().unwrap().push(PendingPassword { id: crate::util::new_id(), inputs, destination });
+    core.notify(events::PASSWORDS_CHANGED);
+    crate::panel::show(&core.app);
+}
+
+/// The uploads waiting for a password, first in line first.
+pub fn pending_passwords(core: &SharedCore) -> Vec<PasswordRequest> {
+    core.uploads
+        .pending_passwords
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|pending| PasswordRequest {
+            id: pending.id.clone(),
+            destination_name: pending.destination.name.clone(),
+            filename: pending.inputs.first().map(|input| input.original_filename.clone()).unwrap_or_default(),
+            count: pending.inputs.len(),
+        })
+        .collect()
+}
+
+/// Uploads what waited for a password with `password`, or drops it
+/// (Cancel, or an empty password: then nothing is uploaded).
+pub fn resolve_password(core: &SharedCore, id: &str, password: Option<String>) {
+    let pending = {
+        let mut waiting = core.uploads.pending_passwords.lock().unwrap();
+        waiting.iter().position(|pending| pending.id == id).map(|index| waiting.remove(index))
+    };
+    core.notify(events::PASSWORDS_CHANGED);
+    let Some(PendingPassword { inputs, destination, .. }) = pending else { return };
+    match password.filter(|password| !password.is_empty()) {
+        Some(password) => {
+            let inputs = inputs.into_iter().map(|input| UploadInput { password: Some(Password(password.clone())), ..input }).collect();
+            enqueue(core, inputs, Some(destination));
+        }
+        None => inputs.iter().for_each(UploadInput::remove_if_temporary),
+    }
 }
 
 /// The files waiting for a name, first in line first.
@@ -892,10 +1024,15 @@ fn drain(core: &SharedCore) {
 struct Scratch {
     zip: Option<PathBuf>,
     cleaned: Option<PathBuf>,
+    /// An encrypted copy (docs/share-pages.md, part 5).
+    encrypted: Option<PathBuf>,
 }
 
 impl Drop for Scratch {
     fn drop(&mut self) {
+        if let Some(encrypted) = &self.encrypted {
+            let _ = std::fs::remove_file(encrypted);
+        }
         if let Some(zip) = &self.zip {
             folder_upload::remove_zip(zip);
         }
@@ -928,8 +1065,28 @@ struct Outcome {
     /// its key) what became of its short link.
     early: Option<EarlyLink>,
     early_attempt: Option<crate::short_links::Attempt>,
+    /// The share page written for it, if any; `link` is then the page's.
+    page: Option<SharedPage>,
     _scratch: Scratch,
 }
+
+/// An upload's share page (docs/share-pages.md) and the links around it.
+#[derive(Debug, Clone)]
+pub(crate) struct SharedPage {
+    pub key: String,
+    /// The page's public URL, what a shortener shortens.
+    pub public_url: String,
+    /// What's copied: the page's public URL or a temporary link to it,
+    /// without the encryption key.
+    pub link: String,
+    /// The file's own link (public or temporary).
+    pub file_link: String,
+    /// `#k=...` for an encrypted upload with the key in the link.
+    pub fragment: Option<String>,
+    /// The key an encrypted upload was made with.
+    pub encryption: Option<FileKey>,
+}
+
 
 /// Why an upload failed, and whether it may work later on its own (the
 /// network dropped, the server had a problem).
@@ -1031,9 +1188,30 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
         input.path = downloaded.path;
     }
     let input = &input;
+    // A share page or encryption (docs/share-pages.md): a replace keeps
+    // what the upload had, and the encryption key with it.
+    let replaced_record = input.replacing.as_ref().and_then(|replacing| replaced_target(core, replacing, destination, input.object_key.as_deref()));
+    let encryption = match &input.replacing {
+        Some(_) => replaced_record
+            .as_ref()
+            .and_then(|record| FileKey::from_stored(record.encryption_key.as_deref()?, record.encryption_salt.as_deref())),
+        None if destination.encryption.is_some() && input.object_key.is_none() => Some(new_file_key(destination, input).await?),
+        None => None,
+    };
+    let page_key = match &input.replacing {
+        // A gallery isn't written again for one of its files.
+        Some(_) => replaced_record
+            .as_ref()
+            .and_then(|record| record.share_page_key.clone())
+            .filter(|key| encryption.is_some() || !key.ends_with(".gallery.html")),
+        None => None,
+    };
+    let wants_page = page_key.is_some() || encryption.is_some() || (input.replacing.is_none() && destination.share_page() && gets_own_page(input));
     // A link already handed out names its key: that's where this upload
-    // goes, whatever else is in the bucket.
-    let pinned_key = context.early_link.as_ref().map(|early| early.object_key.clone());
+    // goes, whatever else is in the bucket. An encrypted file's key is
+    // random, never from the template (names and extensions would leak).
+    let encrypted_key = encryption.as_ref().filter(|_| input.replacing.is_none()).map(|_| crate::share_page::encrypted_key(input.expire_after_days()));
+    let pinned_key = context.early_link.as_ref().map(|early| early.object_key.clone()).or(encrypted_key);
 
     // A folder goes up as a ZIP made on the spot, and a photo converted,
     // or without the metadata the destination removes; all made off the
@@ -1092,13 +1270,34 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
             }
         }
     }
+    // The plaintext, for the thumbnail and a text page.
+    let plain_path = path.clone();
+    let plain_size = std::fs::metadata(&path).map_err(|error| error.to_string())?.len();
+    if let Some(key) = &encryption {
+        let mime_type = output::content_type(&filename);
+        let syntax = (!zipped && crate::share_page::text_contents(&path, &mime_type).is_some())
+            .then(|| crate::share_page::syntax_for(&filename))
+            .filter(|syntax| *syntax != "text")
+            .map(str::to_string);
+        let metadata = crate::share_page::crypto::Metadata { name: filename.clone(), mime_type: crate::share_page::bare_mime(&mime_type), size: plain_size, syntax };
+        let target = std::env::temp_dir().join(format!("aktar-encrypted-{}", crate::util::new_id()));
+        scratch.encrypted = Some(target.clone());
+        let (source, sealed, key) = (path.clone(), target.clone(), key.clone());
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::share_page::crypto::encrypt_file(&source, &sealed, &metadata, &key, crate::share_page::crypto::new_nonce_prefix())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+        path = target;
+    }
     let file_size = std::fs::metadata(&path).map_err(|error| error.to_string())?.len();
 
     // The bytes that go up are hashed (as they're read, never loaded whole)
     // for the {md5} and {sha256} tokens and for finding an earlier upload
     // of the same file. A ZIP made on the spot is never quite the same.
-    let generated_key = input.object_key.is_none() && input.folder_key.is_none();
-    let reuse_links = core.settings.get().reuse_duplicate_links && !zipped && pinned_key.is_none();
+    let generated_key = input.object_key.is_none() && input.folder_key.is_none() && encryption.is_none();
+    let reuse_links = core.settings.get().reuse_duplicate_links && !zipped && pinned_key.is_none() && encryption.is_none();
     // A watched folder's file may be hashed already; it's used as long as
     // the bytes going up are the file's own (and {md5} isn't wanted).
     let original_bytes = !zipped && scratch.cleaned.is_none();
@@ -1127,6 +1326,15 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     if let Some(sha256) = content_hash.as_deref().filter(|_| generated_key && input.group.is_none()) {
         if let Some(record) = earlier_upload(core, &provider, destination, input, sha256).await {
             let link = link_for(&provider, destination, &record.object_key, &record.public_url).await;
+            // A record with a page shares its page.
+            let page = record.share_page_key.as_ref().zip(record.share_url.as_ref()).map(|(key, url)| SharedPage {
+                key: key.clone(),
+                public_url: url.clone(),
+                link: url.clone(),
+                file_link: link.clone(),
+                fragment: None,
+                encryption: None,
+            });
             return Ok(Outcome {
                 input: input.clone(),
                 result: UploadResult {
@@ -1134,7 +1342,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     public_url: record.public_url.clone(),
                     byte_size: record.byte_size,
                 },
-                link,
+                link: page.as_ref().map_or(link, |page| page.link.clone()),
                 filename,
                 content_hash,
                 original_hash,
@@ -1142,6 +1350,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 thumbnail: None,
                 early: None,
                 early_attempt: None,
+                page,
                 _scratch: scratch,
             });
         }
@@ -1152,13 +1361,14 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     // finishes: a watched folder or the local API may move or delete the
     // file as soon as it has, and the copies here go when the job ends.
     let mut thumbnail = (destination.thumbnail_mode() != ThumbnailMode::Off && !zipped)
-        .then(|| tauri::async_runtime::spawn(crate::thumbnails::generate(path.clone())));
+        .then(|| tauri::async_runtime::spawn(crate::thumbnails::generate(plain_path.clone())));
 
     // A big file continues an upload of it left unfinished, under its key.
-    let source = (!zipped).then(|| SourceFile::of(&input.path)).flatten();
+    // Never an encrypted one: its bytes are new every time.
+    let source = (!zipped && encryption.is_none()).then(|| SourceFile::of(&input.path)).flatten();
     let key_basis = generated_key.then(|| key_basis_for(input, destination, &filename));
     let mut resumed = None;
-    if file_size > SINGLE_UPLOAD_LIMIT {
+    if file_size > SINGLE_UPLOAD_LIMIT && encryption.is_none() {
         if let Some(source) = &source {
             for outdated in core.upload_sessions.outdated_for(&destination.id, source) {
                 multipart::abort(&provider, &core.upload_sessions, &outdated).await;
@@ -1223,7 +1433,10 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
             object_key = crate::bucket::available_key(&provider, name, &folder, &[]).await.map_err(|error| error.to_string())?;
         }
     }
-    let content_type = upload_content_type(&path, &filename);
+    let content_type = match encryption {
+        Some(_) => "application/octet-stream".to_string(),
+        None => upload_content_type(&path, &filename),
+    };
     let progress = Arc::new(Progress::default());
     // Only S3 and R2 are known to honor If-None-Match on uploads.
     let only_if_new = input.keep_existing && input.object_key.is_some() && destination.preset.supports_conditional_writes();
@@ -1243,8 +1456,8 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
     // Instant link: the link is copied now, before the bytes go, and the
     // upload is kept until they're there (docs/capture-and-instant-links.md).
     let mut early = context.early_link.clone();
-    if early.is_none() && core.settings.get().copy_link_right_away && quick_share::can_copy_early(input, context.action_id.is_some()) {
-        early = Some(quick_share::copy_early_link(core, job_id, input, destination, &provider, &object_key, &filename).await);
+    if early.is_none() && encryption.is_none() && core.settings.get().copy_link_right_away && quick_share::can_copy_early(input, context.action_id.is_some()) {
+        early = Some(quick_share::copy_early_link(core, job_id, input, destination, &provider, &object_key, &filename, wants_page).await);
     }
     // Offline, the upload waits for the network right away rather than
     // after the SDK's retries.
@@ -1307,6 +1520,45 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     Some(task) => task.await.ok().flatten(),
                     None => None,
                 };
+                let mut page = None;
+                if wants_page {
+                    // `link` is the page's when it was copied early.
+                    let file_link = link_for(&provider, destination, &object_key, &public_url).await;
+                    let written = PageSource {
+                        provider: &provider,
+                        destination,
+                        input,
+                        object_key: &object_key,
+                        file_link: &file_link,
+                        size: file_size,
+                        content_type: &content_type,
+                        filename: &filename,
+                        plain_path: &plain_path,
+                        zipped,
+                        thumbnail: thumbnail.as_deref(),
+                        encryption: encryption.as_ref(),
+                    }
+                    .write(page_key.clone().unwrap_or_else(|| crate::share_page::page_key(&object_key)))
+                    .await;
+                    match written {
+                        Ok(written) => page = Some(written),
+                        // Without its page an encrypted file can't be opened.
+                        Err(error) if encryption.is_some() => {
+                            if input.replacing.is_none() {
+                                let _ = provider.delete(&object_key).await;
+                            }
+                            return Err(error.into());
+                        }
+                        // The file is up: its own link is copied instead.
+                        Err(error) => log::warn!("Could not write the share page of {filename}: {error}"),
+                    }
+                }
+                // Instant link: the copied link was the page's already.
+                let link = match (&page, &early) {
+                    (Some(_), Some(early)) if early.object_key == object_key => link,
+                    (Some(page), _) => page.link.clone(),
+                    (None, _) => link,
+                };
                 return Ok(Outcome {
                     input: input.clone(),
                     result: UploadResult { object_key: object_key.clone(), public_url, byte_size: file_size as i64 },
@@ -1318,6 +1570,7 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                     thumbnail,
                     early,
                     early_attempt,
+                    page,
                     _scratch: scratch,
                 });
             }
@@ -1335,6 +1588,137 @@ async fn run(core: &SharedCore, job_id: &str, input: &UploadInput, destination: 
                 }
             }
         }
+    }
+}
+
+/// Whether an upload gets a page of its own when its destination makes
+/// them: not a watched folder's file, a folder's file (its folder gets a
+/// gallery), a file of a drop (the drop gets one), an exact key (the
+/// bucket view, the local API's prefix=), the local API's own uploads, or
+/// a file collected from a request.
+fn gets_own_page(input: &UploadInput) -> bool {
+    input.watched.is_none()
+        && input.folder_key.is_none()
+        && input.group.is_none()
+        && input.object_key.is_none()
+        && !input.waited
+        && input.request.is_none()
+}
+
+/// Whether an upload to an "Ask for a Password" destination asks: only
+/// one made by hand. The rest use a key in the link.
+fn asks_for_password(input: &UploadInput) -> bool {
+    input.watched.is_none() && !input.waited && input.request.is_none() && input.object_key.is_none() && input.replacing.is_none()
+}
+
+/// The key for a new encrypted upload: from its password (a few seconds
+/// of PBKDF2, off the async runtime's workers), else a random one.
+async fn new_file_key(destination: &DestinationConfig, input: &UploadInput) -> Result<FileKey, Failure> {
+    match (&destination.encryption, &input.password) {
+        (Some(crate::destinations::EncryptionMode::Password), Some(Password(password))) => {
+            let password = password.clone();
+            Ok(tauri::async_runtime::spawn_blocking(move || FileKey::from_password(&password)).await.map_err(|error| error.to_string())?)
+        }
+        _ => Ok(FileKey::random()),
+    }
+}
+
+/// The history entry a replace is for: the one it was started from, or the
+/// newest upload to its key (the bucket view).
+fn replaced_target(core: &SharedCore, replacing: &Replacing, destination: &DestinationConfig, key: Option<&str>) -> Option<UploadRecord> {
+    replacing
+        .record_id
+        .as_deref()
+        .and_then(|id| core.history.get(id))
+        .or_else(|| core.history.with_object(&destination.id, key?).into_iter().next())
+}
+
+/// What a share page is written from.
+struct PageSource<'a> {
+    provider: &'a S3Provider,
+    destination: &'a DestinationConfig,
+    input: &'a UploadInput,
+    object_key: &'a str,
+    file_link: &'a str,
+    /// What went up: for an encrypted file, its encrypted length.
+    size: u64,
+    content_type: &'a str,
+    filename: &'a str,
+    plain_path: &'a Path,
+    zipped: bool,
+    thumbnail: Option<&'a [u8]>,
+    encryption: Option<&'a FileKey>,
+}
+
+impl PageSource<'_> {
+    /// Writes the page at `page_key` (a plain PUT: the file's key was
+    /// free, so this one is too, or it's the upload's own page).
+    async fn write(self, page_key: String) -> Result<SharedPage, StorageError> {
+        use crate::share_page::{Encrypted, Kind, Page, PageFile};
+        let destination = self.destination;
+        let now = crate::util::now_millis();
+        let seconds = destination.temporary_link;
+        let signed = |key: String| {
+            let provider = self.provider;
+            async move {
+                let public = output::resolve_public_url(&destination.public_base_url, &key);
+                match seconds {
+                    Some(seconds) => provider.temporary_url(&key, seconds).await.unwrap_or(public),
+                    None => public,
+                }
+            }
+        };
+        let page_url = output::resolve_public_url(&destination.public_base_url, &page_key);
+        let page_link = signed(page_key.clone()).await;
+        let expires = [
+            self.input.expire_after_days().map(|days| crate::expiry::expires_at(now, days)),
+            seconds.map(|seconds| now + seconds as i64 * 1000),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
+        let lang = crate::i18n::current();
+        let mut page;
+        match self.encryption {
+            Some(key) => {
+                page = Page::new(Kind::Encrypted, &lang, now);
+                page.encrypted = Some(Encrypted { url: self.file_link.to_string(), size: self.size, password: key.is_password() });
+            }
+            None => {
+                let thumb = match (destination.bucket_thumbnail_prefix(), self.thumbnail.filter(|data| crate::thumbnails::is_webp(data))) {
+                    (Some(prefix), Some(_)) => match crate::thumbnails::key_for(self.object_key, &prefix) {
+                        Some(key) => Some(signed(key).await),
+                        None => None,
+                    },
+                    _ => None,
+                };
+                let text = (!self.zipped).then(|| crate::share_page::text_contents(self.plain_path, self.content_type)).flatten();
+                page = Page::new(if text.is_some() { Kind::Text } else { Kind::File }, &lang, now);
+                page.files = Some(vec![PageFile {
+                    name: self.filename.to_string(),
+                    url: self.file_link.to_string(),
+                    size: self.size,
+                    mime_type: self.content_type.to_string(),
+                    og_image: crate::share_page::og_image_for(self.content_type, self.size, self.file_link, thumb.as_deref()),
+                    thumb,
+                }]);
+                if let Some(text) = text {
+                    page.text = Some(text);
+                    page.syntax = Some(crate::share_page::syntax_for(self.filename).to_string());
+                }
+            }
+        }
+        page.expires = expires.map(crate::share_page::iso8601);
+        self.provider.put_page(&page_key, crate::share_page::build_page(&page)).await?;
+        let fragment = self.encryption.filter(|key| !key.is_password()).map(|key| format!("#k={}", key.encoded_key()));
+        Ok(SharedPage {
+            key: page_key,
+            public_url: page_url,
+            link: page_link,
+            file_link: self.file_link.to_string(),
+            fragment,
+            encryption: self.encryption.cloned(),
+        })
     }
 }
 
@@ -1643,14 +2027,21 @@ fn set_state(core: &SharedCore, job_id: &str, state: JobState) {
 /// History keeps the public URL; `outcome.link` is what's copied. An
 /// earlier upload whose link is reused stays the one history entry.
 async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig, outcome: Outcome) {
-    let Outcome { input, result, link, filename, content_hash, original_hash, reused, thumbnail, early, early_attempt, _scratch } = outcome;
+    let Outcome { input, result, link, filename, content_hash, original_hash, reused, thumbnail, early, early_attempt, page, _scratch } = outcome;
     let input = &input;
     let was_reused = reused.is_some();
     let replaced = input.replacing.is_some();
+    let encrypted = page.as_ref().is_some_and(|page| page.encryption.is_some());
+    let has_bucket_thumbnail = thumbnail.as_deref().is_some_and(crate::thumbnails::is_webp);
+    // With a page, its link is what's shortened (never the key with it).
+    let public_link = page.as_ref().map_or(result.public_url.as_str(), |page| page.public_url.as_str()).to_string();
     let shortening = match early_attempt {
         Some(attempt) => attempt,
-        None => shorten(core, input, destination, &result, &link, reused.as_ref()).await,
+        None => shorten(core, input, destination, &link, &public_link, reused.as_ref()).await,
     };
+    let encryption_stored = page.as_ref().and_then(|page| page.encryption.as_ref()).map(|key| (key.encoded_key(), key.encoded_salt()));
+    let encryption_ref = encryption_stored.as_ref().map(|(key, salt)| (key.as_str(), salt.as_deref()));
+    let request_source = input.request.as_ref().map(|request| (format!("request:{}", request.request_id), request.title.clone()));
     let record = match reused {
         Some(record) => Some(record),
         None if replaced => {
@@ -1665,8 +2056,14 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
             }
             // The bucket view's thumbnail of the old file, and the bucket's.
             crate::thumbnails::remote::forget(core, &destination.id, &result.object_key);
-            tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
+            if !encrypted {
+                tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
+            }
             crate::cloudflare::purge_in_background(core, destination, &result.public_url);
+            // The page was written again too.
+            if let Some(page) = &page {
+                crate::cloudflare::purge_in_background(core, destination, &page.public_url);
+            }
             record
         }
         None => {
@@ -1681,6 +2078,10 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
                 expire_after_days: input.expire_after_days(),
                 content_hash: content_hash.as_deref(),
                 watched_folder: input.watched.as_ref().map(|source| (source.folder_id.as_str(), source.folder_name.as_str())),
+                source: request_source.as_ref().map(|(source, name)| (source.as_str(), name.as_str())),
+                created_at: None,
+                share_page_key: page.as_ref().map(|page| page.key.as_str()),
+                encryption: encryption_ref,
             });
             match &thumbnail {
                 Some(data) => core.history.thumbnails.store(&record.id, data),
@@ -1689,7 +2090,10 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
                 None if destination.thumbnail_mode() != ThumbnailMode::Off => core.history.thumbnails.mark_unavailable(&record.id),
                 None => {}
             }
-            tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
+            // An encrypted file's thumbnail never goes to the bucket.
+            if !encrypted {
+                tauri::async_runtime::spawn(update_bucket_thumbnails(core.clone(), destination.clone(), result.object_key.clone(), thumbnail));
+            }
             Some(record)
         }
     };
@@ -1715,7 +2119,7 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
     if in_outbox || early.is_some() {
         core.outbox.remove(job_id);
     }
-    let (short_url, short_failure) = short_link_for(core, shortening, &record_id, &link, &result.public_url);
+    let (short_url, short_failure) = short_link_for(core, shortening, &record_id, &link, &public_link);
     if let Some(reason) = &short_failure {
         crate::short_links::notify_failed(core, &filename, reason, &record_id);
     }
@@ -1772,7 +2176,7 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
         let uploaded = crate::watched::engine::Uploaded {
             object_key: result.object_key.clone(),
             url: result.public_url.clone(),
-            link: format_link(core, destination, &link, short_url.as_deref(), &filename),
+            link: copy_text(core, destination, &link, page.as_ref(), short_url.as_deref(), &filename),
             filename: filename.clone(),
             destination_id: destination.id.clone(),
             reused: was_reused,
@@ -1785,14 +2189,35 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
         return;
     }
 
+    // A file someone sent through a request is collected quietly: no
+    // link is copied, nothing is pasted or announced.
+    if input.request.is_some() {
+        drain(core);
+        return;
+    }
+
     // A file from a folder waits for the rest of it: the links are copied
     // together, with one notification, once the last is done.
     let grouped = input.group.as_ref().is_some_and(|group| {
+        let text = copy_text(core, destination, &link, page.as_ref(), short_url.as_deref(), &filename);
+        let gallery = (destination.share_page() && destination.encryption.is_none() && !was_reused && !record_id.is_empty()).then(|| GalleryFile {
+            destination: destination.clone(),
+            record_id: record_id.clone(),
+            object_key: result.object_key.clone(),
+            public_url: result.public_url.clone(),
+            filename: filename.clone(),
+            size: result.byte_size.max(0) as u64,
+            mime_type: upload_content_type(&input.path, &filename),
+            thumb_key: destination
+                .bucket_thumbnail_prefix()
+                .filter(|_| has_bucket_thumbnail)
+                .and_then(|prefix| crate::thumbnails::key_for(&result.object_key, &prefix)),
+        });
         let mut groups = core.uploads.open_groups.lock().unwrap();
         let links = groups.get_mut(&group.id);
         let open = links.is_some();
         if let Some(links) = links {
-            links.insert(group.index, format_link(core, destination, &link, short_url.as_deref(), &filename));
+            links.insert(group.index, GroupEntry { text, gallery });
         }
         open
     });
@@ -1800,7 +2225,7 @@ async fn finish(core: &SharedCore, job_id: &str, destination: &DestinationConfig
         finish_group_if_done(core, group, action_id.as_deref());
     } else {
         let settings = core.settings.get();
-        let text = format_link(core, destination, &link, short_url.as_deref(), &filename);
+        let text = copy_text(core, destination, &link, page.as_ref(), short_url.as_deref(), &filename);
         match &early {
             // The key changed after the link was copied: the new one takes
             // its place, if the clipboard still holds it.
@@ -1867,6 +2292,10 @@ fn replaced_record(
             expire_after_days: input.expire_after_days(),
             content_hash,
             watched_folder: None,
+            source: None,
+            created_at: None,
+            share_page_key: None,
+            encryption: None,
         }),
     };
     core.history.replaced(
@@ -1896,6 +2325,31 @@ async fn update_bucket_thumbnails(core: SharedCore, destination: DestinationConf
     }
 }
 
+/// What's copied for a finished upload: `format_link`, or with a share page
+/// (docs/share-pages.md): URL is the page link; Markdown and HTML embed
+/// images, videos and audio from the file's own link and link everything
+/// else to the page; a custom template's {url} is the page and {file} the
+/// file. An encrypted upload's link is never formatted, and its key goes
+/// after the short link (the shortener never sees it).
+pub(crate) fn copy_text(core: &SharedCore, destination: &DestinationConfig, link: &str, page: Option<&SharedPage>, short_url: Option<&str>, filename: &str) -> String {
+    let Some(page) = page else { return format_link(core, destination, link, short_url, filename) };
+    if page.encryption.is_some() {
+        return format!("{}{}", short_url.unwrap_or(link), page.fragment.as_deref().unwrap_or_default());
+    }
+    let settings = core.settings.get();
+    let mode = destination.output_mode.unwrap_or(settings.output_mode);
+    shared_text(mode, link, short_url, &page.file_link, filename, &settings.custom_template)
+}
+
+fn shared_text(mode: output::OutputMode, page_link: &str, short_url: Option<&str>, file_link: &str, filename: &str, custom_template: &str) -> String {
+    use output::OutputMode;
+    let media = crate::share_page::is_media(&output::content_type(filename));
+    match mode {
+        OutputMode::Markdown | OutputMode::Html if media => output::format(file_link, None, mode, filename, custom_template),
+        _ => output::format_with_file(page_link, short_url, mode, filename, custom_template, file_link),
+    }
+}
+
 /// What's copied for `link` (with its short link, when there's one): as the
 /// destination says, or Settings > Output.
 pub(crate) fn format_link(core: &SharedCore, destination: &DestinationConfig, link: &str, short_url: Option<&str>, filename: &str) -> String {
@@ -1914,14 +2368,15 @@ async fn shorten(
     core: &SharedCore,
     input: &UploadInput,
     destination: &DestinationConfig,
-    result: &UploadResult,
     link: &str,
+    public_link: &str,
     reused: Option<&UploadRecord>,
 ) -> crate::short_links::Attempt {
     use crate::short_links::{rules::Shortening, Attempt};
     let now = crate::util::now_millis();
-    // `link` differs from the public URL only when it's a temporary link.
-    let temporary_expires_at = destination.temporary_link.filter(|_| link != result.public_url).map(|seconds| now + seconds as i64 * 1000);
+    // `link` differs from its public URL (the file's, or its page's) only
+    // when it's a temporary link.
+    let temporary_expires_at = destination.temporary_link.filter(|_| link != public_link).map(|seconds| now + seconds as i64 * 1000);
     if input.replacing.is_some() || input.short_link == Some(false) {
         return Attempt::Skipped;
     }
@@ -1987,16 +2442,113 @@ fn finish_group_if_done(core: &SharedCore, group: &UploadGroup, action_id: Optio
     if links.is_empty() || action_id.is_some_and(|action_id| quick_share::is_undoing(core, action_id)) {
         return;
     }
-    let copied: Vec<String> = links.into_values().collect();
-    quick_share::copy_link(core, action_id, &copied.join("\n"));
+    // Several files to one destination with share pages: one gallery page,
+    // and its link (docs/share-pages.md, part 2). Written off this thread.
+    if let Some(files) = gallery_files(&links) {
+        let (core, group, action_id) = (core.clone(), group.clone(), action_id.map(str::to_string));
+        let texts: Vec<String> = links.into_values().map(|entry| entry.text).collect();
+        tauri::async_runtime::spawn(async move {
+            let text = match write_gallery(&core, &files).await {
+                Ok(text) => text,
+                Err(error) => {
+                    log::warn!("Could not write the gallery page: {error}");
+                    texts.join("\n")
+                }
+            };
+            copy_group_links(&core, &group, action_id.as_deref(), text, texts.len());
+        });
+        return;
+    }
+    let copied: Vec<String> = links.into_values().map(|entry| entry.text).collect();
+    let count = copied.len();
+    copy_group_links(core, group, action_id, copied.join("\n"), count);
+}
+
+/// The gallery's files, when the group makes one: two or more files, all
+/// to one destination with share pages.
+fn gallery_files(links: &GroupLinks) -> Option<Vec<GalleryFile>> {
+    let files: Vec<GalleryFile> = links.values().map(|entry| entry.gallery.clone()).collect::<Option<_>>()?;
+    let first = files.first()?;
+    (files.len() > 1 && files.iter().all(|file| file.destination.id == first.destination.id)).then_some(files)
+}
+
+/// Writes a gallery page next to the first file, points every file's
+/// history entry at it, and returns what to copy: its link, as a plain
+/// link in Markdown and HTML.
+async fn write_gallery(core: &SharedCore, files: &[GalleryFile]) -> Result<String, String> {
+    use crate::share_page::{Kind, Page, PageFile};
+    let first = files.first().ok_or_else(|| "no files".to_string())?;
+    let destination = &first.destination;
+    let credentials = credentials::load(&destination.id).map_err(|error| error.to_string())?;
+    let provider = S3Provider::new(destination.clone(), credentials);
+    let now = crate::util::now_millis();
+    let seconds = destination.temporary_link;
+    let link_to = |key: &str, public: String| {
+        let provider = &provider;
+        let key = key.to_string();
+        async move {
+            match seconds {
+                Some(seconds) => provider.temporary_url(&key, seconds).await.unwrap_or(public),
+                None => public,
+            }
+        }
+    };
+    let mut page_files = Vec::new();
+    for file in files {
+        let url = link_to(&file.object_key, file.public_url.clone()).await;
+        let thumb = match &file.thumb_key {
+            Some(key) => Some(link_to(key, output::resolve_public_url(&destination.public_base_url, key)).await),
+            None => None,
+        };
+        page_files.push(PageFile {
+            name: file.filename.clone(),
+            og_image: crate::share_page::og_image_for(&file.mime_type, file.size, &url, thumb.as_deref()),
+            url,
+            size: file.size,
+            mime_type: file.mime_type.clone(),
+            thumb,
+        });
+    }
+    let expires = files
+        .iter()
+        .filter_map(|file| core.history.get(&file.record_id).and_then(|record| record.expires_at))
+        .chain(seconds.map(|seconds| now + seconds as i64 * 1000))
+        .min();
+    let mut page = Page::new(Kind::Gallery, &crate::i18n::current(), now);
+    page.files = Some(page_files);
+    page.expires = expires.map(crate::share_page::iso8601);
+    let key = crate::share_page::gallery_key(&first.object_key);
+    provider.put_page(&key, crate::share_page::build_page(&page)).await.map_err(|error| error.to_string())?;
+    let ids: Vec<String> = files.iter().map(|file| file.record_id.clone()).collect();
+    core.history.set_share_page(&ids, &key);
+    core.notify(events::HISTORY_CHANGED);
+    let public = output::resolve_public_url(&destination.public_base_url, &key);
+    let link = link_to(&key, public).await;
+    let title = format!("{} +{}", first.filename, files.len() - 1);
+    let mode = destination.output_mode.unwrap_or(core.settings.get().output_mode);
+    Ok(gallery_text(mode, &link, &title))
+}
+
+/// A gallery's link as "Copy as" says, always as a plain link.
+fn gallery_text(mode: output::OutputMode, link: &str, title: &str) -> String {
+    match mode {
+        output::OutputMode::Markdown => output::format(link, None, output::OutputMode::Markdown, title, ""),
+        output::OutputMode::Html => output::format(link, None, output::OutputMode::Html, title, ""),
+        _ => link.to_string(),
+    }
+}
+
+/// Copies a group's links (or its gallery's) and says so once.
+fn copy_group_links(core: &SharedCore, group: &UploadGroup, action_id: Option<&str>, text: String, count: usize) {
+    quick_share::copy_link(core, action_id, &text);
     if core.settings.get().show_notification {
         // A drop spread over several destinations has no folder name.
         let summary = if group.name.is_empty() {
-            t!("{0} files", copied.len())
-        } else if copied.len() == group.count {
+            t!("{0} files", count)
+        } else if count == group.count {
             t!("{0} ({1} files)", group.name, group.count)
         } else {
-            t!("{0} ({1} of {2} files)", group.name, copied.len(), group.count)
+            t!("{0} ({1} of {2} files)", group.name, count, group.count)
         };
         quick_share::notify(core, &group.id, action_id, None, &t!("Uploaded"), &[&summary]);
     }
@@ -2121,7 +2673,15 @@ async fn delete_record(core: &SharedCore, record_id: &str, clean_up_short_links:
         match credentials::load(&destination.id) {
             Ok(credentials) => {
                 let prefixes = crate::thumbnails::bucket_prefixes(&destination, &core.destinations.all());
-                crate::bucket::delete_object(&S3Provider::new(destination.clone(), credentials), &record.object_key, &prefixes).await?;
+                let storage = S3Provider::new(destination.clone(), credentials);
+                crate::bucket::delete_object(&storage, &record.object_key, &prefixes).await?;
+                // Its page goes with it, unless other files share it (a
+                // gallery). One that's gone already is fine.
+                if let Some(page_key) = record.share_page_key.as_deref().filter(|key| !core.history.others_with_page(&destination.id, key, &record.id)) {
+                    if let Err(error) = storage.delete(page_key).await {
+                        log::debug!("Could not delete the share page {page_key}: {error}");
+                    }
+                }
                 crate::thumbnails::remote::forget(core, &destination.id, &record.object_key);
                 if clean_up_short_links {
                     crate::short_links::clean_up_after_file_deleted(core, &record.id, Some(&destination), &record.local_filename);
@@ -2139,6 +2699,58 @@ async fn delete_record(core: &SharedCore, record_id: &str, clean_up_short_links:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copies_share_page_links_as_the_output_says() {
+        use output::OutputMode;
+        let page = "https://cdn.example.com/a.pdf.html";
+        let file = "https://cdn.example.com/a.pdf";
+        assert_eq!(shared_text(OutputMode::Url, page, None, file, "a.pdf", ""), page);
+        assert_eq!(shared_text(OutputMode::Url, page, Some("https://s.io/x"), file, "a.pdf", ""), "https://s.io/x");
+        assert_eq!(shared_text(OutputMode::Markdown, page, None, file, "a.pdf", ""), format!("[a.pdf]({page})"));
+        assert_eq!(shared_text(OutputMode::Html, page, None, file, "a.pdf", ""), format!("<a href=\"{page}\">a.pdf</a>"));
+        // Media are embedded from the file itself.
+        let image = "https://cdn.example.com/a.png";
+        assert_eq!(shared_text(OutputMode::Markdown, "https://cdn.example.com/a.png.html", Some("https://s.io/x"), image, "a.png", ""), format!("![]({image})"));
+        assert_eq!(shared_text(OutputMode::Html, "https://cdn.example.com/a.png.html", None, image, "a.png", ""), format!("<img src=\"{image}\" alt=\"\">"));
+        let video = "https://cdn.example.com/a.mp4";
+        assert_eq!(shared_text(OutputMode::Markdown, "https://cdn.example.com/a.mp4.html", None, video, "a.mp4", ""), format!("[a.mp4]({video})"));
+        // {url} is the page, {file} the file.
+        assert_eq!(shared_text(OutputMode::Custom, page, None, file, "a.pdf", "{url} {file} {filename}"), format!("{page} {file} a.pdf"));
+        assert_eq!(output::format(file, None, OutputMode::Custom, "a.pdf", "{file}|{url}"), format!("{file}|{file}"));
+        // A gallery is a plain link.
+        assert_eq!(gallery_text(OutputMode::Markdown, "https://x/a.png.gallery.html", "a.png +2"), "[a.png +2](https://x/a.png.gallery.html)");
+        assert_eq!(gallery_text(OutputMode::Html, "https://x/g.html", "a.png +2"), "<a href=\"https://x/g.html\">a.png +2</a>");
+        assert_eq!(gallery_text(OutputMode::Custom, "https://x/g.html", "a.png +2"), "https://x/g.html");
+    }
+
+    #[test]
+    fn decides_which_uploads_get_pages() {
+        let input = UploadInput::from_path(PathBuf::from("a.png"));
+        assert!(gets_own_page(&input));
+        assert!(asks_for_password(&input));
+        let watched = UploadInput {
+            watched: Some(WatchedSource {
+                folder_id: "F".into(),
+                folder_name: "F".into(),
+                relative_path: "a.png".into(),
+                batch_id: "B".into(),
+                key_place: output::KeyPlace::default(),
+                sha256: None,
+            }),
+            ..input.clone()
+        };
+        assert!(!gets_own_page(&watched) && !asks_for_password(&watched));
+        let api = UploadInput { waited: true, ..input.clone() };
+        assert!(!gets_own_page(&api) && !asks_for_password(&api));
+        let request = UploadInput { request: Some(RequestSource { request_id: "R".into(), title: String::new() }), ..input.clone() };
+        assert!(!gets_own_page(&request) && !asks_for_password(&request));
+        let folder_file = UploadInput { folder_key: Some("f/a.png".into()), ..input.clone() };
+        assert!(!gets_own_page(&folder_file));
+        let exact = UploadInput { object_key: Some("a.png".into()), ..input.clone() };
+        assert!(!gets_own_page(&exact) && !asks_for_password(&exact));
+        assert_eq!(format!("{:?}", Password("secret".into())), "Password(..)");
+    }
 
     #[test]
     fn names_uploads() {
@@ -2178,6 +2790,11 @@ mod tests {
             short_url: None,
             short_link_id: None,
             short_provider: None,
+            share_page_key: None,
+            encryption_key: None,
+            encryption_salt: None,
+            share_url: None,
+            encrypted: false,
         }
     }
 

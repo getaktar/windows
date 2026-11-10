@@ -1,5 +1,5 @@
 import { Button, MessageBar, MessageBarActions, MessageBarBody, Text } from "@fluentui/react-components";
-import { ArrowDownloadRegular, DismissRegular, HistoryRegular } from "@fluentui/react-icons";
+import { ArrowDownloadRegular, DismissRegular, HistoryRegular, MailInboxArrowDownRegular } from "@fluentui/react-icons";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -9,8 +9,9 @@ import { useDestinations } from "../lib/hooks";
 import { useI18n } from "../lib/i18n";
 import { BucketView } from "./library/BucketView";
 import { HistoryView } from "./library/HistoryView";
+import { RequestsView } from "./library/RequestsView";
 
-type Source = { kind: "history" } | { kind: "bucket"; id: string };
+type Source = { kind: "history" } | { kind: "requests" } | { kind: "bucket"; id: string };
 
 /** Uploads into a bucket view's open folder; resolves to how many files
  * were queued. */
@@ -101,6 +102,14 @@ export default function Library() {
           <HistoryRegular fontSize={18} />
           <span className="ellipsis">{t("History")}</span>
         </button>
+        <button
+          type="button"
+          className={`source ${source.kind === "requests" ? "source-selected" : ""}`}
+          onClick={() => setSource({ kind: "requests" })}
+        >
+          <MailInboxArrowDownRegular fontSize={18} />
+          <span className="ellipsis">{t("Requests")}</span>
+        </button>
         {destinations.length > 0 && (
           <Text size={200} weight="semibold" className="secondary sources-heading">
             {t("Buckets")}
@@ -121,6 +130,7 @@ export default function Library() {
       </nav>
 
       <HistoryView active={source.kind === "history"} />
+      <RequestsView active={source.kind === "requests"} />
       {visited.map((id) => {
         const destination = destinations.find((candidate) => candidate.id === id);
         if (!destination) return null;

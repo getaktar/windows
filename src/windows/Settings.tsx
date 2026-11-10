@@ -38,6 +38,7 @@ import {
   DocumentCopyRegular,
   CloudAddRegular,
   QrCodeRegular,
+  ArrowImportRegular,
 } from "@fluentui/react-icons";
 import { message } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState, type ReactElement } from "react";
@@ -47,6 +48,7 @@ import { ConfirmDialog } from "../components/Dialogs";
 import { DestinationForm } from "../components/DestinationForm";
 import { ProviderIcon } from "../components/FileVisuals";
 import { Card, CardRow, SettingsPage, SettingsSection, ToggleRow } from "../components/SettingsLayout";
+import { ShareXImportDialog } from "../components/ShareXImportDialog";
 import { ShortcutRecorder } from "../components/ShortcutRecorder";
 import { ImportDestinationDialog, ShareDestinationDialog, type ShareRequest } from "../components/TransferDialogs";
 import { api, errorMessage, events, type AppShortcut, type DestinationConfig, type OutputMode, type Settings } from "../lib/api";
@@ -54,6 +56,7 @@ import { formatBytes, providerName } from "../lib/format";
 import { useDestinations, useFlag, useLocalApi, useSettings, useTauriEvent, useUpdateStatus } from "../lib/hooks";
 import { useI18n, websiteURL } from "../lib/i18n";
 import { links } from "../lib/links";
+import { sharex, type ShareXStatus } from "../lib/sharex";
 import appIcon from "../../src-tauri/icons/128x128.png";
 import { WatchedFoldersSettings } from "./settings/WatchedFolders";
 
@@ -64,6 +67,7 @@ export default function SettingsWindow() {
   const [tab, setTab] = useState<TabName>("general");
   const [watchPath, setWatchPath] = useState<string | null>(null);
   const [importLink, setImportLink] = useState<string | null>(null);
+  const [shareXRequested, setShareXRequested] = useState(false);
 
   // aktar://watch and File Explorer's "Watch with Aktar" open a tab (and
   // add a folder there), aktar://import opens the import with its link,
@@ -77,6 +81,10 @@ export default function SettingsWindow() {
         if (request.importLink) {
           setTab("destinations");
           setImportLink(request.importLink);
+        }
+        if (request.shareXImport) {
+          setTab("destinations");
+          setShareXRequested(true);
         }
       })
       .catch(() => {});
@@ -116,7 +124,12 @@ export default function SettingsWindow() {
       <main className="settings-main">
         {tab === "general" && <GeneralSettings />}
         {tab === "destinations" && (
-          <DestinationsSettings importLink={importLink} onImportLinkHandled={() => setImportLink(null)} />
+          <DestinationsSettings
+            importLink={importLink}
+            onImportLinkHandled={() => setImportLink(null)}
+            shareXRequested={shareXRequested}
+            onShareXHandled={() => setShareXRequested(false)}
+          />
         )}
         {tab === "watched" && <WatchedFoldersSettings pendingPath={watchPath} onPendingHandled={() => setWatchPath(null)} />}
         {tab === "output" && <OutputSettings />}
@@ -366,10 +379,15 @@ function ThumbnailsSection() {
 function DestinationsSettings({
   importLink,
   onImportLinkHandled,
+  shareXRequested,
+  onShareXHandled,
 }: {
   /** From aktar://import: opens the import with the link filled in. */
   importLink: string | null;
   onImportLinkHandled: () => void;
+  /** From the panel's offer: opens Import from ShareX. */
+  shareXRequested: boolean;
+  onShareXHandled: () => void;
 }) {
   const { t } = useI18n();
   const [destinations] = useDestinations();
@@ -380,6 +398,34 @@ function DestinationsSettings({
   const [importOpen, setImportOpen] = useState(false);
   const [cloudflareOpen, setCloudflareOpen] = useState(false);
   const [pendingImportLink, setPendingImportLink] = useState<string | null>(null);
+  const [shareX, setShareX] = useState<ShareXStatus | null>(null);
+  /** Import from ShareX: from its folder, or a picked file. */
+  const [shareXImport, setShareXImport] = useState<{ pick: boolean } | null>(null);
+
+  useEffect(() => {
+    sharex
+      .status()
+      .then(setShareX)
+      .catch(() => setShareX(null));
+  }, []);
+
+  useEffect(() => {
+    if (!shareXRequested) return;
+    setShareXImport({ pick: false });
+    onShareXHandled();
+  }, [shareXRequested]);
+
+  const openShareXImport = () => setShareXImport({ pick: !shareX?.hasSettings });
+  const shareXButton = (
+    <Button icon={<ArrowImportRegular />} onClick={openShareXImport}>
+      {t("Import from ShareX")}
+    </Button>
+  );
+  const shareXFound = shareX?.hasSettings && shareX.folder && (
+    <Text size={200} className="secondary break">
+      {t("ShareX settings found in {0}", shareX.folder)}
+    </Text>
+  );
 
   useEffect(() => {
     if (!importLink) return;
@@ -430,7 +476,9 @@ function DestinationsSettings({
             <Button icon={<QrCodeRegular />} onClick={openImport}>
               {t("Import from Another Device…")}
             </Button>
+            {shareXButton}
           </div>
+          {shareXFound}
         </div>
       ) : (
         <>
@@ -490,7 +538,9 @@ function DestinationsSettings({
             <Button icon={<QrCodeRegular />} onClick={openImport}>
               {t("Import from Another Device…")}
             </Button>
+            {shareXButton}
           </div>
+          {shareXFound}
         </>
       )}
 
@@ -501,6 +551,7 @@ function DestinationsSettings({
         onSaved={() => setFormOpen(false)}
       />
       <ShareDestinationDialog share={sharing} onClose={() => setSharing(null)} />
+      <ShareXImportDialog open={shareXImport !== null} pick={shareXImport?.pick ?? false} onClose={() => setShareXImport(null)} />
       <ImportDestinationDialog
         open={importOpen}
         initialLink={pendingImportLink}
@@ -598,7 +649,7 @@ function OutputSettings() {
                 }}
               />
               <Text size={100} className="secondary">
-                {t("Available variables: {url} {shortUrl} {longUrl} {filename} {name} {ext}")}
+                {t("Available variables: {url} {shortUrl} {longUrl} {file} {filename} {name} {ext}")}
               </Text>
             </div>
           )}

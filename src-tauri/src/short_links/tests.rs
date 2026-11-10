@@ -725,6 +725,10 @@ fn history_carries_the_active_short_link() {
         expire_after_days: None,
         content_hash: None,
         watched_folder: None,
+        source: None,
+        created_at: None,
+        share_page_key: None,
+        encryption: None,
     });
     assert_eq!(history.get(&fresh.id).unwrap().short_url, None);
     store.delete_for_upload("A");

@@ -33,6 +33,9 @@ pub mod events {
     pub const PANEL_SHOWN: &str = "panel-shown";
     /// Files are waiting in (or were taken out of) "Name This Upload".
     pub const NAMES_CHANGED: &str = "names-changed";
+    pub const PASSWORDS_CHANGED: &str = "passwords-changed";
+    /// File requests were made, closed, or received files.
+    pub const REQUESTS_CHANGED: &str = "requests-changed";
     /// Watched folders, their status, or the pause changed.
     pub const WATCHED_CHANGED: &str = "watched-changed";
     /// Settings > General > Clear removed the thumbnails on this PC.
@@ -63,6 +66,8 @@ pub struct Core {
     pub upload_sessions: SessionStore,
     /// Uploads whose link was copied, kept until their bytes are there.
     pub outbox: Outbox,
+    /// File requests made on this PC (see `file_requests`).
+    pub requests: crate::file_requests::RequestStore,
     pub local_api: LocalApiService,
     pub updater: UpdateService,
     pub watched: WatchService,
@@ -104,6 +109,7 @@ impl Core {
             uploads: UploadManager::default(),
             upload_sessions: SessionStore::load(&local_data_dir),
             outbox: Outbox::new(local_data_dir.join("outbox")),
+            requests: crate::file_requests::RequestStore::load(&data_dir),
             local_api: LocalApiService::default(),
             updater: UpdateService::default(),
             watched,

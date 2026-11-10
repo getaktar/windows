@@ -15,6 +15,8 @@ export const events = {
   uploadSucceeded: "upload-succeeded",
   panelShown: "panel-shown",
   namesChanged: "names-changed",
+  passwordsChanged: "passwords-changed",
+  requestsChanged: "requests-changed",
   watchedChanged: "watched-changed",
   /** Settings > General > Clear removed the thumbnails on this PC. */
   thumbnailsCleared: "thumbnails-cleared",
@@ -80,7 +82,15 @@ export interface DestinationConfig {
   /** The link shortener uploads here go through; null is off. Its token
    * is kept with the keys. */
   shortLinks?: ShortLinkSettings | null;
+  /** "Share Page": each upload's link is a page next to the file. */
+  sharePage?: boolean | null;
+  /** Encrypted links; null is off. */
+  encryption?: EncryptionMode | null;
+  /** The page origin file requests' CORS rule was set up for. */
+  requestCorsOrigin?: string | null;
 }
+
+export type EncryptionMode = "link" | "password";
 
 // MARK: - Short links (src-tauri/src/short_links)
 
@@ -328,6 +338,13 @@ export interface UploadRecord {
   shortLinkId?: string | null;
   /** Its provider (a definition's id, or "custom"). */
   shortProvider?: string | null;
+  /** The key of the upload's share page or gallery page, if it has one. */
+  sharePageKey?: string | null;
+  /** The link to that page (with an encrypted upload's key in the
+   * fragment when the key is in the link). */
+  shareUrl?: string | null;
+  /** Encrypted: its link is never formatted. */
+  encrypted?: boolean;
 }
 
 // MARK: - Watched folders (src-tauri/src/watched/model.rs)
@@ -428,6 +445,8 @@ export interface SettingsRequest {
   watchPath: string | null;
   /** An aktar://import link to open "Import from Another Device" with. */
   importLink?: string | null;
+  /** Opens "Import from ShareX" (the panel's offer). */
+  shareXImport?: boolean;
 }
 
 export interface BucketObject {
@@ -591,6 +610,49 @@ export interface NameRequest {
   name: string;
   /** The extension, which stays; empty when there's none. */
   extension: string;
+}
+
+/** A file request made on this PC (src-tauri/src/file_requests.rs). */
+export interface FileRequest {
+  id: string;
+  destinationID: string;
+  title: string;
+  note: string;
+  /** ISO 8601. */
+  createdAt: string;
+  expiresAt: string;
+  slotCount: number;
+  maxBytes: number;
+  link: string;
+  received: number;
+  closedAt?: string | null;
+}
+
+export interface NewFileRequest {
+  destinationId: string | null;
+  title: string;
+  note: string;
+  seconds: number;
+  slotCount: number;
+  maxBytes: number;
+}
+
+/** Why a request couldn't be made: the bucket refused the CORS rule (with
+ * the rule to set by hand), or anything else. */
+export type RequestError = { kind: "cors"; message: string; rule: string } | { kind: "failed"; message: string };
+
+export const requestDurations = [3600, 86_400, 604_800];
+export const requestSlotCounts = [1, 5, 10, 20];
+export const requestSizeLimits = [100_000_000, 1_000_000_000, 2_000_000_000, 5_000_000_000];
+
+/** Files of one upload to an "Ask for a Password" destination, waiting
+ * for the password they're encrypted with. */
+export interface PasswordRequest {
+  id: string;
+  destinationName: string;
+  /** The first file's name, and how many there are. */
+  filename: string;
+  count: number;
 }
 
 /** A QR code's modules, row by row ("1" dark, "0" light), without the
@@ -768,6 +830,15 @@ export const api = {
   pendingNames: () => invoke<NameRequest[]>("pending_names"),
   /** Uploads a file waiting for its name, or drops it (Cancel) for null. */
   resolveName: (id: string, name: string | null) => invoke<void>("resolve_name", { id, name }),
+  pendingPasswords: () => invoke<PasswordRequest[]>("pending_passwords"),
+  listRequests: () => invoke<FileRequest[]>("list_requests"),
+  /** Rejects with a `RequestError`. */
+  createRequest: (request: NewFileRequest) => invoke<FileRequest>("create_request", { request }),
+  checkRequests: () => invoke<void>("check_requests"),
+  closeRequest: (id: string) => invoke<void>("close_request", { id }),
+  forgetRequest: (id: string) => invoke<void>("forget_request", { id }),
+  /** Uploads what waited with this password, or drops it for null. */
+  resolvePassword: (id: string, password: string | null) => invoke<void>("resolve_password", { id, password }),
   /** Whether Alt is held right now (drops don't say). */
   altKeyDown: () => invoke<boolean>("alt_key_down"),
   listJobs: () => invoke<Job[]>("list_jobs"),
