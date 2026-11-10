@@ -1457,7 +1457,9 @@ mod live_tests {
         let Some(storage) = provider("aktar-test", "secret") else { return };
         let client = reqwest::Client::new();
         storage.put_page("pages/a.png.html", "<!doctype html><p>hi</p>".into()).await.unwrap();
-        let page = client.get(format!("{}/pages/a.png.html", storage.config.public_base_url)).send().await.unwrap();
+        // Read through a presigned GET: moto's bucket isn't public.
+        let page_url = storage.temporary_url("pages/a.png.html", 300).await.unwrap();
+        let page = client.get(page_url).send().await.unwrap();
         assert!(page.status().is_success(), "{}", page.status());
         assert_eq!(page.headers().get("content-type").unwrap(), "text/html; charset=utf-8");
         assert_eq!(page.headers().get("cache-control").unwrap(), "public, max-age=60");
@@ -1465,19 +1467,27 @@ mod live_tests {
         storage.delete("pages/a.png.html").await.unwrap();
         assert!(!storage.object_exists("pages/a.png.html").await.unwrap());
 
+        // Moto started without authentication (CI) checks no signatures, so
+        // the signed headers are only checked against a server with real keys
+        // (MinIO, S3), which the tests get through AKTAR_TEST_S3_ACCESS_KEY.
+        let checks_signatures = std::env::var("AKTAR_TEST_S3_ACCESS_KEY").is_ok();
         let url = storage.presigned_put(".aktar/requests/test/1", "application/octet-stream", false, 3600).await.unwrap();
-        // Another Content-Type than the signed one is refused.
-        let refused = client.put(&url).header("content-type", "text/html").body("x").send().await.unwrap();
-        assert_eq!(refused.status().as_u16(), 403);
+        if checks_signatures {
+            // Another Content-Type than the signed one is refused.
+            let refused = client.put(&url).header("content-type", "text/html").body("x").send().await.unwrap();
+            assert_eq!(refused.status().as_u16(), 403);
+        }
         let sent = client.put(&url).header("content-type", "application/octet-stream").body("hello").send().await.unwrap();
         assert!(sent.status().is_success(), "{}", sent.status());
         assert_eq!(storage.object_size(".aktar/requests/test/1").await.unwrap(), Some(5));
         storage.delete(".aktar/requests/test/1").await.unwrap();
         // With If-None-Match signed, the PUT must send it too.
         let conditional = storage.presigned_put(".aktar/requests/test/2", "application/json", true, 3600).await.unwrap();
-        let without = client.put(&conditional).header("content-type", "application/json").body("{}").send().await.unwrap();
-        // 403 from S3, 400 from MinIO: refused either way.
-        assert!(without.status().is_client_error(), "{}", without.status());
+        if checks_signatures {
+            let without = client.put(&conditional).header("content-type", "application/json").body("{}").send().await.unwrap();
+            // 403 from S3, 400 from MinIO: refused either way.
+            assert!(without.status().is_client_error(), "{}", without.status());
+        }
         let with = client.put(&conditional).header("content-type", "application/json").header("if-none-match", "*").body("{}").send().await.unwrap();
         assert!(with.status().is_success(), "{}", with.status());
         storage.delete(".aktar/requests/test/2").await.unwrap();
