@@ -2,3 +2,6 @@
 # SHA-256 of "abc" (the standard test vector) in the R2 key derivation test.
 679c69e240eddc11135fab4e2c5fbb449ce3078f:src/dev/mockBackend.ts:generic-api-key:502
 679c69e240eddc11135fab4e2c5fbb449ce3078f:src-tauri/src/cloudflare_setup.rs:generic-api-key:250
+# Test value, not a secret: the derived key of the share page encryption test
+# vector (a fixed test password), shared with the Mac and mobile apps.
+94d41b5b06874faa602342aba29d80cfd04872b4:src-tauri/tests/fixtures/share-page-vectors.json:generic-api-key:49
